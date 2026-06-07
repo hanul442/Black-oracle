@@ -1,0 +1,6 @@
+{
+  "name": "Black Oracle",
+  "description": "An AI-powered oracle designed for automated information tracking and scenario projection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

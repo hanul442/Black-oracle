@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "Source": {
+      "title": "Source",
+      "description": "A RSS or news source article",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "domain": { "type": "string" },
+        "extractedAt": { "type": "string" },
+        "contentSnippet": { "type": "string" }
+      },
+      "required": ["title", "url", "domain"]
+    },
+    "Signal": {
+      "title": "Signal",
+      "description": "An extracted intelligence signal",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "confidence": { "type": "number" },
+        "type": { "type": "string" },
+        "sourceIds": { "type": "array" }
+      },
+      "required": ["title", "type"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "An intelligence question generated from signals",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "status": { "type": "string" },
+        "urgency": { "type": "string" }
+      },
+      "required": ["text", "status", "urgency"]
+    },
+    "Hypothesis": {
+      "title": "Hypothesis",
+      "description": "A hypothesis about a situation",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "probability": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["title", "description", "status"]
+    },
+    "Evidence": {
+      "title": "Evidence",
+      "description": "Evidence supporting a hypothesis",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "impact": { "type": "string" },
+        "hypothesisId": { "type": "string" }
+      },
+      "required": ["title", "description", "hypothesisId"]
+    },
+    "ScenarioBranch": {
+      "title": "ScenarioBranch",
+      "description": "A possible future scenario",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "probability": { "type": "number" },
+        "timeframe": { "type": "string" }
+      },
+      "required": ["title", "description"]
+    },
+    "PredictionOutcome": {
+      "title": "PredictionOutcome",
+      "description": "A predicted outcome",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "confidence": { "type": "number" },
+        "date": { "type": "string" }
+      },
+      "required": ["title", "confidence", "date"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A generated intelligence report",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "date": { "type": "string" },
+        "tags": { "type": "array" }
+      },
+      "required": ["title", "summary", "date"]
+    }
+  },
+  "firestore": {
+    "/sources/{sourceId}": {
+      "schema": { "$ref": "#/entities/Source" },
+      "description": "Stores scraped sources"
+    },
+    "/signals/{signalId}": {
+      "schema": { "$ref": "#/entities/Signal" },
+      "description": "Extracted signals"
+    },
+    "/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Questions"
+    },
+    "/hypotheses/{hypothesisId}": {
+      "schema": { "$ref": "#/entities/Hypothesis" },
+      "description": "Hypotheses"
+    },
+    "/evidence/{evidenceId}": {
+      "schema": { "$ref": "#/entities/Evidence" },
+      "description": "Evidence"
+    },
+    "/scenarios/{scenarioId}": {
+      "schema": { "$ref": "#/entities/ScenarioBranch" },
+      "description": "Scenarios"
+    },
+    "/predictions/{predictionId}": {
+      "schema": { "$ref": "#/entities/PredictionOutcome" },
+      "description": "Predictions"
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Reports generated"
+    }
+  }
+}

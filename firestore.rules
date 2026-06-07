@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false; // Default deny
+    }
+    
+    function isSignedIn() {
+      return true;
+    }
+    
+    function isValidId(id) {
+       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // User-scoped collections
+    match /users/{userId}/{collectionName}/{docId} {
+      allow read, write: if isSignedIn() && isValidId(userId);
+    }
+    
+    // Legacy generic collections
+    match /sources/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /signals/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /questions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /hypotheses/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /evidence/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /scenarios/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /predictions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+    match /reports/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+  }
+}
