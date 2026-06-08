@@ -47,8 +47,12 @@ const getSparklineData = (scenarios: any[]) => {
 };
 
 const AppContent: React.FC = () => {
-  const { isFirebaseLoading, currentView, setCurrentView, addNotification, notifications, isIngestingData, coreInterests, workflowQuery, setWorkflowQuery, isWorkflowMinimized, setIsWorkflowMinimized, scenarios, hypotheses, signals, selectedEntity, setSelectedEntity, user } = useAppContext() as any;
+  const { isFirebaseLoading, currentView, setCurrentView, addNotification, notifications, isIngestingData, coreInterests, workflowQuery, setWorkflowQuery, isWorkflowMinimized, setIsWorkflowMinimized, scenarios, hypotheses, signals, selectedEntity, setSelectedEntity, user, activeCase, activeCaseEvidenceSummary, activeCaseEvidenceLedgerSummary, generateAnalystCouncil, generateOracleBriefing, updateOracleCase } = useAppContext() as any;
   const [localQuery, setLocalQuery] = useState("");
+  const [tacticalPanel, setTacticalPanel] = useState<null | "brief" | "council">(null);
+  const [briefLength, setBriefLength] = useState<"flash" | "field" | "analyst">("field");
+  const [briefMode, setBriefMode] = useState<"executive" | "risk" | "quant" | "debate" | "watch_plan">("executive");
+  const [showAllCouncil, setShowAllCouncil] = useState(false);
   const sparklineData = getSparklineData(scenarios);
 
   const [hasSeenTutorial, setHasSeenTutorial] = useState(() => {
@@ -73,7 +77,7 @@ const AppContent: React.FC = () => {
         const resp = await fetch('/api/fetch-rss', { 
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ interests: coreInterests, userId: user?.uid }) 
+          body: JSON.stringify({ coreInterests, userId: user?.uid }) 
         });
         const data = await resp.json();
         if (data.success && (data.count > 0 || data.mergedCount > 0)) {
@@ -187,6 +191,101 @@ const AppContent: React.FC = () => {
           </motion.div>
         )}
         
+        {activeCase && currentView !== 'login' && currentView !== 'settings' && (
+          <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-50 w-[92%] md:w-[720px] pointer-events-none">
+            <div className="pointer-events-auto rounded-xl border border-white/10 bg-[#050608]/90 backdrop-blur-xl px-3 py-2 font-mono text-[10px] text-gray-400 shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <div className="truncate text-gray-200">{activeCase.title}</div>
+                  <div className="uppercase tracking-wider text-gray-600">
+                    {String(activeCase.status || 'case_created').replace(/_/g, ' ')} · EG {activeCaseEvidenceSummary?.progress ?? 0}% · Evidence {activeCaseEvidenceLedgerSummary?.total ?? 0}
+                    {selectedEntity ? ` · Selected ${selectedEntity.type}:${String(selectedEntity.id).slice(0, 6)}` : ''}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <button onClick={() => { setTacticalPanel('brief'); updateOracleCase?.(activeCase.id, { status: 'briefing_revised' }); }} className="rounded border border-violet-500/20 bg-violet-950/20 px-2.5 py-1 text-violet-200 hover:border-violet-400/40">Brief</button>
+                  <button onClick={() => setTacticalPanel('council')} className="rounded border border-white/10 bg-white/[0.03] px-2.5 py-1 text-gray-200 hover:border-cyan-500/40">Council</button>
+                  <button onClick={() => {
+                    if (!selectedEntity) {
+                      const traceTarget = activeCase.linkedSourceIds?.[0]
+                        ? { type: 'source', id: activeCase.linkedSourceIds[0] }
+                        : activeCase.linkedSignalIds?.[0]
+                          ? { type: 'signal', id: activeCase.linkedSignalIds[0] }
+                          : activeCase.linkedQuestionIds?.[0]
+                            ? { type: 'question', id: activeCase.linkedQuestionIds[0] }
+                            : null;
+                      if (traceTarget) setSelectedEntity(traceTarget);
+                    }
+                    addNotification('Source Trace is available inside the expanded Detail panel.', 'info');
+                  }} className="rounded border border-white/10 bg-white/[0.03] px-2.5 py-1 text-gray-300 hover:border-cyan-500/40">Trace</button>
+                  <button onClick={() => {
+                    const targetId = activeCase.linkedScenarioIds?.[0] || activeCase.linkedHypothesisIds?.[0] || activeCase.linkedQuestionIds?.[0];
+                    if (targetId) {
+                      const type = activeCase.linkedScenarioIds?.[0] ? 'scenario' : activeCase.linkedHypothesisIds?.[0] ? 'hypothesis' : 'question';
+                      setSelectedEntity({ type, id: targetId });
+                    }
+                    setCurrentView('forecast');
+                  }} className="rounded border border-cyan-500/30 bg-cyan-950/20 px-2.5 py-1 text-cyan-200 hover:border-cyan-400/50">Deep Dive</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {tacticalPanel && activeCase && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[210] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm">
+              <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#050608]/95 p-4 font-mono text-[11px] text-gray-400 shadow-2xl">
+                <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.24em] text-gray-600">{tacticalPanel === 'brief' ? 'Oracle Briefing Studio' : 'Analyst Council'}</div>
+                    <div className="text-sm text-gray-100">{activeCase.title}</div>
+                  </div>
+                  <button onClick={() => setTacticalPanel(null)} className="rounded border border-white/10 px-2 py-1 text-gray-500 hover:text-white">Close</button>
+                </div>
+                {tacticalPanel === 'council' ? (() => {
+                  const council = generateAnalystCouncil?.() || [];
+                  const visible = showAllCouncil ? council : council.slice(0, 3);
+                  const avg = council.length ? Math.round(council.reduce((sum: number, p: any) => sum + p.confidence, 0) / council.length) : 0;
+                  const positive = council.filter((p: any) => /constructive|positive/i.test(p.stance)).length;
+                  const negative = council.filter((p: any) => /risk|cautious/i.test(p.stance)).length;
+                  return <div className="space-y-3">
+                    <div className="rounded border border-white/10 bg-black/30 p-3 text-gray-300">Council · {council.length} views · Consensus: Cautious Positive · Avg Confidence {avg}% · +{positive}/-{negative}</div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {visible.map((p: any) => <div key={p.role} className="rounded border border-white/10 bg-black/30 p-3">
+                        <div className="mb-1 flex items-center justify-between"><span className="text-cyan-300">{p.role}</span><span className="text-gray-500">{p.confidence}%</span></div>
+                        <div className="mb-2 text-[10px] uppercase text-gray-500">{p.stance}</div>
+                        <div className="text-gray-300">{p.bubbleComment}</div>
+                        <div className="mt-2 text-[10px] text-red-300/80">Risk: {p.keyRisk}</div>
+                        {showAllCouncil && <div className="mt-2 text-[10px] text-gray-500">Trigger: {p.viewChangeTrigger}</div>}
+                      </div>)}
+                    </div>
+                    <button onClick={() => setShowAllCouncil(!showAllCouncil)} className="rounded border border-white/10 px-3 py-1 text-gray-300">{showAllCouncil ? 'Show key views' : 'Show all views'}</button>
+                  </div>;
+                })() : (() => {
+                  const briefing = generateOracleBriefing?.({ length: briefLength, mode: briefMode, includeSelectedNode: true });
+                  return <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(['flash','field','analyst'] as const).map((l) => <button key={l} onClick={() => setBriefLength(l)} className={`rounded border px-2 py-1 ${briefLength === l ? 'border-violet-400/50 text-violet-200' : 'border-white/10 text-gray-500'}`}>{l}</button>)}
+                      {(['executive','risk','quant','debate','watch_plan'] as const).map((m) => <button key={m} onClick={() => setBriefMode(m)} className={`rounded border px-2 py-1 ${briefMode === m ? 'border-cyan-400/50 text-cyan-200' : 'border-white/10 text-gray-500'}`}>{m.replace('_',' ')}</button>)}
+                    </div>
+                    {briefing ? <div className="rounded border border-white/10 bg-black/30 p-3">
+                      <div className="mb-1 text-gray-100">{briefing.title}</div>
+                      <div className="mb-3 text-[10px] uppercase text-gray-500">{briefing.mode} · {briefing.length} · {briefing.stance} · {briefing.confidence !== undefined ? `${Math.round(briefing.confidence)}%` : 'confidence pending'} · {briefing.provisional ? 'PROVISIONAL' : 'UPDATED'}</div>
+                      <div className="space-y-1 text-gray-300">{briefing.summary.map((line: string, i: number) => <div key={i}>• {line}</div>)}</div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-3">
+                        <div><div className="text-cyan-400">Key Evidence</div>{briefing.keyEvidence.map((x: string) => <div key={x} className="text-gray-500">{x}</div>)}</div>
+                        <div><div className="text-red-400">Risks</div>{briefing.risks.map((x: string) => <div key={x} className="text-gray-500">{x}</div>)}</div>
+                        <div><div className="text-gray-300">Watch Triggers</div>{briefing.watchTriggers.map((x: string) => <div key={x} className="text-gray-500">{x}</div>)}</div>
+                      </div>
+                    </div> : <div className="text-gray-500">No active case available for briefing.</div>}
+                  </div>;
+                })()}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="absolute top-4 right-4 z-[150] flex flex-col gap-2 pointer-events-none">
           <AnimatePresence>
             {notifications && notifications.map((n: any) => (

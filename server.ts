@@ -52,7 +52,13 @@ const rssFeeds = [
   { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml', type: 'news' },
 ];
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const hasGeminiApiKey = Boolean(process.env.GEMINI_API_KEY);
+const missingGeminiApiKeyResponse = {
+  success: false,
+  errorCode: 'MISSING_GEMINI_API_KEY',
+  message: 'Gemini API key is not configured. Add GEMINI_API_KEY to enable Oracle analysis.',
+};
+const genAI = hasGeminiApiKey ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 async function generateWithRetry(genAI: any, options: any, maxRetries = 2) {
   let attempt = 0;
@@ -76,7 +82,7 @@ async function generateWithRetry(genAI: any, options: any, maxRetries = 2) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
   app.use(express.json());
 
@@ -134,7 +140,7 @@ async function startServer() {
         return res.json({ trends: trendsCache[cacheKey].data });
       }
       
-      if (process.env.GEMINI_API_KEY) {
+      if (hasGeminiApiKey && genAI) {
         const prompt = region === 'kr' 
           ? `Use the googleSearch tool to find today's top 4 South Korea economic, political, or social trending keywords or short topics (in Korean). Return ONLY a valid JSON array of 4 strings (e.g., ["금리 인하", "반도체 수출", "부동산 정책", "주가 지수"]).`
           : `Use the googleSearch tool to find today's top 4 global economic or geopolitical trending keywords or short topics (in English or Korean). Return ONLY a valid JSON array of 4 strings. Each string should be a short keyword or topic (max 3 words).`;
@@ -162,6 +168,7 @@ async function startServer() {
     if (!db) return res.status(500).json({ error: 'Firebase not configured' });
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: 'Query is required' });
+    if (!hasGeminiApiKey || !genAI) return res.status(503).json(missingGeminiApiKeyResponse);
 
     try {
       console.log('Initiating Oracle Search for:', query);
@@ -186,7 +193,7 @@ async function startServer() {
          return res.json({ success: true, message: 'Returned similar existing analysis', sourceId: existing.id });
       }
       
-      if (process.env.GEMINI_API_KEY) {
+      if (hasGeminiApiKey && genAI) {
         try {
           const prompt = `Conduct a comprehensive global intelligence scan on: "${query}"
 ${userPreferenceInstruction}
@@ -380,6 +387,7 @@ Return ONLY JSON, nothing else.`;
   app.post('/api/briefing', async (req, res) => {
     const { query, lines } = req.body;
     if (!query) return res.status(400).json({ error: 'No query provided' });
+    if (!hasGeminiApiKey || !genAI) return res.status(503).json(missingGeminiApiKeyResponse);
   
     try {
       const prompt = `You are an intelligence AI. Provide a concise intelligence briefing about the following text. Do NOT use markdown. Summarize the briefing in exactly ${lines} sentences. 
@@ -441,10 +449,11 @@ MUST BE IN KOREAN (한국어로 작성). Include specific numbers, statistics, o
          console.log(`Autonomous AI merged ${mergedCount} old nodes.`);
       }
       
-      if (process.env.GEMINI_API_KEY) {
+      if (hasGeminiApiKey && genAI) {
         try {
           const feedNames = rssFeeds.map(f => f.name).join(', ');
-          const userInterests = req.body.coreInterests ? `Focus mainly on these user-defined core interests: ${req.body.coreInterests}. ` : '';
+          const requestedInterests = req.body.coreInterests || req.body.interests;
+          const userInterests = requestedInterests ? `Focus mainly on these user-defined core interests: ${requestedInterests}. ` : '';
           const prompt = `As an intelligence AI, analyze the current global risk environment. ${userInterests}Choose the 10 most critical data sources from this list to monitor right now: [${feedNames}]. Respond strictly with a valid JSON array of 10 strings matching the exact names.`;
           
           const response = await generateWithRetry(genAI, {
@@ -524,7 +533,7 @@ MUST BE IN KOREAN (한국어로 작성). Include specific numbers, statistics, o
             let snippet = item.contentSnippet || item.content || '';
             
             let geminiError = '';
-            if (process.env.GEMINI_API_KEY) {
+            if (hasGeminiApiKey && genAI) {
               // Add a small delay between Gemini calls to avoid rapid quota throttling
               if (i > 0) await new Promise(resolve => setTimeout(resolve, 1500));
               try {
@@ -749,7 +758,8 @@ Return ONLY JSON, nothing else.`;
         }
       }
       
-      res.json({ success: true, count: results.length, mergedCount, data: results, debugInfo });
+      const count = results.length;
+      res.json({ success: true, count, mergedCount, sourcesAnalyzed: count, data: results, debugInfo });
     } catch (error: any) {
       console.error('fetch-rss error:', error.message || 'unknown error');
       res.status(500).json({ error: 'Failed to fetch RSS' });

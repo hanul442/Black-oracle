@@ -11,7 +11,7 @@ export const DetailBottomSheet: React.FC = () => {
 };
 
 const DetailBottomSheetContent: React.FC = () => {
-  const { selectedEntity, setSelectedEntity, sources, signals, questions, hypotheses, scenarios, setCurrentView, deleteCascade } = useAppContext() as any;
+  const { selectedEntity, setSelectedEntity, sources, signals, questions, hypotheses, scenarios, setCurrentView, deleteCascade, addNotification, activeCase, activeCaseEvidenceItems, activeCaseEvidenceLedgerSummary, activeCaseEvidenceTasks, activeCaseEvidenceSummary, isNodeLinkedToActiveCase } = useAppContext() as any;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFeedback, setDeleteFeedback] = useState("");
@@ -58,6 +58,8 @@ const DetailBottomSheetContent: React.FC = () => {
           const data = await resp.json();
           if (data.success && data.text) {
               setAiBriefingText(prev => ({ ...prev, [`${entity.id}_${lines}`]: data.text }));
+          } else if (data.errorCode === 'MISSING_GEMINI_API_KEY') {
+              addNotification(data.message || 'Gemini API key is not configured.', 'warning');
           }
       } catch (err) {
           console.error("AI briefing failed", err);
@@ -209,6 +211,75 @@ const DetailBottomSheetContent: React.FC = () => {
     { name: 'Imp',  value: Number(impact), color: '#ef4444' }
   ];
 
+  const ledgerPreviewRows = React.useMemo(() => {
+    const evidenceRows = (activeCaseEvidenceItems || []).slice(0, 5).map((item: any) => {
+      const ev = item.evidence || {};
+      const isOpposing = ev.contradictsThesis || ev.evidenceType === 'contradicting' || ev.evidenceType === 'opposing';
+      const isSupporting = ev.supportsThesis || ev.evidenceType === 'supporting';
+      return {
+        id: ev.id,
+        title: ev.title || ev.evidenceType || 'Evidence record',
+        summary: ev.summary || 'No summary available.',
+        badge: isOpposing ? 'OPPOSE' : isSupporting ? 'SUPPORT' : 'NEUTRAL',
+        badgeClass: isOpposing ? 'border-red-500/40 text-red-400 bg-red-950/20' : isSupporting ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/20' : 'border-white/10 text-gray-400 bg-white/[0.03]',
+        confidence: ev.confidence,
+        credibility: ev.credibilityScore ?? ev.reliability,
+        linkedEntityType: item.linkedEntityType,
+        linkMode: item.linkMode,
+        isTaskRecord: false,
+      };
+    });
+
+    if (evidenceRows.length > 0) return evidenceRows;
+
+    return (activeCaseEvidenceTasks || []).slice(0, 5).map((task: any) => ({
+      id: task.id,
+      title: task.label || task.type,
+      summary: task.resultSummary || task.errorMessage || 'Evidence task status pending.',
+      badge: 'TASK',
+      badgeClass: task.status === 'failed' ? 'border-red-500/40 text-red-400 bg-red-950/20' : task.status === 'completed' ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/20' : 'border-white/10 text-gray-500 bg-white/[0.03]',
+      confidence: undefined,
+      credibility: undefined,
+      linkedEntityType: 'task',
+      linkMode: 'provisional',
+      isTaskRecord: true,
+      status: task.status,
+    }));
+  }, [activeCaseEvidenceItems, activeCaseEvidenceTasks]);
+
+  const evidenceGatheringMessage = React.useMemo(() => {
+    if (!activeCase) return '';
+    if ((activeCaseEvidenceSummary?.failedTasks || 0) > 0) return 'Some evidence tasks failed. Ledger confidence may be limited.';
+    if ((activeCaseEvidenceSummary?.runningTasks || 0) > 0) return 'Evidence Gathering in progress. Ledger may update.';
+    if (activeCase.status === 'evidence_updated') return 'Evidence updated for active case.';
+    return 'Evidence Gathering is still preparing the ledger.';
+  }, [activeCase, activeCaseEvidenceSummary]);
+
+
+  const caseLinkedNodeCount = activeCase
+    ? (activeCase.linkedSourceIds?.length || 0) +
+      (activeCase.linkedSignalIds?.length || 0) +
+      (activeCase.linkedQuestionIds?.length || 0) +
+      (activeCase.linkedHypothesisIds?.length || 0) +
+      (activeCase.linkedScenarioIds?.length || 0) +
+      (activeCase.linkedReportIds?.length || 0)
+    : 0;
+
+  const selectedNodeLinkedToCase = activeCase
+    ? Boolean(isNodeLinkedToActiveCase?.(selectedEntity.type, selectedEntity.id))
+    : false;
+
+  const selectedNodeTypeLabel = selectedEntity.type === 'branch' ? 'scenario' : selectedEntity.type;
+
+  const sourceTraceBlocks = [
+    { key: 'source', label: 'Source', count: activeCase?.linkedSourceIds?.length || 0 },
+    { key: 'signal', label: 'Signal', count: activeCase?.linkedSignalIds?.length || 0 },
+    { key: 'question', label: 'Question', count: activeCase?.linkedQuestionIds?.length || 0 },
+    { key: 'hypothesis', label: 'Hypothesis', count: activeCase?.linkedHypothesisIds?.length || 0 },
+    { key: 'scenario', label: 'Scenario', count: activeCase?.linkedScenarioIds?.length || 0 },
+    { key: 'report', label: 'Report', count: activeCase?.linkedReportIds?.length || 0 },
+  ];
+
   const getIcon = () => {
     if (selectedEntity.type === 'source') return <Database className="w-5 h-5 text-gray-400" />;
     if (selectedEntity.type === 'signal') return <Activity className="w-5 h-5 text-cyan-400" />;
@@ -319,6 +390,63 @@ const DetailBottomSheetContent: React.FC = () => {
                                 </React.Fragment>
                             ))}
                         </div>
+                    )}
+
+                    {/* Oracle Case Context */}
+                    {activeCase && (
+                      <div className="bg-[#050608]/80 border border-white/10 rounded-xl p-3 font-mono text-[10px] text-gray-500">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <div className="text-cyan-400 uppercase tracking-[0.25em]">Oracle Case</div>
+                            <div className="text-gray-200 text-[12px] mt-1 line-clamp-1">{activeCase.title}</div>
+                          </div>
+                          <div className="text-right uppercase">
+                            <div className="text-gray-300">{String(activeCase.status || 'case_created').replace(/_/g, ' ')}</div>
+                            <div className="text-gray-600">{caseLinkedNodeCount} linked nodes</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                            <span className="block text-gray-600 uppercase">Evidence Tasks</span>
+                            <span className="text-cyan-300">{Math.round(activeCaseEvidenceSummary?.progress || 0)}%</span>
+                          </div>
+                          <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                            <span className="block text-gray-600 uppercase">Ledger</span>
+                            <span className="text-gray-300">{activeCaseEvidenceLedgerSummary?.total ?? 0} items</span>
+                            <span className="text-cyan-300"> · {activeCaseEvidenceLedgerSummary?.supporting ?? 0} support</span>
+                            <span className="text-red-400"> · {activeCaseEvidenceLedgerSummary?.opposing ?? 0} oppose</span>
+                          </div>
+                        </div>
+                        <div className={`mt-2 border rounded px-2 py-1 ${selectedNodeLinkedToCase ? 'border-cyan-500/30 text-cyan-300 bg-cyan-950/10' : 'border-white/5 text-gray-500 bg-black/20'}`}>
+                          Selected Node: {selectedNodeTypeLabel} · {selectedNodeLinkedToCase ? 'linked to active case' : 'outside active case context'} · Confidence {entity.confidence !== undefined ? `${Math.round(entity.confidence)}%` : entity.probability !== undefined ? `${Math.round(entity.probability)}%` : 'pending'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Source Trace Panel */}
+                    {activeCase && (
+                      <div className="bg-[#050608]/70 border border-white/10 rounded-xl p-3 font-mono text-[9px]">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-cyan-500 uppercase tracking-[0.25em]">Source Trace</span>
+                          <span className="text-gray-600 uppercase">Selected: {selectedNodeTypeLabel}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {sourceTraceBlocks.map((block, index) => {
+                            const isSelectedStep = selectedNodeTypeLabel === block.key;
+                            const isCaseLinkedStep = block.count > 0;
+                            return (
+                              <React.Fragment key={block.key}>
+                                <div className={`min-w-[64px] border rounded px-2 py-1 ${isSelectedStep ? 'border-cyan-400 text-cyan-200 bg-cyan-950/20' : isCaseLinkedStep ? 'border-cyan-500/25 text-gray-300 bg-black/30' : 'border-white/5 text-gray-600 bg-black/20'}`}>
+                                  <div className="uppercase tracking-widest">{block.label}</div>
+                                  <div className={isCaseLinkedStep ? 'text-cyan-300' : 'text-gray-600'}>{block.count}</div>
+                                </div>
+                                {index < sourceTraceBlocks.length - 1 && <div className="h-px w-4 bg-white/15" />}
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-2 text-gray-600 leading-snug">Trace uses existing Source → Signal → Question → Hypothesis → Scenario → Report links. Direct case links are highlighted; inferred linkage remains ledger-scoped.</div>
+                      </div>
                     )}
 
                     {/* Summary */}
@@ -445,6 +573,64 @@ const DetailBottomSheetContent: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Evidence Ledger Preview */}
+                        {activeCase && (
+                          <div className="flex-1 bg-[#050608]/80 border border-white/10 rounded-xl p-3 flex flex-col gap-3 min-w-[220px]">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest">Evidence Ledger</h3>
+                                <p className="text-[9px] font-mono text-gray-500 mt-1">{evidenceGatheringMessage}</p>
+                              </div>
+                              <button disabled className="text-[8px] font-mono uppercase tracking-widest border border-white/10 text-gray-600 px-2 py-1 rounded cursor-not-allowed">
+                                Open Ledger · Soon
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 font-mono text-[9px] text-gray-500">
+                              <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                                <span className="block uppercase text-gray-600">Case-linked evidence</span>
+                                <span className="text-gray-200">{activeCaseEvidenceLedgerSummary?.total ?? 0}</span>
+                                <span className="text-gray-600"> · direct {activeCaseEvidenceLedgerSummary?.directCaseLinked ?? 0} / inferred {activeCaseEvidenceLedgerSummary?.inferredLinked ?? 0}</span>
+                              </div>
+                              <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                                <span className="block uppercase text-gray-600">Disposition</span>
+                                <span className="text-cyan-300">S {activeCaseEvidenceLedgerSummary?.supporting ?? 0}</span>
+                                <span className="text-red-400"> · O {activeCaseEvidenceLedgerSummary?.opposing ?? 0}</span>
+                                <span className="text-gray-400"> · N {activeCaseEvidenceLedgerSummary?.neutral ?? 0}</span>
+                              </div>
+                              <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                                <span className="block uppercase text-gray-600">Confidence</span>
+                                <span className="text-gray-300">{activeCaseEvidenceLedgerSummary?.averageConfidence !== undefined ? `${Math.round(activeCaseEvidenceLedgerSummary.averageConfidence)}%` : 'pending'}</span>
+                              </div>
+                              <div className="border border-white/5 bg-black/30 rounded px-2 py-1">
+                                <span className="block uppercase text-gray-600">Credibility</span>
+                                <span className="text-gray-300">{activeCaseEvidenceLedgerSummary?.averageCredibility !== undefined ? `${Math.round(activeCaseEvidenceLedgerSummary.averageCredibility)}%` : 'pending'}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                              {ledgerPreviewRows.length === 0 ? (
+                                <div className="border border-white/5 bg-black/30 rounded p-3 font-mono text-[10px] text-gray-500">
+                                  <div>No case-linked evidence recorded yet.</div>
+                                  <div>Evidence Gathering is still preparing the ledger.</div>
+                                </div>
+                              ) : ledgerPreviewRows.map((row: any) => (
+                                <div key={row.id} className="border border-white/5 bg-black/30 rounded px-2 py-2 font-mono text-[10px]">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`px-1.5 py-0.5 rounded border text-[8px] ${row.badgeClass}`}>{row.badge}</span>
+                                    <span className="text-gray-300 truncate">{row.title}</span>
+                                    <span className="ml-auto text-[8px] text-gray-600 uppercase">{row.isTaskRecord ? 'Provisional task record' : `${row.linkMode} ${row.linkedEntityType || 'link'}`}</span>
+                                  </div>
+                                  <div className="text-gray-500 leading-snug line-clamp-2">{row.summary}</div>
+                                  <div className="mt-1 text-[8px] text-gray-600 uppercase tracking-wider">
+                                    Confidence {row.confidence !== undefined ? `${Math.round(row.confidence)}%` : 'pending'} · Credibility {row.credibility !== undefined ? `${Math.round(row.credibility)}%` : 'pending'}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Mini Chart */}
                         <div className="w-full md:w-[140px] h-[140px] bg-white/[0.02] border border-white/5 rounded-xl p-3 flex flex-col shrink-0 mt-4 md:mt-0">

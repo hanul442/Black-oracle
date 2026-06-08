@@ -35,6 +35,7 @@ export const WatchlistView: React.FC = () => {
     selectedEntity,
     setSelectedEntity,
     workflowStep,
+    isNodeLinkedToActiveCase,
   } = useAppContext() as any;
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,6 +91,7 @@ export const WatchlistView: React.FC = () => {
   const effectiveFocusNode = interactionFocusNode;
 
   // We include all nodes. Dimming handles the visual clutter.
+  // TODO: Future Decision Web should become Source → Evidence → Signal → Thesis → Scenario → Decision using deterministic compact COGNEX-style rectangular blocks.
   // If we're in the middle of a workflow (workflowStep is a number >= 0), we progressively reveal items
   const showSignals =
     workflowStep === undefined || workflowStep === -1 || workflowStep >= 1;
@@ -1053,6 +1055,7 @@ export const WatchlistView: React.FC = () => {
                       }
 
                       const nodeStyles = getNodeColorStyles(node);
+                      const isCaseLinkedNode = Boolean(isNodeLinkedToActiveCase?.(node.type, node.rId));
 
                       // 가시성 향상을 위해 노드 크기 대폭 상향 수정
                       let nodeSize = 32;
@@ -1131,7 +1134,7 @@ export const WatchlistView: React.FC = () => {
                               }}
                             >
                               <div
-                                className={`rounded-full border transition-all duration-300 ${nodeStyles} ${nodeRingClass} ${isHovered ? "scale-[1.8] z-30 shadow-[0_0_15px_rgba(255,255,255,0.4)] ring-4 ring-white" : ""}`}
+                                className={`rounded-full border transition-all duration-300 ${nodeStyles} ${nodeRingClass} ${isCaseLinkedNode ? 'ring-2 ring-cyan-300/70 shadow-[0_0_14px_rgba(34,211,238,0.18)]' : ''} ${isHovered ? "scale-[1.8] z-30 shadow-[0_0_15px_rgba(255,255,255,0.4)] ring-4 ring-white" : ""}`}
                                 style={{
                                   width: Math.max(
                                     nodeSize,
@@ -1145,6 +1148,11 @@ export const WatchlistView: React.FC = () => {
                               >
                                 {isHovered && node.type === "scenario" && (
                                   <div className="w-full h-full animate-ping rounded-full bg-current opacity-30" />
+                                )}
+                                {isCaseLinkedNode && (
+                                  <div className="absolute -top-2 -right-4 px-1 py-0.5 rounded border border-cyan-400/40 bg-black/80 text-[7px] font-mono text-cyan-200 tracking-widest">
+                                    CASE
+                                  </div>
                                 )}
                               </div>
                             </div>

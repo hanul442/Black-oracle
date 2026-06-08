@@ -4,7 +4,7 @@ import { useAppContext } from '../store';
 import { Search, ChevronRight, Activity, TrendingUp, AlertTriangle } from 'lucide-react';
 
 export const OracleFeedView: React.FC = () => {
-  const { setCurrentView, setSelectedEntity, signals } = useAppContext() as any;
+  const { setCurrentView, setSelectedEntity, createOracleCase, startEvidenceGatheringForCase, addNotification } = useAppContext() as any;
 
   // Mock initial data based on Architect guidelines
   const mockFeed = [
@@ -72,9 +72,23 @@ export const OracleFeedView: React.FC = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              onClick={() => {
-                // In future, create 'oracle_case'
-                setSelectedEntity(item);
+              onClick={async () => {
+                try {
+                  const caseType = item.type === 'sector' ? 'sector_analysis' : item.type === 'macro' ? 'macro_analysis' : 'asset_analysis';
+                  const oracleCase = await createOracleCase({
+                    title: item.name,
+                    query: `${item.name}: ${item.signalSummary}`,
+                    caseType,
+                    confidence: item.confidence,
+                    summary: item.signalSummary,
+                  });
+                  await startEvidenceGatheringForCase(oracleCase.id);
+                  addNotification?.(`Oracle Case opened from feed: ${item.name}`, 'success');
+                } catch (error) {
+                  console.warn('Feed case creation failed', error);
+                  addNotification?.('Feed case could not be created. Opening graph view instead.', 'warning');
+                }
+                setSelectedEntity(null);
                 setCurrentView('watchlist'); // Go to intelligence map
               }}
               className="bg-[#0f0f13] border border-white/10 rounded-2xl p-4 cursor-pointer hover:border-cyan-500/50 hover:bg-[#15151a] transition-all"
