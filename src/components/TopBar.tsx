@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { signOut } from 'firebase/auth';
 
 export const TopBar: React.FC = () => {
-  const { cycleStage, setCycleIndex, sources, signals, questions, hypotheses, scenarios, isIngestingData, setIsIngestingData, addNotification, activeFeeds, coreInterests, reports, currentView, setCurrentView, setWorkflowQuery, mergedNodesCount } = useAppContext();
+  const { cycleStage, setCycleIndex, sources, signals, questions, hypotheses, scenarios, isIngestingData, setIsIngestingData, addNotification, activeFeeds, coreInterests, reports, currentView, setCurrentView, setWorkflowQuery, mergedNodesCount, activeCase, activeCaseEvidenceSummary } = useAppContext();
   const [showFeeds, setShowFeeds] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [localQuery, setLocalQuery] = useState("");
@@ -51,7 +51,7 @@ export const TopBar: React.FC = () => {
       });
       const data = await resp.json();
       if (data.success) {
-         addNotification(`수집 완료: ${data.sourcesAnalyzed}개 소스 분석됨`, 'success');
+         addNotification(`수집 완료: ${(data.sourcesAnalyzed ?? data.count ?? 0)}개 소스 분석됨`, 'success');
       } else {
          addNotification(`수집 실패: ${data.error}`, 'error');
       }
@@ -63,6 +63,20 @@ export const TopBar: React.FC = () => {
       clearTimeout(timer3);
       setIsIngestingData(false);
     }
+  };
+
+  const activeCaseLinkedNodes = activeCase ? [
+    ...(activeCase.linkedSourceIds || []),
+    ...(activeCase.linkedSignalIds || []),
+    ...(activeCase.linkedQuestionIds || []),
+    ...(activeCase.linkedHypothesisIds || []),
+    ...(activeCase.linkedScenarioIds || []),
+    ...(activeCase.linkedReportIds || []),
+  ].length : 0;
+
+  const formatCaseStatus = (status?: string) => {
+    if (!status) return 'No Active Case';
+    return status.replace(/_/g, ' ');
   };
 
   const formattedTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' }) + ' UTC';
@@ -124,6 +138,19 @@ export const TopBar: React.FC = () => {
                <span className="text-[10px] text-gray-300"><span className={mergedNodesCount > 0 ? "text-amber-400 font-bold" : "text-gray-500"}>{mergedNodesCount}</span> nodes optimized</span>
             </div>
           </div>
+
+          {activeCase && (
+            <>
+              <div className="h-6 w-px bg-white/10" />
+              <div className="flex flex-col max-w-[220px] border border-white/10 bg-black/30 px-2.5 py-1 rounded-md">
+                <span className="text-gray-600 text-[8px] uppercase tracking-widest leading-none mb-1">CASE FILE</span>
+                <span className="text-gray-200 text-[10px] truncate">{activeCase.title}</span>
+                <span className="text-[8px] text-cyan-500 uppercase tracking-wider">
+                  {formatCaseStatus(activeCase.status)} · {activeCaseLinkedNodes} nodes · EG {activeCaseEvidenceSummary?.progress ?? 0}%{activeCase.confidence ? ` · ${Math.round(activeCase.confidence)}%` : ''}
+                </span>
+              </div>
+            </>
+          )}
           {matchedKeywords.length > 0 && (
             <>
               <div className="h-6 w-px bg-white/10" />
@@ -142,6 +169,15 @@ export const TopBar: React.FC = () => {
           )}
         </div>
       </div>
+
+      {activeCase && (
+        <div className="hidden md:flex xl:hidden absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 max-w-[320px] items-center gap-2 rounded-md border border-white/10 bg-black/40 px-3 py-1 font-mono text-[9px] uppercase tracking-wider text-gray-400">
+          <span className="text-gray-600">CASE</span>
+          <span className="truncate text-gray-200">{activeCase.title}</span>
+          <span className="text-cyan-500">{formatCaseStatus(activeCase.status)}</span>
+          <span className="text-gray-500">{activeCaseLinkedNodes} nodes · EG {activeCaseEvidenceSummary?.progress ?? 0}%</span>
+        </div>
+      )}
 
       <div className="flex items-center space-x-3 md:space-x-6">
         {/* Settings button added, Search removed */}

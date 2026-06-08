@@ -85,7 +85,7 @@ export const SettingsView: React.FC = () => {
       });
       const data = await resp.json();
       if (data.success) {
-         addNotification(`수집 매개변수 동기화 및 수집 완료 (${data.sourcesAnalyzed}개 소스)`, 'success');
+         addNotification(`수집 매개변수 동기화 및 수집 완료 (${(data.sourcesAnalyzed ?? data.count ?? 0)}개 소스)`, 'success');
       } else {
          addNotification(`수집 실패: ${data.error}`, 'error');
       }

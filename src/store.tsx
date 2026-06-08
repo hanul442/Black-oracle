@@ -15,6 +15,15 @@ import {
   ScenarioBranch,
   PredictionOutcome,
   Report,
+  OracleCase,
+  OracleCaseType,
+  EvidenceGatheringTask,
+  EvidenceGatheringTaskType,
+  EvidenceGatheringSummary,
+  EvidenceLedgerItem,
+  EvidenceLedgerSummary,
+  AnalystCouncilPersona,
+  OracleBriefing,
 } from "./types";
 import {
   initialSources,
@@ -55,6 +64,18 @@ interface AppState {
   scenarios: ScenarioBranch[];
   predictions: PredictionOutcome[];
   reports: Report[];
+  cases: OracleCase[];
+  activeCaseId: string | null;
+  activeCase?: OracleCase;
+  evidenceTasks: EvidenceGatheringTask[];
+  activeCaseEvidenceTasks: EvidenceGatheringTask[];
+  activeCaseEvidenceSummary?: EvidenceGatheringSummary;
+  activeCaseEvidenceItems: EvidenceLedgerItem[];
+  activeCaseEvidenceLedgerSummary?: EvidenceLedgerSummary;
+  getActiveCaseLinkedNodeIds: () => Set<string>;
+  isNodeLinkedToActiveCase: (type: string, id: string) => boolean;
+  generateAnalystCouncil: () => AnalystCouncilPersona[];
+  generateOracleBriefing: (options: { length: OracleBriefing["length"]; mode: OracleBriefing["mode"]; includeSelectedNode?: boolean }) => OracleBriefing | null;
   mergedNodesCount: number;
   selectedEntity: { type: string; id: string } | null;
   setSelectedEntity: (entity: { type: string; id: string } | null) => void;
@@ -80,6 +101,15 @@ interface AppState {
     message: string,
     type?: "info" | "success" | "warning" | "error",
   ) => void;
+  createOracleCase: (params: { query: string; title?: string; caseType?: OracleCaseType }) => Promise<OracleCase>;
+  updateOracleCase: (caseId: string, patch: Partial<OracleCase>) => Promise<void>;
+  setActiveCase: (caseId: string | null) => void;
+  linkGeneratedNodesToCase: (caseId: string, generatedData: any) => Promise<void>;
+  createEvidenceTasksForCase: (caseId: string) => Promise<EvidenceGatheringTask[]>;
+  updateEvidenceTask: (taskId: string, patch: Partial<EvidenceGatheringTask>) => Promise<void>;
+  startEvidenceGatheringForCase: (caseId: string) => Promise<void>;
+  completeEvidenceTask: (taskId: string, resultSummary?: string) => Promise<void>;
+  failEvidenceTask: (taskId: string, errorMessage?: string) => Promise<void>;
   deleteSource: (id: string) => Promise<void>;
   deleteCascade: (type: string, id: string, feedback?: string) => Promise<void>;
   clearAllData: (onProgress?: (progress: number) => void) => Promise<void>;
@@ -151,6 +181,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [scenarios, setScenarios] = useState<ScenarioBranch[]>([]);
   const [predictions, setPredictions] = useState<PredictionOutcome[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [cases, setCases] = useState<OracleCase[]>([]);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [evidenceTasks, setEvidenceTasks] = useState<EvidenceGatheringTask[]>([]);
   const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
   const [mergedNodesCount, setMergedNodesCount] = useState(0);
   const [isIngestingData, setIsIngestingData] = useState(false);
@@ -212,6 +245,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     let unsubScenarios = () => {};
     let unsubPredictions = () => {};
     let unsubReports = () => {};
+    let unsubCases = () => {};
+    let unsubEvidenceTasks = () => {};
 
     if (user) {
       // First immediately seed context with local data (optimistic/offline fallback)
@@ -311,6 +346,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           }
           setIsFirebaseLoading(false);
         });
+        unsubCases = onSnapshot(collection(db, "users", user.uid, "cases"), (snap) => {
+          if (!snap.empty) {
+            setCases(snap.docs.map((d) => d.data() as OracleCase));
+          } else {
+            setCases([]);
+          }
+        });
+        unsubEvidenceTasks = onSnapshot(collection(db, "users", user.uid, "evidenceTasks"), (snap) => {
+          if (!snap.empty) {
+            setEvidenceTasks(snap.docs.map((d) => d.data() as EvidenceGatheringTask));
+          } else {
+            setEvidenceTasks([]);
+          }
+        });
       } catch (err) {
         console.log("Firebase가 연결되지 않아 로컬 데이터 모드(오프라인 모드)로 실행됩니다.");
       }
@@ -323,6 +372,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setScenarios([]);
       setPredictions([]);
       setReports([]);
+      setCases([]);
+      setEvidenceTasks([]);
+      setActiveCaseId(null);
       setIsFirebaseLoading(false);
     }
 
@@ -335,6 +387,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       unsubScenarios();
       unsubPredictions();
       unsubReports();
+      unsubCases();
+      unsubEvidenceTasks();
     };
   }, [user]);
 
@@ -347,6 +401,472 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [isIngestingData]);
 
   // Removed redundant 60-second fetch-rss interval to prevent API quota overflow
+
+  // Minimal Oracle Case layer. Keep this small for now; future work can extract it into a caseStore.
+  const activeCase = activeCaseId ? cases.find((c) => c.id === activeCaseId) : undefined;
+  const activeCaseEvidenceTasks = activeCaseId ? evidenceTasks.filter((task) => task.caseId === activeCaseId) : [];
+  const activeCaseEvidenceItems: EvidenceLedgerItem[] = activeCase ? (() => {
+    const itemsById = new Map<string, EvidenceLedgerItem>();
+    evidence.forEach((item) => {
+      if (!item?.id) return;
+      const isDirect = item.caseId === activeCase.id;
+      const sourceLinked = Boolean(item.sourceId && activeCase.linkedSourceIds.includes(item.sourceId));
+      const hypothesisLinked = Boolean(
+        (item.hypothesisId && activeCase.linkedHypothesisIds.includes(item.hypothesisId)) ||
+        (item.linkedHypothesisId && activeCase.linkedHypothesisIds.includes(item.linkedHypothesisId))
+      );
+      const scenarioLinked = Boolean(
+        (item.scenarioId && activeCase.linkedScenarioIds.includes(item.scenarioId)) ||
+        (item.linkedScenarioBranchId && activeCase.linkedScenarioIds.includes(item.linkedScenarioBranchId))
+      );
+
+      if (!isDirect && !sourceLinked && !hypothesisLinked && !scenarioLinked) return;
+
+      const linkedEntityType = isDirect ? "case" : sourceLinked ? "source" : hypothesisLinked ? "hypothesis" : "scenario";
+      const existing = itemsById.get(item.id);
+      if (!existing || isDirect) {
+        itemsById.set(item.id, {
+          evidence: item,
+          linkMode: isDirect ? "direct" : "inferred",
+          linkedEntityType,
+        });
+      }
+    });
+    return Array.from(itemsById.values());
+  })() : [];
+  const activeCaseLinkedEvidence = activeCaseEvidenceItems.map((item) => item.evidence);
+  const activeCaseEvidenceLedgerSummary = activeCase ? (() => {
+    const confidenceValues = activeCaseEvidenceItems
+      .map(({ evidence: item }) => item.confidence)
+      .filter((value): value is number => typeof value === "number");
+    const credibilityValues = activeCaseEvidenceItems
+      .map(({ evidence: item }) => item.credibilityScore ?? item.reliability)
+      .filter((value): value is number => typeof value === "number");
+    const supporting = activeCaseEvidenceItems.filter(({ evidence: item }) =>
+      item.supportsThesis || item.evidenceType === "supporting"
+    ).length;
+    const opposing = activeCaseEvidenceItems.filter(({ evidence: item }) =>
+      item.contradictsThesis || item.evidenceType === "contradicting" || item.evidenceType === "opposing"
+    ).length;
+    const lastUpdatedAt = activeCaseEvidenceItems
+      .map(({ evidence: item }) => item.createdAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+
+    return {
+      caseId: activeCase.id,
+      total: activeCaseEvidenceItems.length,
+      supporting,
+      opposing,
+      neutral: Math.max(0, activeCaseEvidenceItems.length - supporting - opposing),
+      averageConfidence: confidenceValues.length > 0 ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length : undefined,
+      averageCredibility: credibilityValues.length > 0 ? credibilityValues.reduce((sum, value) => sum + value, 0) / credibilityValues.length : undefined,
+      directCaseLinked: activeCaseEvidenceItems.filter((item) => item.linkMode === "direct").length,
+      inferredLinked: activeCaseEvidenceItems.filter((item) => item.linkMode === "inferred").length,
+      lastUpdatedAt,
+    };
+  })() : undefined;
+  const activeCaseEvidenceSummary = activeCase ? (() => {
+    const totalTasks = activeCaseEvidenceTasks.length;
+    const completedTasks = activeCaseEvidenceTasks.filter((task) => task.status === "completed").length;
+    const failedTasks = activeCaseEvidenceTasks.filter((task) => task.status === "failed").length;
+    const runningTasks = activeCaseEvidenceTasks.filter((task) => task.status === "running").length;
+    const credibilityValues = activeCaseLinkedEvidence.map((item) => item.reliability).filter((value) => typeof value === "number");
+    const averageCredibility = credibilityValues.length > 0
+      ? credibilityValues.reduce((sum, value) => sum + value, 0) / credibilityValues.length
+      : undefined;
+
+    return {
+      caseId: activeCase.id,
+      totalTasks,
+      completedTasks,
+      failedTasks,
+      runningTasks,
+      progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      evidenceCount: activeCaseLinkedEvidence.length || (
+        activeCase.linkedSourceIds.length + activeCase.linkedSignalIds.length + activeCase.linkedQuestionIds.length +
+        activeCase.linkedHypothesisIds.length + activeCase.linkedScenarioIds.length + activeCase.linkedReportIds.length
+      ),
+      supportingCount: activeCaseLinkedEvidence.filter((item) => item.evidenceType === "supporting").length,
+      opposingCount: activeCaseLinkedEvidence.filter((item) => item.evidenceType === "contradicting" || item.evidenceType === "opposing").length,
+      averageCredibility,
+      lastUpdatedAt: activeCaseEvidenceTasks.reduce((latest, task) => task.updatedAt > latest ? task.updatedAt : latest, activeCase.updatedAt),
+    };
+  })() : undefined;
+
+  const getActiveCaseLinkedNodeIds = useCallback(() => {
+    const ids = new Set<string>();
+    if (!activeCase) return ids;
+    activeCase.linkedSourceIds.forEach((id) => ids.add(`source:${id}`));
+    activeCase.linkedSignalIds.forEach((id) => ids.add(`signal:${id}`));
+    activeCase.linkedQuestionIds.forEach((id) => ids.add(`question:${id}`));
+    activeCase.linkedHypothesisIds.forEach((id) => ids.add(`hypothesis:${id}`));
+    activeCase.linkedScenarioIds.forEach((id) => ids.add(`scenario:${id}`));
+    activeCase.linkedReportIds.forEach((id) => ids.add(`report:${id}`));
+    return ids;
+  }, [activeCase]);
+
+  const isNodeLinkedToActiveCase = useCallback((type: string, id: string) => {
+    if (!activeCase || !id) return false;
+    const normalizedType = type === "branch" ? "scenario" : type;
+    return getActiveCaseLinkedNodeIds().has(`${normalizedType}:${id}`);
+  }, [activeCase, getActiveCaseLinkedNodeIds]);
+
+  const generateAnalystCouncil = useCallback((): AnalystCouncilPersona[] => {
+    if (!activeCase) return [];
+    const evidenceProgress = activeCaseEvidenceSummary?.progress ?? 0;
+    const support = activeCaseEvidenceLedgerSummary?.supporting ?? 0;
+    const oppose = activeCaseEvidenceLedgerSummary?.opposing ?? 0;
+    const linkedNodes = getActiveCaseLinkedNodeIds().size;
+    const provisional = evidenceProgress < 100 || (activeCaseEvidenceLedgerSummary?.total ?? 0) === 0;
+    const baseConfidence = Math.max(35, Math.min(82, 45 + support * 6 - oppose * 5 + Math.round(evidenceProgress / 8)));
+    const topic = activeCase.title || activeCase.query;
+    const selectedLabel = selectedEntity ? `selected ${selectedEntity.type}:${selectedEntity.id}` : "no selected node";
+    const evidenceLabel = linkedNodes > 0 ? `${linkedNodes} linked case nodes` : "case evidence still pending";
+    const riskLabel = oppose > 0 ? `${oppose} opposing evidence item(s)` : "opposing evidence not yet complete";
+    const roles: AnalystCouncilPersona["role"][] = [
+      "Macro Strategist",
+      "Equity Analyst",
+      "Quant Analyst",
+      "Risk Officer",
+      "OSINT Analyst",
+      "Portfolio Manager",
+      "Devil's Advocate",
+    ];
+
+    return roles.map((role, index) => {
+      const isRisk = role === "Risk Officer" || role === "Devil's Advocate";
+      const isQuant = role === "Quant Analyst";
+      const confidence = Math.max(25, Math.min(90, baseConfidence - (isRisk ? 8 : 0) - (isQuant && activeCaseEvidenceLedgerSummary?.averageConfidence === undefined ? 6 : 0) + index));
+      const stance = isRisk
+        ? (oppose > 0 ? "Cautious / risk elevated" : "Cautious pending opposition scan")
+        : support > oppose
+          ? "Constructive but requires confirmation"
+          : "Monitor until evidence strengthens";
+      return {
+        role,
+        stance,
+        confidence,
+        bubbleComment: `${role} view on ${topic}: ${stance.toLowerCase()}. This is provisional and should be updated as the ledger fills.`,
+        keyEvidence: [evidenceLabel, `Evidence gathering ${evidenceProgress}%`, `Ledger total ${activeCaseEvidenceLedgerSummary?.total ?? 0}`, selectedLabel],
+        keyRisk: isRisk ? riskLabel : "metrics and source trace may be incomplete",
+        viewChangeTrigger: "new opposing evidence, scenario invalidation, or material source trace update",
+        provisional,
+      };
+    });
+  }, [activeCase, activeCaseEvidenceSummary, activeCaseEvidenceLedgerSummary, getActiveCaseLinkedNodeIds, selectedEntity]);
+
+  const generateOracleBriefing = useCallback((options: { length: OracleBriefing["length"]; mode: OracleBriefing["mode"]; includeSelectedNode?: boolean }): OracleBriefing | null => {
+    if (!activeCase) return null;
+    const council = generateAnalystCouncil();
+    const support = activeCaseEvidenceLedgerSummary?.supporting ?? 0;
+    const oppose = activeCaseEvidenceLedgerSummary?.opposing ?? 0;
+    const progress = activeCaseEvidenceSummary?.progress ?? 0;
+    const confidence = activeCaseEvidenceLedgerSummary?.averageConfidence ?? (council.length ? council.reduce((sum, p) => sum + p.confidence, 0) / council.length : undefined);
+    const stance = oppose > support ? "Risk elevated / monitor only" : support > 0 ? "Cautious positive watch candidate" : "Evidence pending / monitoring candidate";
+    const keyEvidence = activeCaseEvidenceItems.slice(0, 4).map(({ evidence: item }) => item.title || item.summary).filter(Boolean);
+    const selectedNodeLine = options.includeSelectedNode && selectedEntity ? `Selected node context: ${selectedEntity.type}:${selectedEntity.id}` : undefined;
+    const opposingEvidence = activeCaseEvidenceItems
+      .filter(({ evidence: item }) => item.contradictsThesis || item.evidenceType === "contradicting" || item.evidenceType === "opposing")
+      .slice(0, 3)
+      .map(({ evidence: item }) => item.title || item.summary);
+    const risks = [
+      oppose > 0 ? `${oppose} opposing evidence item(s) require review` : "Opposing evidence scan is pending",
+      progress < 100 ? "Evidence gathering is not complete" : "Evidence state may change with new sources",
+      "No trade instruction is implied; case requires confirmation",
+    ];
+    const watchTriggers = [
+      "new linked source or source trace mismatch",
+      "scenario trigger or invalidation condition update",
+      "evidence task failure or opposition count increase",
+    ];
+    const lineBank: Record<OracleBriefing["mode"], string[]> = {
+      executive: [
+        `${activeCase.title}: ${stance}.`,
+        `Ledger shows ${support} support, ${oppose} oppose, and ${activeCaseEvidenceLedgerSummary?.neutral ?? 0} neutral entries.`,
+        `Use as a watch candidate until evidence and source trace confirm the thesis.`,
+      ],
+      risk: [
+        `${activeCase.title}: downside review remains active.`,
+        risks[0],
+        "Invalidation should be driven by source trace changes, scenario trigger failure, or stronger opposing evidence.",
+      ],
+      quant: [
+        `${activeCase.title}: quantitative metrics are ${confidence !== undefined ? `${Math.round(confidence)}% confidence proxy` : "pending"}.`,
+        "Valuation, momentum, flow, and risk language should remain provisional until metrics are populated.",
+        `Evidence gathering progress is ${progress}%.`,
+      ],
+      debate: [
+        `${activeCase.title}: council disagreement is ${oppose > 0 ? "visible" : "not yet fully tested"}.`,
+        `Average council confidence is ${council.length ? Math.round(council.reduce((sum, p) => sum + p.confidence, 0) / council.length) : "pending"}.`,
+        "Devil's Advocate and Risk Officer views should be revisited when opposition scan completes.",
+      ],
+      watch_plan: [
+        `${activeCase.title}: monitor source trace, scenario triggers, and opposition count.`,
+        "Next update should prioritize fresh sources, invalidation conditions, and material price/flow shifts if available.",
+        "Escalate only after evidence ledger and case-linked nodes converge.",
+      ],
+    };
+    const sourceLines = lineBank[options.mode];
+    const summary = options.length === "flash"
+      ? [sourceLines[0]]
+      : options.length === "field"
+        ? sourceLines.slice(0, 3)
+        : [...sourceLines, ...risks, ...watchTriggers, "Conclusion: suitable for monitoring; requires further evidence before decision support is firm."].slice(0, 10);
+
+    return {
+      id: `brief_${Date.now()}`,
+      caseId: activeCase.id,
+      length: options.length,
+      mode: options.mode,
+      title: `${activeCase.title} · ${options.mode.replace("_", " ").toUpperCase()} BRIEF`,
+      summary,
+      stance,
+      confidence,
+      keyEvidence: (selectedNodeLine ? [selectedNodeLine, ...keyEvidence] : keyEvidence).length > 0 ? (selectedNodeLine ? [selectedNodeLine, ...keyEvidence] : keyEvidence) : ["Evidence ledger pending", "Case-linked nodes only"],
+      opposingEvidence: opposingEvidence.length > 0 ? opposingEvidence : ["Opposing evidence pending"],
+      risks,
+      watchTriggers,
+      generatedAt: new Date().toISOString(),
+      provisional: progress < 100 || (activeCaseEvidenceLedgerSummary?.total ?? 0) === 0,
+    };
+  }, [activeCase, activeCaseEvidenceSummary, activeCaseEvidenceLedgerSummary, activeCaseEvidenceItems, generateAnalystCouncil, selectedEntity]);
+
+  const buildCaseId = () => `case_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+  const createOracleCase = useCallback(
+    async ({ query, title, caseType = "general_intelligence" }: { query: string; title?: string; caseType?: OracleCaseType }) => {
+      const now = new Date().toISOString();
+      const trimmedQuery = query.trim();
+      const oracleCase: OracleCase = {
+        id: buildCaseId(),
+        title: (title || trimmedQuery).slice(0, 96),
+        query: trimmedQuery,
+        caseType,
+        status: "case_created",
+        createdAt: now,
+        updatedAt: now,
+        userId: user?.uid,
+        linkedSourceIds: [],
+        linkedSignalIds: [],
+        linkedQuestionIds: [],
+        linkedHypothesisIds: [],
+        linkedScenarioIds: [],
+        linkedReportIds: [],
+        isSaved: Boolean(user),
+      };
+
+      setCases((prev) => [oracleCase, ...prev.filter((c) => c.id !== oracleCase.id)]);
+      setActiveCaseId(oracleCase.id);
+
+      if (user) {
+        await setDoc(doc(db, "users", user.uid, "cases", oracleCase.id), oracleCase);
+      }
+
+      return oracleCase;
+    },
+    [user],
+  );
+
+  const updateOracleCase = useCallback(
+    async (caseId: string, patch: Partial<OracleCase>) => {
+      const payload = { ...patch, updatedAt: new Date().toISOString() };
+      setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, ...payload } : c)));
+
+      if (user) {
+        await setDoc(doc(db, "users", user.uid, "cases", caseId), payload, { merge: true });
+      }
+    },
+    [user],
+  );
+
+  const setActiveCase = useCallback((caseId: string | null) => {
+    setActiveCaseId(caseId);
+  }, []);
+
+  const linkGeneratedNodesToCase = useCallback(
+    async (caseId: string, generatedData: any) => {
+      const collectIds = () => {
+        const linkedSourceIds = new Set<string>();
+        const linkedSignalIds = new Set<string>();
+        const linkedQuestionIds = new Set<string>();
+        const linkedHypothesisIds = new Set<string>();
+        const linkedScenarioIds = new Set<string>();
+        const linkedReportIds = new Set<string>();
+
+        if (generatedData?.sourceId) linkedSourceIds.add(generatedData.sourceId);
+        if (generatedData?.reportId) linkedReportIds.add(generatedData.reportId);
+
+        const items = Array.isArray(generatedData?.data) ? generatedData.data : [];
+        items.forEach((item: any) => {
+          const type = item?.type;
+          const data = item?.data || item;
+          if (!data?.id) return;
+
+          if (type === "source" || data.sourceName || data.sourceType) linkedSourceIds.add(data.id);
+          else if (type === "signal" || data.signalStrength !== undefined) linkedSignalIds.add(data.id);
+          else if (type === "question" || data.hypothesisIds) linkedQuestionIds.add(data.id);
+          else if (type === "hypothesis" || data.scenarioIds) linkedHypothesisIds.add(data.id);
+          else if (type === "scenario" || type === "branch" || data.probability !== undefined) linkedScenarioIds.add(data.id);
+          else if (type === "report" || data.content) linkedReportIds.add(data.id);
+        });
+
+        return {
+          linkedSourceIds: Array.from(linkedSourceIds),
+          linkedSignalIds: Array.from(linkedSignalIds),
+          linkedQuestionIds: Array.from(linkedQuestionIds),
+          linkedHypothesisIds: Array.from(linkedHypothesisIds),
+          linkedScenarioIds: Array.from(linkedScenarioIds),
+          linkedReportIds: Array.from(linkedReportIds),
+        };
+      };
+
+      const currentCase = cases.find((c) => c.id === caseId);
+      const newLinks = collectIds();
+      const mergeIds = (existing: string[] = [], next: string[] = []) => Array.from(new Set([...existing, ...next]));
+      const allLinkedIds = [
+        ...newLinks.linkedSourceIds,
+        ...newLinks.linkedSignalIds,
+        ...newLinks.linkedQuestionIds,
+        ...newLinks.linkedHypothesisIds,
+        ...newLinks.linkedScenarioIds,
+        ...newLinks.linkedReportIds,
+      ];
+
+      const nextStatus = allLinkedIds.length > 0 ? "initial_analysis_ready" : "evidence_gathering";
+      await updateOracleCase(caseId, {
+        status: nextStatus,
+        linkedSourceIds: mergeIds(currentCase?.linkedSourceIds, newLinks.linkedSourceIds),
+        linkedSignalIds: mergeIds(currentCase?.linkedSignalIds, newLinks.linkedSignalIds),
+        linkedQuestionIds: mergeIds(currentCase?.linkedQuestionIds, newLinks.linkedQuestionIds),
+        linkedHypothesisIds: mergeIds(currentCase?.linkedHypothesisIds, newLinks.linkedHypothesisIds),
+        linkedScenarioIds: mergeIds(currentCase?.linkedScenarioIds, newLinks.linkedScenarioIds),
+        linkedReportIds: mergeIds(currentCase?.linkedReportIds, newLinks.linkedReportIds),
+        activeNodeId: generatedData?.sourceId || allLinkedIds[0] || currentCase?.activeNodeId,
+        confidence: generatedData?.confidence || currentCase?.confidence,
+        summary: generatedData?.message || generatedData?.query || currentCase?.summary,
+      });
+    },
+    [cases, updateOracleCase],
+  );
+
+  const evidenceTaskTemplates: { type: EvidenceGatheringTaskType; label: string }[] = [
+    { type: "market_metrics", label: "Market metrics scan" },
+    { type: "valuation_data", label: "Valuation range check" },
+    { type: "price_volume_data", label: "Price-volume pattern scan" },
+    { type: "latest_sources", label: "Latest source sweep" },
+    { type: "sector_context", label: "Sector context review" },
+    { type: "macro_context", label: "Macro condition scan" },
+    { type: "opposing_evidence", label: "Opposing evidence search" },
+    { type: "scenario_triggers", label: "Scenario trigger scan" },
+    { type: "source_trace", label: "Source trace alignment" },
+  ];
+
+  const createEvidenceTasksForCase = useCallback(
+    async (caseId: string) => {
+      if (!caseId) return [];
+      const existingTasks = evidenceTasks.filter((task) => task.caseId === caseId);
+      if (existingTasks.length > 0) return existingTasks;
+
+      const now = new Date().toISOString();
+      const tasks = evidenceTaskTemplates.map((template) => ({
+        id: `evtask_${caseId}_${template.type}`,
+        caseId,
+        type: template.type,
+        label: template.label,
+        status: "pending" as const,
+        progress: 0,
+        resultSummary: "Provisional task prepared; awaiting evidence gathering.",
+        createdAt: now,
+        updatedAt: now,
+      }));
+
+      setEvidenceTasks((prev) => [...tasks, ...prev.filter((task) => task.caseId !== caseId)]);
+      if (user) {
+        await Promise.all(tasks.map((task) => setDoc(doc(db, "users", user.uid, "evidenceTasks", task.id), task)));
+      }
+      await updateOracleCase(caseId, { status: "evidence_gathering", summary: "Evidence gathering started" });
+      return tasks;
+    },
+    [evidenceTasks, updateOracleCase, user],
+  );
+
+  const updateEvidenceTask = useCallback(
+    async (taskId: string, patch: Partial<EvidenceGatheringTask>) => {
+      const payload = { ...patch, updatedAt: new Date().toISOString() };
+      setEvidenceTasks((prev) => prev.map((task) => task.id === taskId ? { ...task, ...payload } : task));
+
+      if (user) {
+        await setDoc(doc(db, "users", user.uid, "evidenceTasks", taskId), payload, { merge: true });
+      }
+    },
+    [user],
+  );
+
+  const maybePromoteCaseEvidenceStatus = useCallback(
+    async (caseId: string, nextTasks: EvidenceGatheringTask[]) => {
+      const caseTasks = nextTasks.filter((task) => task.caseId === caseId);
+      if (caseTasks.length === 0) return;
+      const completedCount = caseTasks.filter((task) => task.status === "completed").length;
+      const keyTasksComplete = ["latest_sources", "source_trace", "scenario_triggers"].some((type) =>
+        caseTasks.some((task) => task.type === type && task.status === "completed")
+      );
+
+      if (completedCount / caseTasks.length >= 0.5 || keyTasksComplete) {
+        await updateOracleCase(caseId, { status: "evidence_updated", summary: "Evidence updated for active case" });
+      } else {
+        await updateOracleCase(caseId, { status: "evidence_gathering" });
+      }
+    },
+    [updateOracleCase],
+  );
+
+  const startEvidenceGatheringForCase = useCallback(
+    async (caseId: string) => {
+      const tasks = await createEvidenceTasksForCase(caseId);
+      const firstPending = tasks.find((task) => task.status === "pending") || tasks[0];
+      if (firstPending) {
+        await updateEvidenceTask(firstPending.id, {
+          status: "running",
+          progress: 20,
+          resultSummary: "Evidence gathering task started; provisional scan in progress.",
+        });
+      }
+      await updateOracleCase(caseId, { status: "evidence_gathering", summary: "Evidence gathering started" });
+    },
+    [createEvidenceTasksForCase, updateEvidenceTask, updateOracleCase],
+  );
+
+  const completeEvidenceTask = useCallback(
+    async (taskId: string, resultSummary = "Evidence gathering placeholder completed") => {
+      const task = evidenceTasks.find((item) => item.id === taskId);
+      await updateEvidenceTask(taskId, { status: "completed", progress: 100, resultSummary, errorMessage: "" });
+      if (task) {
+        const nextTasks = evidenceTasks.map((item) => item.id === taskId
+          ? { ...item, status: "completed" as const, progress: 100, resultSummary }
+          : item
+        );
+        await maybePromoteCaseEvidenceStatus(task.caseId, nextTasks);
+      }
+    },
+    [evidenceTasks, maybePromoteCaseEvidenceStatus, updateEvidenceTask],
+  );
+
+  const failEvidenceTask = useCallback(
+    async (taskId: string, errorMessage = "Evidence gathering task failed") => {
+      const task = evidenceTasks.find((item) => item.id === taskId);
+      await updateEvidenceTask(taskId, { status: "failed", progress: 0, errorMessage });
+      if (task) {
+        const nextTasks = evidenceTasks.map((item) => item.id === taskId
+          ? { ...item, status: "failed" as const, progress: 0, errorMessage }
+          : item
+        );
+        await maybePromoteCaseEvidenceStatus(task.caseId, nextTasks);
+      }
+    },
+    [evidenceTasks, maybePromoteCaseEvidenceStatus, updateEvidenceTask],
+  );
 
   const deleteSource = useCallback(
     async (id: string) => {
@@ -527,11 +1047,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       evidence.forEach(e => allItems.push({type: "evidence", id: e.id}));
       predictions.forEach(p => allItems.push({type: "predictions", id: p.id}));
       reports.forEach(r => allItems.push({type: "reports", id: r.id}));
+      cases.forEach(c => allItems.push({type: "cases", id: c.id}));
+      evidenceTasks.forEach(t => allItems.push({type: "evidenceTasks", id: t.id}));
       
       if (allItems.length === 0) {
           if (onProgress) onProgress(100);
           addNotification("모든 데이터가 초기화되었습니다.", "success");
           setSelectedEntity(null);
+          setActiveCaseId(null);
+          setEvidenceTasks([]);
           return;
       }
 
@@ -553,11 +1077,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       
       addNotification("모든 데이터가 초기화되었습니다.", "success");
       setSelectedEntity(null);
+      setActiveCaseId(null);
+      setEvidenceTasks([]);
     } catch (e: any) {
       console.error("Failed to clear data", e);
       addNotification(`데이터 초기화 실패: ${e.message}`, "error");
     }
-  }, [user, sources, signals, questions, hypotheses, scenarios, evidence, predictions, reports, addNotification, setSelectedEntity]);
+  }, [user, sources, signals, questions, hypotheses, scenarios, evidence, predictions, reports, cases, evidenceTasks, addNotification, setSelectedEntity]);
 
   const value: AppState = {
     cycleStage: CYCLE_STAGES[cycleIndex],
@@ -572,6 +1098,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     scenarios,
     predictions,
     reports,
+    cases,
+    activeCaseId,
+    activeCase,
+    evidenceTasks,
+    activeCaseEvidenceTasks,
+    activeCaseEvidenceSummary,
+    activeCaseEvidenceItems,
+    activeCaseEvidenceLedgerSummary,
+    getActiveCaseLinkedNodeIds,
+    isNodeLinkedToActiveCase,
+    generateAnalystCouncil,
+    generateOracleBriefing,
     selectedEntity,
     setSelectedEntity,
     isFirebaseLoading,
@@ -593,6 +1131,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     reliabilityThreshold,
     setReliabilityThreshold,
     addNotification,
+    createOracleCase,
+    updateOracleCase,
+    setActiveCase,
+    linkGeneratedNodesToCase,
+    createEvidenceTasksForCase,
+    updateEvidenceTask,
+    startEvidenceGatheringForCase,
+    completeEvidenceTask,
+    failEvidenceTask,
     deleteSource,
     deleteCascade,
     clearAllData,

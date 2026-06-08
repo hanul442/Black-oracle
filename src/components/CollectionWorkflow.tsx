@@ -20,30 +20,162 @@ export const CollectionWorkflow: React.FC<{
   onClose: () => void;
   onComplete: (data: any) => void;
 }> = ({ query, onClose, onComplete }) => {
-    const { setCurrentView, setWorkflowStep, user, setSelectedEntity, addNotification, isWorkflowMinimized, setIsWorkflowMinimized, setWorkflowQuery } = useAppContext() as any;
+    const { setCurrentView, setWorkflowStep, user, setSelectedEntity, addNotification, isWorkflowMinimized, setIsWorkflowMinimized, setWorkflowQuery, createOracleCase, updateOracleCase, linkGeneratedNodesToCase, startEvidenceGatheringForCase, updateEvidenceTask, activeCaseEvidenceTasks, activeCaseEvidenceSummary } = useAppContext() as any;
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [progress, setProgress] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
     const fetchedResultRef = useRef<any>(null);
   
     useEffect(() => {
+      let isCancelled = false;
+      let caseId: string | null = null;
+      const evidenceTimers: ReturnType<typeof setTimeout>[] = [];
+
+      const taskId = (type: string) => caseId ? `evtask_${caseId}_${type}` : '';
+      const scheduleEvidenceProgress = () => {
+        if (!caseId) return;
+        evidenceTimers.push(setTimeout(() => {
+          updateEvidenceTask(taskId('market_metrics'), {
+            status: 'completed',
+            progress: 100,
+            resultSummary: 'Market metrics placeholder prepared',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+          updateEvidenceTask(taskId('valuation_data'), {
+            status: 'running',
+            progress: 35,
+            resultSummary: 'Valuation range placeholder scan in progress',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+        }, 1000));
+        evidenceTimers.push(setTimeout(() => {
+          updateEvidenceTask(taskId('valuation_data'), {
+            status: 'completed',
+            progress: 100,
+            resultSummary: 'Valuation range placeholder prepared',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+          updateEvidenceTask(taskId('price_volume_data'), {
+            status: 'running',
+            progress: 45,
+            resultSummary: 'Price-volume pattern placeholder scan in progress',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+        }, 2600));
+        evidenceTimers.push(setTimeout(() => {
+          updateEvidenceTask(taskId('price_volume_data'), {
+            status: 'completed',
+            progress: 100,
+            resultSummary: 'Price-volume pattern placeholder prepared',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+          updateEvidenceTask(taskId('latest_sources'), {
+            status: 'running',
+            progress: 60,
+            resultSummary: 'Latest source sweep waiting for Oracle Search response',
+          }).catch((err: any) => console.warn('Evidence task update failed', err));
+        }, 4200));
+      };
+
       // Automatically switch to watchlist view when workflow starts
       setCurrentView('watchlist');
       setWorkflowStep(0);
       
-      // Initiate background search
-      fetch('/api/search-oracle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, userId: user?.uid })
-      })
-      .then(res => res.json())
-      .then(data => {
-         fetchedResultRef.current = data;
-      })
-      .catch(console.error);
+      const runOracleSearch = async () => {
+        try {
+          const oracleCase = await createOracleCase({ query });
+          caseId = oracleCase.id;
+          await updateOracleCase(caseId, { status: 'search_running' });
+          await startEvidenceGatheringForCase(caseId);
+          scheduleEvidenceProgress();
+        } catch (err) {
+          console.error('Oracle case creation failed', err);
+          addNotification('케이스 파일 생성 실패: 기존 분석 워크플로우를 계속 실행합니다.', 'warning');
+        }
 
-      return () => setWorkflowStep(-1); // Reset when unmounted
+        try {
+          const resp = await fetch('/api/search-oracle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, userId: user?.uid })
+          });
+          const data = await resp.json();
+
+          if (caseId) {
+            try {
+              if (data?.success === false || data?.error || data?.errorCode) {
+                const message = data?.message || data?.error || 'Oracle analysis did not complete.';
+                await updateOracleCase(caseId, {
+                  status: 'evidence_gathering',
+                  summary: message,
+                });
+                await Promise.all([
+                  updateEvidenceTask(taskId('latest_sources'), { status: 'failed', progress: 0, errorMessage: message }),
+                  updateEvidenceTask(taskId('source_trace'), { status: 'failed', progress: 0, errorMessage: message }),
+                  updateEvidenceTask(taskId('scenario_triggers'), { status: 'failed', progress: 0, errorMessage: message }),
+                ]);
+              } else {
+                await linkGeneratedNodesToCase(caseId, data);
+                await Promise.all([
+                  updateEvidenceTask(taskId('latest_sources'), {
+                    status: 'completed',
+                    progress: 100,
+                    resultSummary: 'Latest source sweep linked to Oracle Search response',
+                  }),
+                  updateEvidenceTask(taskId('source_trace'), {
+                    status: 'completed',
+                    progress: 100,
+                    resultSummary: 'Source trace alignment completed from generated node IDs',
+                  }),
+                  updateEvidenceTask(taskId('scenario_triggers'), {
+                    status: 'completed',
+                    progress: 100,
+                    resultSummary: 'Scenario trigger scan linked to generated scenarios',
+                  }),
+                  updateEvidenceTask(taskId('opposing_evidence'), {
+                    status: 'pending',
+                    progress: 0,
+                    resultSummary: 'Opposing evidence search pending until external sources are available',
+                  }),
+                ]);
+                await updateOracleCase(caseId, { status: 'evidence_updated', summary: 'Evidence updated for active case' });
+              }
+            } catch (err) {
+              console.error('Oracle case linking failed', err);
+              addNotification('케이스 링크 업데이트 실패: 생성된 분석 데이터는 유지됩니다.', 'warning');
+            }
+          }
+
+          if (!isCancelled) fetchedResultRef.current = data;
+        } catch (err: any) {
+          console.error(err);
+          if (caseId) {
+            try {
+              await updateOracleCase(caseId, {
+                status: 'evidence_gathering',
+                summary: err?.message || 'Oracle search failed.',
+              });
+              await updateEvidenceTask(taskId('latest_sources'), {
+                status: 'failed',
+                progress: 0,
+                errorMessage: err?.message || 'Oracle search failed.',
+              });
+            } catch (caseErr) {
+              console.error('Oracle case failure update failed', caseErr);
+            }
+          }
+          if (!isCancelled) {
+            fetchedResultRef.current = {
+              success: false,
+              error: 'Oracle search failed',
+              message: err?.message || 'Oracle search failed',
+            };
+          }
+        }
+      };
+
+      runOracleSearch();
+
+      return () => {
+        isCancelled = true;
+        evidenceTimers.forEach(clearTimeout);
+        setWorkflowStep(-1);
+      }; // Reset when unmounted
     }, [query, setCurrentView, setWorkflowStep, user]);
 
   useEffect(() => {
@@ -87,12 +219,12 @@ export const CollectionWorkflow: React.FC<{
                   // Auto-complete after a short delay
                   setTimeout(() => {
                       const data = fetchedResultRef.current;
-                      if (data && data.sourceId) {
-                         setSelectedEntity({ type: 'source', id: data.sourceId });
-                      } else if (data && data.error) {
-                         addNotification(`수집 오류: ${data.error}`, "error");
+                      if (data?.success === false || data?.error || data?.errorCode) {
+                         addNotification(`수집 오류: ${data.message || data.error || data.errorCode}`, "warning");
                          onClose();
                          return;
+                      } else if (data && data.sourceId) {
+                         setSelectedEntity({ type: 'source', id: data.sourceId });
                       }
                       
                       addNotification("✅ 목표 인텔리전스 수집 및 분석이 완료되었습니다.", "success");
@@ -149,6 +281,40 @@ export const CollectionWorkflow: React.FC<{
         progress={progress}
         isFinished={isFinished}
       />
+
+      {activeCaseEvidenceTasks?.length > 0 && (
+        <div className="mx-6 mb-28 rounded-xl border border-white/10 bg-black/30 p-4 font-mono text-[10px] text-gray-400 shadow-[0_0_20px_rgba(0,0,0,0.35)]">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[9px] uppercase tracking-[0.22em] text-gray-600">Evidence Gathering</div>
+              <div className="text-cyan-400">Progress: {activeCaseEvidenceSummary?.progress ?? 0}%</div>
+            </div>
+            <div className="text-right text-[9px] uppercase text-gray-500">
+              Evidence count: linked nodes only<br />
+              Credibility: {activeCaseEvidenceSummary?.averageCredibility ? `${Math.round(activeCaseEvidenceSummary.averageCredibility)}%` : 'pending'}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+            {activeCaseEvidenceTasks.slice(0, 9).map((task: any) => {
+              const statusIcon = task.status === 'completed' ? '✓' : task.status === 'running' ? '⟳' : task.status === 'failed' ? '!' : '○';
+              const statusClass = task.status === 'completed'
+                ? 'text-cyan-300'
+                : task.status === 'running'
+                  ? 'text-cyan-400 animate-pulse'
+                  : task.status === 'failed'
+                    ? 'text-red-400'
+                    : 'text-gray-600';
+              return (
+                <div key={task.id} className="flex items-center gap-2 truncate rounded border border-white/5 bg-white/[0.02] px-2 py-1">
+                  <span className={statusClass}>{statusIcon}</span>
+                  <span className="truncate text-gray-300">{task.label}</span>
+                  <span className="ml-auto text-gray-600">{task.progress ?? 0}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-[#030612] via-[#030612] to-transparent pointer-events-none">
         <AnimatePresence>
