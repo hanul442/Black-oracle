@@ -11,6 +11,7 @@ import { OracleFieldView } from './views/OracleFieldView';
 import { CasesView } from './views/CasesView';
 import { CouncilView } from './views/CouncilView';
 import { LedgerView } from './views/LedgerView';
+import { ForecastOrbitView } from './views/ForecastOrbitView';
 import { WatchlistView } from './views/WatchlistView';
 import { ForecastView } from './views/ForecastView';
 import { HypothesisSummaryView } from './views/HypothesisSummaryView';
@@ -100,6 +101,9 @@ const AppContent: React.FC = () => {
         view = <WatchlistView />;
         break;
       case 'forecast':
+        view = <ForecastOrbitView />;
+        break;
+      case 'forecast-legacy':
         view = <ForecastView />;
         break;
       case 'council':
