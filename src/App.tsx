@@ -17,6 +17,7 @@ import { AlertTriangle, CheckCircle, Info, Search, XCircle } from 'lucide-react'
 const AppContent: React.FC = () => {
   const {
     currentView,
+    setCurrentView,
     addNotification,
     notifications,
     coreInterests,
@@ -39,6 +40,13 @@ const AppContent: React.FC = () => {
     setHasSeenTutorial(true);
     localStorage.setItem('oracle_tutorial_seen', 'true');
   };
+
+  useEffect(() => {
+    if (currentView !== 'watchlist') return;
+    if (sessionStorage.getItem('oracle_v2_booted') === 'true') return;
+    sessionStorage.setItem('oracle_v2_booted', 'true');
+    setCurrentView('oracle-field');
+  }, [currentView, setCurrentView]);
 
   useEffect(() => {
     if (currentView === 'login') return;
