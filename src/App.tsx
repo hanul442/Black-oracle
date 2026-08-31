@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useAppContext } from './store';
 import { TopBar } from './components/TopBar';
+import { MobileNavigation } from './components/MobileNavigation';
 import { DetailBottomSheet } from './components/DetailBottomSheet';
 import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
 import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
 import { OracleFieldView } from './views/OracleFieldView';
+import { CasesView } from './views/CasesView';
+import { CouncilView } from './views/CouncilView';
+import { LedgerView } from './views/LedgerView';
 import { WatchlistView } from './views/WatchlistView';
 import { ForecastView } from './views/ForecastView';
 import { HypothesisSummaryView } from './views/HypothesisSummaryView';
@@ -68,7 +72,7 @@ const AppContent: React.FC = () => {
           );
         }
       } catch {
-        // The autonomous loop stays silent when the network is unavailable.
+        // Autonomous collection remains silent when the network is unavailable.
       }
     };
 
@@ -90,16 +94,22 @@ const AppContent: React.FC = () => {
         view = <OracleFieldView />;
         break;
       case 'cases':
+        view = <CasesView />;
+        break;
       case 'watchlist':
-      case 'ledger':
         view = <WatchlistView />;
         break;
       case 'forecast':
         view = <ForecastView />;
         break;
       case 'council':
+        view = <CouncilView />;
+        break;
       case 'hypothesis-summary':
         view = <HypothesisSummaryView />;
+        break;
+      case 'ledger':
+        view = <LedgerView />;
         break;
       case 'settings':
         view = <SettingsView />;
@@ -115,7 +125,7 @@ const AppContent: React.FC = () => {
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           className="absolute inset-0 z-10"
         >
           {view}
@@ -133,7 +143,7 @@ const AppContent: React.FC = () => {
       <TopBar />
       {!hasSeenTutorial && <TutorialOverlay onComplete={completeTutorial} />}
 
-      <main className="relative flex flex-1 overflow-hidden">
+      <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
         <div className="relative h-full w-full flex-1">{renderView()}</div>
         <DetailBottomSheet />
 
@@ -192,7 +202,7 @@ const AppContent: React.FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="pointer-events-none absolute bottom-7 left-1/2 z-40 w-[calc(100%-24px)] max-w-[620px] -translate-x-1/2"
+            className="pointer-events-none absolute bottom-[70px] left-1/2 z-40 w-[calc(100%-24px)] max-w-[620px] -translate-x-1/2 lg:bottom-7"
           >
             <form
               onSubmit={(event) => {
@@ -204,13 +214,13 @@ const AppContent: React.FC = () => {
               }}
               className="pointer-events-auto flex items-center border border-white/[0.1] bg-[#090D12]/95 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-2xl focus-within:border-[#43D9E6]/35"
             >
-              <span className="ml-3 mr-2 font-mono text-[8px] uppercase tracking-[0.22em] text-[#43D9E6]">Ask Oracle</span>
+              <span className="ml-3 mr-2 hidden font-mono text-[8px] uppercase tracking-[0.22em] text-[#43D9E6] sm:inline">Ask Oracle</span>
               <input
                 type="text"
                 value={localQuery}
                 onChange={(event) => setLocalQuery(event.target.value)}
                 placeholder="Trace a signal, test a scenario, open a question…"
-                className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm text-[#E9EDF1] outline-none placeholder:text-[#59636D]"
+                className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[13px] text-[#E9EDF1] outline-none placeholder:text-[#59636D] sm:text-sm"
               />
               <button
                 type="submit"
@@ -223,10 +233,12 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
-      <footer className="flex h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[8px] uppercase tracking-[0.12em] text-[#4F5963]">
+      <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[8px] uppercase tracking-[0.12em] text-[#4F5963] lg:flex">
         <span>{signals?.length || 0} signals · {hypotheses?.length || 0} hypotheses · {scenarios?.length || 0} scenarios</span>
-        <span className="hidden text-[#43D9E6]/70 sm:inline">● field sync active</span>
+        <span className="text-[#43D9E6]/70">● field sync active</span>
       </footer>
+
+      <MobileNavigation />
       <GlobalLoadingOverlay />
     </div>
   );
