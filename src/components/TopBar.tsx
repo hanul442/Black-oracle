@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Database, LogOut, Radar, Settings } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
@@ -47,17 +47,14 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="relative z-[70] flex h-14 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#05070A]/92 px-3 backdrop-blur-xl md:px-6">
+    <header className="relative z-[70] flex h-14 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#05070A]/94 px-3 backdrop-blur-xl md:px-6">
       <div className="flex min-w-0 items-center gap-4 md:gap-8">
-        <button
-          onClick={() => setCurrentView('oracle-field')}
-          className="flex shrink-0 items-center gap-2.5"
-        >
+        <button onClick={() => setCurrentView('oracle-field')} className="flex shrink-0 items-center gap-2.5">
           <span className="relative flex h-5 w-5 items-center justify-center">
             <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/40" />
             <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6] shadow-[0_0_10px_rgba(67,217,230,0.7)]" />
           </span>
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.24em] text-[#E9EDF1] md:text-[11px]">
+          <span className="font-mono text-[9px] font-medium uppercase tracking-[0.21em] text-[#E9EDF1] sm:text-[10px] md:text-[11px] md:tracking-[0.24em]">
             Black Oracle
           </span>
         </button>
@@ -66,7 +63,8 @@ export const TopBar: React.FC = () => {
           {navItems.map((item) => {
             const active = currentView === item.id ||
               (item.id === 'cases' && currentView === 'watchlist') ||
-              (item.id === 'council' && currentView === 'hypothesis-summary');
+              (item.id === 'council' && currentView === 'hypothesis-summary') ||
+              (item.id === 'oracle-field' && currentView === 'oracle-feed');
             return (
               <button
                 key={item.id}
@@ -77,10 +75,7 @@ export const TopBar: React.FC = () => {
               >
                 {item.label}
                 {active && (
-                  <motion.span
-                    layoutId="oracle-nav-active"
-                    className="absolute bottom-0 left-3 right-3 h-px bg-[#43D9E6]"
-                  />
+                  <motion.span layoutId="oracle-nav-active" className="absolute bottom-0 left-3 right-3 h-px bg-[#43D9E6]" />
                 )}
               </button>
             );
@@ -88,11 +83,12 @@ export const TopBar: React.FC = () => {
         </nav>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-1.5 md:gap-3">
         <button
           onClick={handleFetchData}
           disabled={isIngestingData}
-          className="flex h-9 items-center gap-2 border border-white/[0.08] bg-white/[0.02] px-3 font-mono text-[8px] uppercase tracking-[0.16em] text-[#87919B] transition hover:border-[#43D9E6]/25 hover:text-[#DCE2E8] disabled:opacity-40"
+          className="flex h-9 items-center gap-2 border border-white/[0.08] bg-white/[0.02] px-2.5 font-mono text-[8px] uppercase tracking-[0.16em] text-[#87919B] transition hover:border-[#43D9E6]/25 hover:text-[#DCE2E8] disabled:opacity-40 sm:px-3"
+          aria-label="Synchronize field"
         >
           <Radar className={`h-3.5 w-3.5 ${isIngestingData ? 'animate-spin text-[#43D9E6]' : ''}`} />
           <span className="hidden sm:inline">{isIngestingData ? 'Syncing' : 'Sync'}</span>
