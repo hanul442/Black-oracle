@@ -37,10 +37,14 @@ export default async function handler(request: any, response: any) {
   let saveCheckpoint: null | ((reason?: string) => Promise<any>) = null;
 
   try {
+    // Vercel emits the server-side TypeScript modules as ESM JavaScript files.
+    // Node's ESM resolver does not add extensions for dynamic imports, so use
+    // explicit .js specifiers here. TypeScript's bundler resolution maps these
+    // back to the .ts sources during type checking/build tracing.
     const [loopModule, leaseModule, runtimeModule] = await Promise.all([
-      import('../server/trading/paperLoop'),
-      import('../server/trading/runtimeLease'),
-      import('../server/trading/runtimeState'),
+      import('../server/trading/paperLoop.js'),
+      import('../server/trading/runtimeLease.js'),
+      import('../server/trading/runtimeState.js'),
     ]);
 
     const { paperLoopController } = loopModule;
