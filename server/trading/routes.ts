@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from 'express';
 import { SUPPORTED_UPBIT_MINUTE_UNITS, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
 import { buildTradingSnapshot } from '../../src/trading/snapshot';
+import { buildMarketMultiTimeframe } from './multiTimeframe';
+import { paperTradingSession } from './paperSession';
 import { buildKrwLiquidityUniverse } from './universe';
 import { getMinuteCandles, listKrwMarkets } from './upbitPublic';
 
@@ -31,9 +33,17 @@ const parseOptionalEventScore = (value: unknown) => {
   return parsed;
 };
 
+const parseInitialCash = (value: unknown, fallback = 1_000_000) => {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed < 100_000 || parsed > 1_000_000_000) {
+    throw new Error('initialCash must be between 100,000 and 1,000,000,000 KRW');
+  }
+  return parsed;
+};
+
 const handleRouteError = (error: unknown, res: Response) => {
   const message = error instanceof Error ? error.message : 'Unknown trading gateway error.';
-  const isInputError = /must|allowed|unsupported|requires|limited/i.test(message);
+  const isInputError = /must|allowed|unsupported|requires|limited|invalid|insufficient|cannot/i.test(message);
   return res.status(isInputError ? 400 : 502).json({ success: false, error: message });
 };
 
@@ -82,6 +92,41 @@ export const registerTradingRoutes = (app: Express) => {
       const candles = await getMinuteCandles(market, unit, 200);
       const snapshot = buildTradingSnapshot(candles, eventScore);
       return res.json({ success: true, snapshot });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.get('/api/trading/multitimeframe', async (req: Request, res: Response) => {
+    try {
+      const market = String(req.query.market ?? 'KRW-BTC').toUpperCase();
+      const eventScore = parseOptionalEventScore(req.query.eventScore);
+      const multiTimeframe = await buildMarketMultiTimeframe(market, eventScore);
+      return res.json({ success: true, multiTimeframe });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.get('/api/trading/paper/state', (_req: Request, res: Response) => {
+    return res.json({ success: true, ...paperTradingSession.state() });
+  });
+
+  app.post('/api/trading/paper/reset', (req: Request, res: Response) => {
+    try {
+      const initialCash = parseInitialCash(req.body?.initialCash, 1_000_000);
+      return res.json({ success: true, ...paperTradingSession.reset(initialCash) });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.post('/api/trading/paper/step', async (req: Request, res: Response) => {
+    try {
+      const market = String(req.body?.market ?? 'KRW-BTC').toUpperCase();
+      const eventScore = parseOptionalEventScore(req.body?.eventScore);
+      const result = await paperTradingSession.step(market, eventScore);
+      return res.json(result);
     } catch (error) {
       return handleRouteError(error, res);
     }
