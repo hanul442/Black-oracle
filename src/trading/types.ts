@@ -151,7 +151,8 @@ export interface PaperOrderRequest {
   id: string;
   market: string;
   side: TradeSide;
-  notional: number;
+  notional?: number;
+  quantity?: number;
   referencePrice: number;
   timestamp: number;
   strategyVersion: string;
@@ -169,6 +170,67 @@ export interface PaperFill {
   slippageBps: number;
   timestamp: number;
   strategyVersion: string;
+}
+
+export interface PaperPosition {
+  market: string;
+  quantity: number;
+  averageCost: number;
+  entryPrice: number;
+  openedAt: number;
+  updatedAt: number;
+  stopLossPrice: number | null;
+  takeProfitPrice: number | null;
+}
+
+export interface MarkedPaperPosition extends PaperPosition {
+  markPrice: number;
+  marketValue: number;
+  unrealizedPnl: number;
+}
+
+export interface PaperPortfolioSnapshot {
+  initialEquity: number;
+  cash: number;
+  equity: number;
+  marketValue: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalPnl: number;
+  feesPaid: number;
+  peakEquity: number;
+  drawdownPct: number;
+  dailyPnlPct: number;
+  positions: MarkedPaperPosition[];
+  equityCurve: Array<{ timestamp: number; equity: number }>;
+}
+
+export interface MultiTimeframeSnapshot {
+  market: string;
+  asOf: number;
+  action: SignalAction;
+  directionalScore: number;
+  oracleTradeScore: number;
+  confidence: number;
+  aligned: boolean;
+  positionRiskMultiplier: number;
+  frames: {
+    fourHour: TradingSnapshot;
+    oneHour: TradingSnapshot;
+    fifteenMinute: TradingSnapshot;
+  };
+  reasons: string[];
+}
+
+export interface ExecutionDecision {
+  action: 'ENTER' | 'EXIT' | 'HOLD';
+  side: TradeSide | null;
+  notional: number;
+  quantity: number;
+  confidence: number;
+  stopLossPrice: number | null;
+  takeProfitPrice: number | null;
+  reasons: string[];
 }
 
 export interface TradingLedgerEvent<T = Record<string, unknown>> {
