@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildExecutionDecision } from './executionPolicy';
 import { TradingLedger } from './ledger';
 import { evaluateLiquidity } from './liquidity';
 import { buildMeanReversionSignal } from './meanReversion';
+import { buildMultiTimeframeConsensus } from './multiTimeframe';
 import { PaperBroker } from './paperBroker';
+import { PaperPortfolio } from './paperPortfolio';
 import { evaluateRisk } from './risk';
 import { buildSignalFusion } from './signalFusion';
 import { buildMomentumSignal, buildTrendSignal } from './trendMomentum';
-import type { IndicatorSnapshot, RegimeSnapshot } from './types';
+import type { IndicatorSnapshot, RegimeSnapshot, TradingSnapshot } from './types';
 
 const baseIndicators: IndicatorSnapshot = {
   close: 100,
@@ -37,6 +40,48 @@ const rangeRegime: RegimeSnapshot = {
   highVolatility: false,
   reasons: [],
 };
+
+const snapshotWithScore = (directionalScore: number, timeframeMinutes: number, confidence = 0.75): TradingSnapshot => ({
+  market: 'KRW-BTC',
+  timeframeMinutes,
+  candleCount: 200,
+  asOf: 1_000,
+  indicators: { ...baseIndicators },
+  regime: { ...rangeRegime },
+  trend: {
+    action: directionalScore >= 25 ? 'BUY' : directionalScore <= -25 ? 'SELL' : 'WAIT',
+    directionalScore,
+    strength: Math.abs(directionalScore),
+    confidence,
+    reasons: [],
+  },
+  momentum: {
+    action: directionalScore >= 25 ? 'BUY' : directionalScore <= -25 ? 'SELL' : 'WAIT',
+    directionalScore,
+    strength: Math.abs(directionalScore),
+    confidence,
+    reasons: [],
+  },
+  meanReversion: {
+    action: 'WAIT',
+    state: 'NEUTRAL',
+    score: 0,
+    confidence: 0.5,
+    rawExtremeScore: 0,
+    trendPenalty: 1,
+    reasons: [],
+  },
+  fusion: {
+    action: directionalScore >= 25 ? 'BUY' : directionalScore <= -25 ? 'SELL' : 'WAIT',
+    directionalScore,
+    oracleTradeScore: Math.round((directionalScore + 100) / 2),
+    confidence,
+    positionRiskMultiplier: 1,
+    weights: { trend: 0.4, momentum: 0.3, meanReversion: 0.2, event: 0.1 },
+    components: { trend: directionalScore, momentum: directionalScore, meanReversion: 0, event: 0 },
+    reasons: [],
+  },
+});
 
 test('overbought is not an automatic sell in a strong uptrend', () => {
   const signal = buildMeanReversionSignal(
@@ -171,6 +216,29 @@ test('liquidity filter passes deep tight high-turnover markets', () => {
   assert.ok(liquidity.score >= 70);
 });
 
+test('multi-timeframe consensus gives higher timeframes authority', () => {
+  const consensus = buildMultiTimeframeConsensus(
+    snapshotWithScore(-45, 240),
+    snapshotWithScore(55, 60),
+    snapshotWithScore(80, 15),
+  );
+
+  assert.equal(consensus.action, 'WAIT');
+  assert.match(consensus.reasons.join(' '), /higher timeframe/i);
+});
+
+test('aligned bullish timeframes produce a buy consensus', () => {
+  const consensus = buildMultiTimeframeConsensus(
+    snapshotWithScore(60, 240),
+    snapshotWithScore(55, 60),
+    snapshotWithScore(45, 15),
+  );
+
+  assert.equal(consensus.action, 'BUY');
+  assert.equal(consensus.aligned, true);
+  assert.ok(consensus.confidence > 0.75);
+});
+
 test('risk gate rejects a position above 2 percent of equity', () => {
   const decision = evaluateRisk({
     equity: 1_000_000,
@@ -222,6 +290,118 @@ test('paper broker applies slippage and refuses duplicate order ids', () => {
   assert.ok(fill.fillPrice > order.referencePrice);
   assert.equal(fill.fee, 5);
   assert.throws(() => broker.executeMarketOrder(order), /Duplicate paper order id/);
+});
+
+test('paper portfolio marks positions and realizes P&L on quantity exit', () => {
+  const portfolio = new PaperPortfolio(100_000);
+  const broker = new PaperBroker({ feeBps: 5, slippageBps: 0 });
+  const buy = broker.executeMarketOrder({
+    id: 'buy-1',
+    market: 'KRW-BTC',
+    side: 'BUY',
+    notional: 10_000,
+    referencePrice: 100,
+    timestamp: 1,
+    strategyVersion: 'test',
+  });
+  portfolio.applyFill(buy);
+  portfolio.setProtection('KRW-BTC', 95, 110, 1);
+
+  const marked = portfolio.snapshot({ 'KRW-BTC': 110 }, 2);
+  assert.ok(marked.unrealizedPnl > 0);
+  assert.equal(marked.positions.length, 1);
+
+  const position = portfolio.getPosition('KRW-BTC');
+  assert.ok(position);
+  const sell = broker.executeMarketOrder({
+    id: 'sell-1',
+    market: 'KRW-BTC',
+    side: 'SELL',
+    quantity: position!.quantity,
+    referencePrice: 110,
+    timestamp: 3,
+    strategyVersion: 'test',
+  });
+  portfolio.applyFill(sell);
+  const closed = portfolio.snapshot({}, 3);
+  assert.equal(closed.positions.length, 0);
+  assert.ok(closed.realizedPnl > 0);
+});
+
+test('execution policy sizes a valid entry below the 2 percent hard cap', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-BTC',
+    tradePrice: 100_000_000,
+    accTradePrice24h: 800_000_000_000,
+    signedChangeRate: 0.02,
+    bestBid: 99_990_000,
+    bestAsk: 100_010_000,
+    top5BidDepthKrw: 500_000_000,
+    top5AskDepthKrw: 450_000_000,
+    warning: false,
+  });
+  const mtf = buildMultiTimeframeConsensus(
+    snapshotWithScore(75, 240, 0.82),
+    snapshotWithScore(70, 60, 0.8),
+    snapshotWithScore(60, 15, 0.78),
+  );
+  const decision = buildExecutionDecision({
+    liquidity,
+    multiTimeframe: mtf,
+    oneHour: mtf.frames.oneHour,
+    portfolio: portfolio.snapshot({}),
+    position: null,
+  });
+
+  assert.equal(decision.action, 'ENTER');
+  assert.equal(decision.side, 'BUY');
+  assert.ok(decision.notional > 0 && decision.notional <= 20_000);
+  assert.ok((decision.stopLossPrice ?? 0) < liquidity.tradePrice);
+  assert.ok((decision.takeProfitPrice ?? 0) > liquidity.tradePrice);
+});
+
+test('execution policy exits immediately when protective stop is breached', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const broker = new PaperBroker({ feeBps: 0, slippageBps: 0 });
+  const fill = broker.executeMarketOrder({
+    id: 'protect-buy',
+    market: 'KRW-BTC',
+    side: 'BUY',
+    notional: 10_000,
+    referencePrice: 100,
+    timestamp: 1,
+    strategyVersion: 'test',
+  });
+  portfolio.applyFill(fill);
+  portfolio.setProtection('KRW-BTC', 95, 110, 1);
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-BTC',
+    tradePrice: 94,
+    accTradePrice24h: 800_000_000_000,
+    signedChangeRate: -0.06,
+    bestBid: 93.99,
+    bestAsk: 94.01,
+    top5BidDepthKrw: 500_000_000,
+    top5AskDepthKrw: 450_000_000,
+    warning: false,
+  });
+  const mtf = buildMultiTimeframeConsensus(
+    snapshotWithScore(10, 240),
+    snapshotWithScore(5, 60),
+    snapshotWithScore(-5, 15),
+  );
+  const decision = buildExecutionDecision({
+    liquidity,
+    multiTimeframe: mtf,
+    oneHour: mtf.frames.oneHour,
+    portfolio: portfolio.snapshot({ 'KRW-BTC': 94 }),
+    position: portfolio.getPosition('KRW-BTC'),
+  });
+
+  assert.equal(decision.action, 'EXIT');
+  assert.equal(decision.side, 'SELL');
+  assert.match(decision.reasons.join(' '), /stop-loss/i);
 });
 
 test('trading ledger is append-only and sequence ordered', () => {
