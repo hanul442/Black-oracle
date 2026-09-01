@@ -27,6 +27,7 @@ export interface IndicatorSnapshot {
   macd: number;
   macdSignal: number;
   macdHistogram: number;
+  roc20: number;
   bollingerMiddle: number;
   bollingerUpper: number;
   bollingerLower: number;
@@ -50,6 +51,72 @@ export interface MeanReversionSignal {
   confidence: number;
   rawExtremeScore: number;
   trendPenalty: number;
+  reasons: string[];
+}
+
+export interface TrendSignal {
+  action: SignalAction;
+  directionalScore: number;
+  strength: number;
+  confidence: number;
+  reasons: string[];
+}
+
+export interface MomentumSignal {
+  action: SignalAction;
+  directionalScore: number;
+  strength: number;
+  confidence: number;
+  reasons: string[];
+}
+
+export interface StrategyWeightSet {
+  trend: number;
+  momentum: number;
+  meanReversion: number;
+  event: number;
+}
+
+export interface SignalFusionSnapshot {
+  action: SignalAction;
+  directionalScore: number;
+  oracleTradeScore: number;
+  confidence: number;
+  positionRiskMultiplier: number;
+  weights: StrategyWeightSet;
+  components: {
+    trend: number;
+    momentum: number;
+    meanReversion: number;
+    event: number;
+  };
+  reasons: string[];
+}
+
+export interface LiquidityInput {
+  market: string;
+  tradePrice: number;
+  accTradePrice24h: number;
+  signedChangeRate: number;
+  bestBid: number;
+  bestAsk: number;
+  top5BidDepthKrw: number;
+  top5AskDepthKrw: number;
+  warning: boolean;
+}
+
+export interface LiquiditySnapshot {
+  market: string;
+  tradePrice: number;
+  accTradePrice24h: number;
+  signedChangeRate: number;
+  spreadBps: number;
+  top5BidDepthKrw: number;
+  top5AskDepthKrw: number;
+  orderbookImbalance: number;
+  warning: boolean;
+  score: number;
+  eligible: boolean;
   reasons: string[];
 }
 
@@ -128,5 +195,8 @@ export interface TradingSnapshot {
   asOf: number;
   indicators: IndicatorSnapshot;
   regime: RegimeSnapshot;
+  trend: TrendSignal;
+  momentum: MomentumSignal;
   meanReversion: MeanReversionSignal;
+  fusion: SignalFusionSnapshot;
 }
