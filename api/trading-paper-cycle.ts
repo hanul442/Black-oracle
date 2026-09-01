@@ -1,0 +1,109 @@
+const json = (response: any, status: number, body: Record<string, unknown>) =>
+  response.status(status).json(body);
+
+const isAuthorizedScheduler = (authorization: string | undefined) => {
+  if (!authorization?.startsWith('Bearer ')) return false;
+
+  const presented = authorization.slice('Bearer '.length);
+  const accepted = [process.env.CRON_SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return accepted.some((secret) => secret === presented);
+};
+
+export default async function handler(request: any, response: any) {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET');
+    return json(response, 405, { success: false, error: 'Method not allowed.' });
+  }
+
+  if (!isAuthorizedScheduler(request.headers.authorization)) {
+    return json(response, 401, { success: false, error: 'Unauthorized scheduled invocation.' });
+  }
+
+  if ((process.env.TRADING_PERSISTENCE_BACKEND ?? '').toLowerCase() !== 'supabase') {
+    return json(response, 503, {
+      success: false,
+      error: 'Scheduled Paper cycles require TRADING_PERSISTENCE_BACKEND=supabase.',
+    });
+  }
+
+  const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+  const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
+  let leaseAcquired = false;
+  let runtimeRestored = false;
+  let releaseLease: null | ((runtimeId: string, owner: string) => Promise<boolean>) = null;
+  let saveCheckpoint: null | ((reason?: string) => Promise<any>) = null;
+
+  try {
+    // Vercel emits the server-side TypeScript modules as ESM JavaScript files.
+    // Node's ESM resolver does not add extensions for dynamic imports, so use
+    // explicit .js specifiers here. TypeScript's bundler resolution maps these
+    // back to the .ts sources during type checking/build tracing.
+    const [loopModule, leaseModule, runtimeModule] = await Promise.all([
+      import('../server/trading/paperLoop.js'),
+      import('../server/trading/runtimeLease.js'),
+      import('../server/trading/runtimeState.js'),
+    ]);
+
+    const { paperLoopController } = loopModule;
+    const { claimTradingCycleLease, releaseTradingCycleLease } = leaseModule;
+    const { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } = runtimeModule;
+
+    releaseLease = releaseTradingCycleLease;
+    saveCheckpoint = saveRuntimeCheckpoint;
+
+    leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
+    if (!leaseAcquired) {
+      return json(response, 409, {
+        success: false,
+        skipped: true,
+        reason: 'Another Paper cycle currently owns the runtime lease.',
+        runtimeId,
+      });
+    }
+
+    const restore = await restoreRuntimeCheckpoint(false);
+    runtimeRestored = true;
+    const cycle = await paperLoopController.runCycle();
+    const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+
+    return json(response, 200, {
+      success: true,
+      runtimeId,
+      restore: {
+        restored: restore.restored,
+        savedAt: restore.savedAt,
+        reason: restore.reason,
+      },
+      cycle,
+      persistence: saved.persistence,
+    });
+  } catch (error) {
+    if (runtimeRestored && saveCheckpoint) {
+      try {
+        await saveCheckpoint('scheduled-paper-cycle-error');
+      } catch (checkpointError) {
+        console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
+      }
+    }
+
+    const message = error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
+    console.error('Scheduled Paper cycle failed:', error);
+    return json(response, 500, {
+      success: false,
+      runtimeId,
+      phase: runtimeRestored ? 'cycle' : 'startup',
+      error: message,
+    });
+  } finally {
+    if (leaseAcquired && releaseLease) {
+      try {
+        await releaseLease(runtimeId, owner);
+      } catch (releaseError) {
+        console.error('Failed to release scheduled Paper cycle lease:', releaseError);
+      }
+    }
+  }
+}
