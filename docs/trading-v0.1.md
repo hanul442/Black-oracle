@@ -14,6 +14,10 @@ Upbit public market data
         +---- Ticker / Orderbook ----> Liquidity Universe
         |                              turnover / spread / top-5 depth
         |
+        +---- 4H candles
+        +---- 1H candles
+        +---- 15M candles
+        |
         v
 Indicator Engine
 EMA / RSI / Stoch RSI / ATR / MACD / ROC / Bollinger / Volume Z
@@ -34,15 +38,22 @@ EMA structure    ROC/MACD/RSI      RSI/Stoch/BB
               Regime-weighted Fusion
                        |
                        v
-               Oracle Trade Score
-                0 ---- 50 ---- 100
-               SELL   WAIT      BUY
+             Per-timeframe Oracle Score
                        |
                        v
-              Deterministic Risk Gate
+       4H / 1H / 15M Consensus (45/35/20)
                        |
                        v
-              Paper Broker -> Ledger
+              Deterministic Entry/Exit
+                       |
+                       v
+                 Risk Gate <= 2%
+                       |
+                       v
+         Paper Broker -> Paper Portfolio
+                       |
+                       v
+      Cash / Position / P&L / Equity Curve / Ledger
 ```
 
 ## Liquidity Universe
@@ -72,14 +83,7 @@ Trend direction is built from price vs EMA20, EMA20 vs EMA50, EMA50 vs EMA200, p
 
 ### Momentum
 
-Momentum combines:
-
-- RSI impulse around 50
-- MACD histogram normalized by ATR
-- 20-period rate of change (ROC20)
-- volume Z-score confirmation
-
-It also emits a signed score from -100 to +100.
+Momentum combines RSI impulse around 50, MACD histogram normalized by ATR, 20-period rate of change, and volume Z-score confirmation. It also emits a signed score from -100 to +100.
 
 ### Mean Reversion
 
@@ -97,13 +101,56 @@ RANGE          Trend 15 / Momentum 20 / Reversion 45 / Event 20
 
 Until a structured event score exists, the event weight is redistributed across technical engines instead of injecting a fake neutral AI opinion.
 
-The fused directional score (-100 to +100) is mapped to `Oracle Trade Score` (0 to 100):
+The fused directional score (-100 to +100) is mapped to `Oracle Trade Score` (0 to 100). High-volatility regimes reduce the downstream position-risk multiplier. Directional disagreement across engines reduces confidence and risk budget.
 
-- 0 = strongest sell-side technical conviction
-- 50 = neutral / wait
-- 100 = strongest buy-side technical conviction
+## Multi-timeframe consensus
 
-High-volatility regimes reduce the downstream position-risk multiplier to 0.5. Directional disagreement across engines also reduces confidence and risk budget.
+Black Oracle now evaluates three independent snapshots:
+
+- 4H = 45% authority
+- 1H = 35% authority
+- 15M = 20% authority
+
+A lower-timeframe burst cannot open a new position when a higher timeframe materially opposes the aggregate direction. Aligned timeframes receive a confidence boost; disagreement reduces position risk.
+
+## Paper Portfolio
+
+The paper layer now keeps real state in memory for the running trading gateway:
+
+- KRW cash
+- spot positions
+- average cost including entry fee
+- realized P&L
+- unrealized P&L
+- cumulative fees
+- marked market value
+- equity and peak equity
+- drawdown
+- daily P&L ratio
+- bounded equity curve history
+
+Paper v0.1 does not pyramid into an existing position and cannot short. Sell orders can be quantity-sized so a protective exit closes exactly the existing spot position.
+
+The session is intentionally in-memory at this stage. Restarting the gateway resets it unless the caller explicitly initializes a new cash balance. Durable persistence is a later slice after the accounting contract is stable.
+
+## Deterministic entry / exit
+
+New entry requires all of the following:
+
+1. liquidity eligible
+2. multi-timeframe action = BUY
+3. multi-timeframe confidence >= 62%
+4. higher timeframes do not materially oppose the entry
+5. risk gate passes
+
+Position notional is scaled below the 2% hard cap using signal conviction and the multi-timeframe risk multiplier.
+
+Protection is deterministic:
+
+- stop distance = 1.8 x 1H ATR%, bounded to 1.2%–4.0%
+- take-profit = 2R
+- stop-loss or take-profit triggers immediate Paper exit
+- a material multi-timeframe SELL reversal also exits the long spot position
 
 ## Hard risk rules
 
@@ -115,7 +162,7 @@ High-volatility regimes reduce the downstream position-risk multiplier to 0.5. D
 - Stale market data, disconnected feed, ledger mismatch, duplicate order, or excessive estimated slippage rejects a trade.
 - LLM output never has direct order authority. Intelligence must be converted to structured evidence/forecast data and pass deterministic execution rules.
 
-## Public-data gateway
+## Gateway
 
 ```bash
 npm run dev:trading
@@ -123,16 +170,25 @@ npm run dev:trading
 
 Default port: `3100` (override with `TRADING_PORT`).
 
-Routes:
+Read routes:
 
 - `GET /health`
 - `GET /api/trading/markets`
 - `GET /api/trading/universe?limit=12`
 - `GET /api/trading/candles?market=KRW-BTC&unit=15&count=200`
 - `GET /api/trading/snapshot?market=KRW-BTC&unit=60`
-- `GET /api/trading/snapshot?market=KRW-BTC&unit=60&eventScore=30`
+- `GET /api/trading/multitimeframe?market=KRW-BTC`
+- `GET /api/trading/paper/state`
 
-`eventScore` is optional and reserved for structured Oracle evidence. It accepts -100 to +100 and never bypasses the deterministic risk layer.
+Paper mutation routes:
+
+- `POST /api/trading/paper/reset` body `{ "initialCash": 1000000 }`
+- `POST /api/trading/paper/step` body `{ "market": "KRW-BTC" }`
+- optional `eventScore` can be supplied to snapshot / multi-timeframe / paper step and must remain between -100 and +100
+
+`paper/step` performs one auditable decision iteration: public market data -> liquidity -> 4H/1H/15M intelligence -> execution decision -> optional paper fill -> portfolio accounting -> ledger tail.
+
+No authenticated exchange key, live order route, or withdrawal capability exists in this slice.
 
 ## Validation
 
@@ -150,8 +206,8 @@ npm run smoke:trading -- KRW-BTC
 
 ## Next slice
 
-1. Persist paper cash, positions, realized/unrealized P&L, fees, and equity curve.
-2. Add deterministic entry/exit policy and risk-sized Paper orders.
-3. Add multi-timeframe 4H / 1H / 15M consensus.
-4. Add structured Oracle event/evidence score with expiry and provenance.
-5. Add a Trading workspace only after execution and ledger contracts stabilize.
+1. durable Paper Portfolio persistence and session checkpoints
+2. scheduled paper loop over the ranked eligible universe
+3. structured Oracle event/evidence objects with provenance, decay, expiry, and contradiction handling
+4. performance analytics: win rate, expectancy, profit factor, max DD, calibration by signal bucket
+5. Trading workspace after accounting/execution contracts stabilize
