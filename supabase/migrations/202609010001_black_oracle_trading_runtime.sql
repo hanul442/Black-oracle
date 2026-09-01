@@ -1,5 +1,5 @@
 -- Black Oracle Trading runtime checkpoints.
--- This table is deliberately service-role only: no browser/client policy is created.
+-- Server-only storage: browser/client roles intentionally receive no table privileges.
 
 create table if not exists public.black_oracle_trading_runtime (
   runtime_id text primary key,
@@ -16,6 +16,7 @@ create index if not exists black_oracle_trading_runtime_saved_at_idx
 alter table public.black_oracle_trading_runtime enable row level security;
 
 revoke all on table public.black_oracle_trading_runtime from anon, authenticated;
+revoke all on table public.black_oracle_trading_runtime from public;
 grant select, insert, update, delete on table public.black_oracle_trading_runtime to service_role;
 
 comment on table public.black_oracle_trading_runtime is
