@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/trading-paper-cycle",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "functions": {
+    "api/trading-paper-cycle.ts": {
+      "maxDuration": 60
+    }
+  }
+}
