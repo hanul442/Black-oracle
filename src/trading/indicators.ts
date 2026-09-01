@@ -141,6 +141,13 @@ export const macdLatest = (values: number[], fastPeriod = 12, slowPeriod = 26, s
   return { macd, signal, histogram: macd - signal };
 };
 
+export const rateOfChangeLatest = (values: number[], period = 20) => {
+  if (values.length < period + 1) throw new Error(`ROC${period} requires at least ${period + 1} values.`);
+  const previous = values[values.length - 1 - period];
+  const current = values[values.length - 1];
+  return previous === 0 ? 0 : current / previous - 1;
+};
+
 export const zScoreLatest = (values: number[], period = 20) => {
   if (values.length < period) throw new Error(`Z-score requires at least ${period} values.`);
   const window = values.slice(-period);
@@ -171,6 +178,7 @@ export const buildIndicatorSnapshot = (candles: Candle[]): IndicatorSnapshot => 
     macd: macd.macd,
     macdSignal: macd.signal,
     macdHistogram: macd.histogram,
+    roc20: rateOfChangeLatest(closes, 20),
     bollingerMiddle: bollinger.middle,
     bollingerUpper: bollinger.upper,
     bollingerLower: bollinger.lower,
