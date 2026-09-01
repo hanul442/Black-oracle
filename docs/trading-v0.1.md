@@ -1,4 +1,4 @@
-# Black Oracle Trading v0.1
+# Black Oracle Trading v0.1.3
 
 ## Goal
 
@@ -34,6 +34,9 @@ EMA structure    ROC/MACD/RSI      RSI/Stoch/BB
         |              |               |
         +--------------+---------------+
                        |
+              Structured Evidence
+      provenance / reliability / expiry / contradiction
+                       |
                        v
               Regime-weighted Fusion
                        |
@@ -54,11 +57,17 @@ EMA structure    ROC/MACD/RSI      RSI/Stoch/BB
                        |
                        v
       Cash / Position / P&L / Equity Curve / Ledger
+                       |
+                       v
+        Continuous Paper Universe Loop
+                       |
+                       v
+     Win Rate / Expectancy / Profit Factor / Max DD
 ```
 
 ## Liquidity Universe
 
-Black Oracle does not scan every KRW pair equally. The gateway first ranks high-turnover candidates and checks execution quality before a market can become tradable.
+Black Oracle does not scan every KRW pair equally. It ranks high-turnover candidates and checks execution quality before a market can become tradable.
 
 v0.1 eligibility gates:
 
@@ -67,110 +76,166 @@ v0.1 eligibility gates:
 - best bid/ask spread <= 25 bps
 - minimum of top-5 bid/ask depth >= 5M KRW
 
-Liquidity score weights:
+The loop currently scans a conservative shortlist rather than every listed asset.
 
-- 45% 24h turnover
-- 35% spread quality
-- 20% top-5 depth
-
-The universe endpoint currently inspects the highest-turnover 30 KRW markets and returns a ranked shortlist.
-
-## Strategy engines
+## Strategy stack
 
 ### Trend
 
-Trend direction is built from price vs EMA20, EMA20 vs EMA50, EMA50 vs EMA200, price vs EMA200, and the regime classifier. It emits a signed score from -100 to +100.
+Price vs EMA20, EMA20 vs EMA50, EMA50 vs EMA200, price vs EMA200, and regime structure emit a signed trend score from -100 to +100.
 
 ### Momentum
 
-Momentum combines RSI impulse around 50, MACD histogram normalized by ATR, 20-period rate of change, and volume Z-score confirmation. It also emits a signed score from -100 to +100.
+RSI impulse, MACD histogram normalized by ATR, ROC20, and volume Z-score emit a signed momentum score from -100 to +100.
 
 ### Mean Reversion
 
-RSI is not a direct buy/sell switch. The engine combines RSI, Stoch RSI, and Bollinger %B, then discounts reversal conviction when the market is in a strong continuation trend. `OVERBOUGHT` inside `STRONG_UPTREND` can therefore remain `WAIT` unless reversal-direction confirmation appears.
+RSI is not a direct buy/sell switch. RSI, Stoch RSI, and Bollinger %B are combined and then discounted when a strong trend can keep price extended. `OVERBOUGHT` in a strong uptrend can remain `WAIT`.
 
-## Signal Fusion
+### Structured Evidence
 
-Weights change by regime.
+Trading evidence is now represented as explicit objects instead of an untraceable LLM opinion.
 
-```text
-STRONG TREND   Trend 45 / Momentum 35 / Reversion 10 / Event 10
-TREND          Trend 40 / Momentum 30 / Reversion 15 / Event 15
-RANGE          Trend 15 / Momentum 20 / Reversion 45 / Event 20
-```
+Each item records:
 
-Until a structured event score exists, the event weight is redistributed across technical engines instead of injecting a fake neutral AI opinion.
+- market
+- title / claim
+- bullish, bearish, or neutral direction
+- strength 0-100
+- reliability 0-1
+- source type and optional provenance
+- observed timestamp
+- expiry timestamp
+- optional `contradictionOf` link
+- tags
 
-The fused directional score (-100 to +100) is mapped to `Oracle Trade Score` (0 to 100). High-volatility regimes reduce the downstream position-risk multiplier. Directional disagreement across engines reduces confidence and risk budget.
+Active evidence is aggregated into a -100 to +100 event score. Reliability and remaining lifetime reduce or amplify contribution. If newer evidence explicitly contradicts an earlier item, the superseded item's weight is suppressed instead of simply allowing both claims to count equally.
+
+If no active evidence exists, the Event allocation is redistributed to the technical engines. A manually supplied event score remains possible only as an explicit override for testing.
 
 ## Multi-timeframe consensus
 
-Black Oracle now evaluates three independent snapshots:
+Black Oracle evaluates:
 
 - 4H = 45% authority
 - 1H = 35% authority
 - 15M = 20% authority
 
-A lower-timeframe burst cannot open a new position when a higher timeframe materially opposes the aggregate direction. Aligned timeframes receive a confidence boost; disagreement reduces position risk.
+A lower-timeframe burst cannot open a new position when a higher timeframe materially opposes the aggregate direction. Alignment increases confidence; disagreement reduces downstream risk.
 
 ## Paper Portfolio
 
-The paper layer now keeps real state in memory for the running trading gateway:
+The running gateway keeps an in-memory paper account with:
 
 - KRW cash
 - spot positions
 - average cost including entry fee
-- realized P&L
-- unrealized P&L
+- realized and unrealized P&L
 - cumulative fees
 - marked market value
 - equity and peak equity
-- drawdown
+- current drawdown
 - daily P&L ratio
 - bounded equity curve history
+- closed-trade journal
 
-Paper v0.1 does not pyramid into an existing position and cannot short. Sell orders can be quantity-sized so a protective exit closes exactly the existing spot position.
-
-The session is intentionally in-memory at this stage. Restarting the gateway resets it unless the caller explicitly initializes a new cash balance. Durable persistence is a later slice after the accounting contract is stable.
+Paper v0.1 cannot short and does not pyramid into an existing position.
 
 ## Deterministic entry / exit
 
-New entry requires all of the following:
+New entry requires:
 
-1. liquidity eligible
+1. eligible liquidity
 2. multi-timeframe action = BUY
 3. multi-timeframe confidence >= 62%
-4. higher timeframes do not materially oppose the entry
-5. risk gate passes
+4. no material higher-timeframe opposition
+5. deterministic risk gate PASS
 
-Position notional is scaled below the 2% hard cap using signal conviction and the multi-timeframe risk multiplier.
+Position notional is conviction-scaled and always capped by the 2% account-equity hard limit.
 
-Protection is deterministic:
+Protection:
 
-- stop distance = 1.8 x 1H ATR%, bounded to 1.2%–4.0%
+- stop distance = 1.8 x 1H ATR%, bounded to 1.2%-4.0%
 - take-profit = 2R
-- stop-loss or take-profit triggers immediate Paper exit
-- a material multi-timeframe SELL reversal also exits the long spot position
+- stop-loss, take-profit, or material MTF SELL reversal can close a long spot position
+
+## Continuous Paper Loop
+
+The Paper loop can be started explicitly and never starts live trading.
+
+Default loop configuration:
+
+- interval: 15 minutes
+- minimum allowed interval: 5 minutes
+- maximum ranked new candidates per cycle: 6
+- maximum simultaneous Paper positions: 4
+- existing positions are monitored even when they drop out of the current top-liquidity shortlist
+- markets are processed sequentially with a small spacing delay to avoid bursty public-API use
+
+Each loop cycle:
+
+```text
+Rank liquidity universe
+        |
+        v
+Include currently open positions
+        |
+        v
+Resolve active structured evidence per market
+        |
+        v
+4H / 1H / 15M analysis
+        |
+        v
+Entry / Hold / Exit decision
+        |
+        v
+Paper fill + portfolio accounting + ledger
+        |
+        v
+Performance snapshot
+```
+
+## Performance analytics
+
+Closed Paper trades now feed a performance layer that calculates:
+
+- trade count
+- wins / losses / breakeven
+- win rate
+- gross profit / gross loss
+- net P&L
+- expectancy per trade
+- average win / average loss
+- payoff ratio
+- profit factor
+- average trade return
+- total account return
+- maximum drawdown from the equity curve
+- current drawdown
+- performance buckets by entry Oracle Trade Score: 50-59, 60-69, 70-79, 80-89, 90-100
+
+These metrics are intended to determine whether the strategy has an observable edge before any Approval Live or Auto Live transition.
 
 ## Hard risk rules
 
 - Spot only in v0.1.
-- No leverage, margin, futures, martingale, or grid averaging.
+- No leverage, margin, futures, martingale, grid averaging, or shorting.
 - Maximum requested position notional: 2% of equity.
 - Daily loss circuit breaker: -1%.
 - Total drawdown circuit breaker: 5%.
+- Continuous Paper loop also caps simultaneous positions.
 - Stale market data, disconnected feed, ledger mismatch, duplicate order, or excessive estimated slippage rejects a trade.
-- LLM output never has direct order authority. Intelligence must be converted to structured evidence/forecast data and pass deterministic execution rules.
+- LLM output never has direct order authority.
+- No authenticated exchange key, live order route, or withdrawal capability exists in v0.1.3.
 
-## Gateway
+## Gateway routes
 
 ```bash
 npm run dev:trading
 ```
 
-Default port: `3100` (override with `TRADING_PORT`).
-
-Read routes:
+Market intelligence:
 
 - `GET /health`
 - `GET /api/trading/markets`
@@ -178,17 +243,54 @@ Read routes:
 - `GET /api/trading/candles?market=KRW-BTC&unit=15&count=200`
 - `GET /api/trading/snapshot?market=KRW-BTC&unit=60`
 - `GET /api/trading/multitimeframe?market=KRW-BTC`
+
+Evidence:
+
+- `GET /api/trading/evidence?market=KRW-BTC`
+- `POST /api/trading/evidence`
+- `DELETE /api/trading/evidence/:id`
+- `POST /api/trading/evidence/clear`
+
+Paper account:
+
 - `GET /api/trading/paper/state`
-
-Paper mutation routes:
-
+- `GET /api/trading/paper/performance`
 - `POST /api/trading/paper/reset` body `{ "initialCash": 1000000 }`
 - `POST /api/trading/paper/step` body `{ "market": "KRW-BTC" }`
-- optional `eventScore` can be supplied to snapshot / multi-timeframe / paper step and must remain between -100 and +100
 
-`paper/step` performs one auditable decision iteration: public market data -> liquidity -> 4H/1H/15M intelligence -> execution decision -> optional paper fill -> portfolio accounting -> ledger tail.
+Paper loop:
 
-No authenticated exchange key, live order route, or withdrawal capability exists in this slice.
+- `GET /api/trading/paper/loop/status`
+- `POST /api/trading/paper/loop/start`
+- `POST /api/trading/paper/loop/stop`
+- `POST /api/trading/paper/loop/cycle`
+
+Example loop start body:
+
+```json
+{
+  "intervalMinutes": 15,
+  "maxMarkets": 6,
+  "maxOpenPositions": 4,
+  "runImmediately": true
+}
+```
+
+Example evidence body:
+
+```json
+{
+  "market": "KRW-BTC",
+  "title": "ETF flow acceleration",
+  "direction": "BULLISH",
+  "strength": 75,
+  "reliability": 0.8,
+  "sourceType": "NEWS",
+  "source": "example-source",
+  "expiresAt": 1788253200000,
+  "tags": ["ETF", "flows"]
+}
+```
 
 ## Validation
 
@@ -204,10 +306,14 @@ Network smoke check:
 npm run smoke:trading -- KRW-BTC
 ```
 
+## Current persistence boundary
+
+Paper account state, evidence, loop status, and closed-trade analytics are currently process-memory state. A gateway restart resets them. Durable checkpoints are intentionally the next infrastructure slice so persistence is added after the accounting and evidence contracts are stable.
+
 ## Next slice
 
-1. durable Paper Portfolio persistence and session checkpoints
-2. scheduled paper loop over the ranked eligible universe
-3. structured Oracle event/evidence objects with provenance, decay, expiry, and contradiction handling
-4. performance analytics: win rate, expectancy, profit factor, max DD, calibration by signal bucket
-5. Trading workspace after accounting/execution contracts stabilize
+1. durable Paper checkpoints / restart recovery
+2. unattended Paper run observation and runtime health metrics
+3. richer Evidence ingestion from Black Oracle Case / News / Council outputs
+4. calibration and attribution by regime, signal engine, evidence state, and exit reason
+5. Trading workspace UI after execution and persistence contracts stabilize
