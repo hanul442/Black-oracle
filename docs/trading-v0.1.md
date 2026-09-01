@@ -112,7 +112,7 @@ The table is `public.black_oracle_trading_runtime`, keyed by `runtime_id`. It st
 Security boundary:
 
 - RLS is enabled.
-- `anon` and `authenticated` receive no table privileges.
+- `anon`, `authenticated`, and `PUBLIC` receive no table privileges.
 - only `service_role` is granted server-side access.
 - no permissive client RLS policy is created intentionally.
 
