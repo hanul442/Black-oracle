@@ -10,6 +10,33 @@ const top5Depth = (units: Array<{ bidPrice: number; askPrice: number; bidSize: n
   };
 };
 
+export const getMarketLiquidity = async (market: string): Promise<LiquiditySnapshot> => {
+  const normalized = market.toUpperCase();
+  const [metadata, tickers, orderbooks] = await Promise.all([
+    listKrwMarkets(),
+    getKrwTickers(),
+    getOrderbooks([normalized]),
+  ]);
+  const ticker = tickers.find((item) => item.market === normalized);
+  const orderbook = orderbooks.find((item) => item.market === normalized);
+  if (!ticker || !orderbook || orderbook.units.length === 0) throw new Error(`No public liquidity snapshot available for ${normalized}.`);
+
+  const marketMetadata = metadata.find((item) => item.market === normalized);
+  const best = orderbook.units[0];
+  const depth = top5Depth(orderbook.units);
+  return evaluateLiquidity({
+    market: normalized,
+    tradePrice: ticker.tradePrice,
+    accTradePrice24h: ticker.accTradePrice24h,
+    signedChangeRate: ticker.signedChangeRate,
+    bestBid: best.bidPrice,
+    bestAsk: best.askPrice,
+    top5BidDepthKrw: depth.bid,
+    top5AskDepthKrw: depth.ask,
+    warning: marketMetadata?.warning ?? false,
+  });
+};
+
 export const buildKrwLiquidityUniverse = async (
   limit = 12,
   candidateCount = 30,
