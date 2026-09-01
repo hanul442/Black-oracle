@@ -6,15 +6,25 @@ import { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } from '../server/tradi
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
 
+const isAuthorizedScheduler = (authorization: string | undefined) => {
+  if (!authorization?.startsWith('Bearer ')) return false;
+
+  const presented = authorization.slice('Bearer '.length);
+  const accepted = [process.env.CRON_SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return accepted.some((secret) => secret === presented);
+};
+
 export default async function handler(request: any, response: any) {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
     return json(response, 405, { success: false, error: 'Method not allowed.' });
   }
 
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.authorization !== `Bearer ${cronSecret}`) {
-    return json(response, 401, { success: false, error: 'Unauthorized cron invocation.' });
+  if (!isAuthorizedScheduler(request.headers.authorization)) {
+    return json(response, 401, { success: false, error: 'Unauthorized scheduled invocation.' });
   }
 
   if ((process.env.TRADING_PERSISTENCE_BACKEND ?? '').toLowerCase() !== 'supabase') {
@@ -25,7 +35,7 @@ export default async function handler(request: any, response: any) {
   }
 
   const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
-  const owner = `vercel-cron-${randomUUID()}`;
+  const owner = `scheduled-worker-${randomUUID()}`;
   let leaseAcquired = false;
   let runtimeRestored = false;
 
@@ -43,7 +53,7 @@ export default async function handler(request: any, response: any) {
     const restore = await restoreRuntimeCheckpoint(false);
     runtimeRestored = true;
     const cycle = await paperLoopController.runCycle();
-    const saved = await saveRuntimeCheckpoint('vercel-cron-cycle');
+    const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
 
     return json(response, 200, {
       success: true,
@@ -59,7 +69,7 @@ export default async function handler(request: any, response: any) {
   } catch (error) {
     if (runtimeRestored) {
       try {
-        await saveRuntimeCheckpoint('vercel-cron-error');
+        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
       }
