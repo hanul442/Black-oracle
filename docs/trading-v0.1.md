@@ -1,4 +1,4 @@
-# Black Oracle Trading v0.1.3
+# Black Oracle Trading v0.1.4
 
 ## Goal
 
@@ -63,6 +63,13 @@ EMA structure    ROC/MACD/RSI      RSI/Stoch/BB
                        |
                        v
      Win Rate / Expectancy / Profit Factor / Max DD
+                       |
+                       v
+            Atomic Runtime Checkpoint
+       Session / Evidence / Loop / Trade Journal
+                       |
+                       v
+              Restart Recovery + Health
 ```
 
 ## Liquidity Universe
@@ -76,7 +83,7 @@ v0.1 eligibility gates:
 - best bid/ask spread <= 25 bps
 - minimum of top-5 bid/ask depth >= 5M KRW
 
-The loop currently scans a conservative shortlist rather than every listed asset.
+The loop scans a conservative shortlist rather than every listed asset.
 
 ## Strategy stack
 
@@ -94,24 +101,11 @@ RSI is not a direct buy/sell switch. RSI, Stoch RSI, and Bollinger %B are combin
 
 ### Structured Evidence
 
-Trading evidence is now represented as explicit objects instead of an untraceable LLM opinion.
+Trading evidence is represented as explicit objects instead of an untraceable LLM opinion.
 
-Each item records:
+Each item records market, claim, direction, strength, reliability, source type/provenance, observed time, expiry, optional contradiction link, and tags. Active evidence is aggregated into a -100 to +100 event score after reliability, expiry decay, and contradiction handling.
 
-- market
-- title / claim
-- bullish, bearish, or neutral direction
-- strength 0-100
-- reliability 0-1
-- source type and optional provenance
-- observed timestamp
-- expiry timestamp
-- optional `contradictionOf` link
-- tags
-
-Active evidence is aggregated into a -100 to +100 event score. Reliability and remaining lifetime reduce or amplify contribution. If newer evidence explicitly contradicts an earlier item, the superseded item's weight is suppressed instead of simply allowing both claims to count equally.
-
-If no active evidence exists, the Event allocation is redistributed to the technical engines. A manually supplied event score remains possible only as an explicit override for testing.
+If no active evidence exists, Event weight is redistributed to technical engines. LLM/event evidence never receives direct order authority.
 
 ## Multi-timeframe consensus
 
@@ -125,7 +119,7 @@ A lower-timeframe burst cannot open a new position when a higher timeframe mater
 
 ## Paper Portfolio
 
-The running gateway keeps an in-memory paper account with:
+The Paper account tracks:
 
 - KRW cash
 - spot positions
@@ -143,13 +137,7 @@ Paper v0.1 cannot short and does not pyramid into an existing position.
 
 ## Deterministic entry / exit
 
-New entry requires:
-
-1. eligible liquidity
-2. multi-timeframe action = BUY
-3. multi-timeframe confidence >= 62%
-4. no material higher-timeframe opposition
-5. deterministic risk gate PASS
+New entry requires eligible liquidity, BUY multi-timeframe consensus, confidence >= 62%, no material higher-timeframe opposition, and deterministic Risk Gate PASS.
 
 Position notional is conviction-scaled and always capped by the 2% account-equity hard limit.
 
@@ -161,44 +149,20 @@ Protection:
 
 ## Continuous Paper Loop
 
-The Paper loop can be started explicitly and never starts live trading.
-
-Default loop configuration:
+Default configuration:
 
 - interval: 15 minutes
 - minimum allowed interval: 5 minutes
 - maximum ranked new candidates per cycle: 6
 - maximum simultaneous Paper positions: 4
-- existing positions are monitored even when they drop out of the current top-liquidity shortlist
-- markets are processed sequentially with a small spacing delay to avoid bursty public-API use
+- currently open positions remain monitored even if they leave the top-liquidity shortlist
+- markets are processed sequentially with a small spacing delay
 
-Each loop cycle:
-
-```text
-Rank liquidity universe
-        |
-        v
-Include currently open positions
-        |
-        v
-Resolve active structured evidence per market
-        |
-        v
-4H / 1H / 15M analysis
-        |
-        v
-Entry / Hold / Exit decision
-        |
-        v
-Paper fill + portfolio accounting + ledger
-        |
-        v
-Performance snapshot
-```
+The loop can resume after a process restart when its checkpoint says it was running and `TRADING_RESUME_LOOP` is not set to `false`.
 
 ## Performance analytics
 
-Closed Paper trades now feed a performance layer that calculates:
+Closed Paper trades feed:
 
 - trade count
 - wins / losses / breakeven
@@ -211,33 +175,96 @@ Closed Paper trades now feed a performance layer that calculates:
 - profit factor
 - average trade return
 - total account return
-- maximum drawdown from the equity curve
-- current drawdown
+- maximum and current drawdown
 - performance buckets by entry Oracle Trade Score: 50-59, 60-69, 70-79, 80-89, 90-100
 
-These metrics are intended to determine whether the strategy has an observable edge before any Approval Live or Auto Live transition.
+These metrics are used to decide whether a measurable edge exists before any Approval Live transition.
+
+## Durable checkpoint and restart recovery
+
+v0.1.4 adds versioned runtime checkpoints. The default store is:
+
+```text
+.data/black-oracle-trading-state.json
+```
+
+The path can be overridden with `TRADING_STATE_FILE`.
+
+Each checkpoint contains:
+
+- Paper Portfolio internal accounting state
+- open positions and protective levels
+- mark prices
+- entry metadata needed for closed-trade attribution
+- closed-trade journal
+- Trading Ledger
+- processed Paper order IDs
+- all structured Evidence, including expired history
+- Paper loop configuration, running intent, cycle count, and last-cycle summary
+
+Writes are serialized and use a temporary file followed by atomic rename. The file is created with owner-only permissions where supported. Mutating API calls checkpoint immediately, while a periodic autosave provides additional recovery coverage. Graceful SIGINT/SIGTERM shutdown also writes a final checkpoint.
+
+On startup the Trading gateway restores the checkpoint before opening HTTP routes. Corrupt or unsupported checkpoint data fails closed instead of silently replacing trading state with a fresh account.
+
+### Persistence boundary
+
+The default JSON checkpoint survives **process restarts only when the deployment filesystem itself is persistent**. Container-local disks on platforms such as ephemeral Cloud Run instances may be replaced during redeploy/cold-start migration. For unattended production observation, `TRADING_STATE_FILE` must point to a persistent mounted volume, or this checkpoint interface should be moved to a remote datastore such as PostgreSQL / Supabase / Firestore before any Live phase.
+
+## Runtime health
+
+`/health` and `/api/trading/runtime/health` now expose operational state rather than a static OK response.
+
+Health includes:
+
+- process uptime
+- persistence path, last save, last restore, and persistence fault
+- autosave state
+- loop running state and cycle count
+- last cycle completion time and error count
+- stale-loop detection when a running loop misses more than 2.5 configured intervals
+- account equity / cash / open positions
+- daily loss and drawdown status
+- risk-lock state
+- basic performance metrics
+
+The endpoint returns HTTP 503 when persistence is faulted or a running loop is stale.
 
 ## Hard risk rules
 
 - Spot only in v0.1.
-- No leverage, margin, futures, martingale, grid averaging, or shorting.
+- No leverage, margin, futures, martingale, grid averaging, pyramiding, or shorting.
 - Maximum requested position notional: 2% of equity.
 - Daily loss circuit breaker: -1%.
 - Total drawdown circuit breaker: 5%.
-- Continuous Paper loop also caps simultaneous positions.
+- Continuous Paper loop caps simultaneous positions.
 - Stale market data, disconnected feed, ledger mismatch, duplicate order, or excessive estimated slippage rejects a trade.
 - LLM output never has direct order authority.
-- No authenticated exchange key, live order route, or withdrawal capability exists in v0.1.3.
+- No authenticated exchange key, live order route, or withdrawal capability exists in v0.1.4.
 
-## Gateway routes
+## Gateway
 
 ```bash
 npm run dev:trading
 ```
 
-Market intelligence:
+Environment:
+
+```text
+TRADING_PORT=3100
+TRADING_STATE_FILE=.data/black-oracle-trading-state.json
+TRADING_AUTOSAVE_MS=60000
+TRADING_RESUME_LOOP=true
+```
+
+Runtime / persistence:
 
 - `GET /health`
+- `GET /api/trading/runtime/health`
+- `GET /api/trading/runtime/persistence`
+- `POST /api/trading/runtime/checkpoint`
+
+Market intelligence:
+
 - `GET /api/trading/markets`
 - `GET /api/trading/universe?limit=12`
 - `GET /api/trading/candles?market=KRW-BTC&unit=15&count=200`
@@ -255,8 +282,8 @@ Paper account:
 
 - `GET /api/trading/paper/state`
 - `GET /api/trading/paper/performance`
-- `POST /api/trading/paper/reset` body `{ "initialCash": 1000000 }`
-- `POST /api/trading/paper/step` body `{ "market": "KRW-BTC" }`
+- `POST /api/trading/paper/reset`
+- `POST /api/trading/paper/step`
 
 Paper loop:
 
@@ -264,33 +291,6 @@ Paper loop:
 - `POST /api/trading/paper/loop/start`
 - `POST /api/trading/paper/loop/stop`
 - `POST /api/trading/paper/loop/cycle`
-
-Example loop start body:
-
-```json
-{
-  "intervalMinutes": 15,
-  "maxMarkets": 6,
-  "maxOpenPositions": 4,
-  "runImmediately": true
-}
-```
-
-Example evidence body:
-
-```json
-{
-  "market": "KRW-BTC",
-  "title": "ETF flow acceleration",
-  "direction": "BULLISH",
-  "strength": 75,
-  "reliability": 0.8,
-  "sourceType": "NEWS",
-  "source": "example-source",
-  "expiresAt": 1788253200000,
-  "tags": ["ETF", "flows"]
-}
-```
 
 ## Validation
 
@@ -300,20 +300,12 @@ npm run test:trading
 npm run build
 ```
 
-Network smoke check:
-
-```bash
-npm run smoke:trading -- KRW-BTC
-```
-
-## Current persistence boundary
-
-Paper account state, evidence, loop status, and closed-trade analytics are currently process-memory state. A gateway restart resets them. Durable checkpoints are intentionally the next infrastructure slice so persistence is added after the accounting and evidence contracts are stable.
+Trading tests now include persistence-file roundtrip, missing-checkpoint behavior, Paper Portfolio restore, Ledger restore, and Evidence restore in addition to strategy/risk/accounting tests.
 
 ## Next slice
 
-1. durable Paper checkpoints / restart recovery
-2. unattended Paper run observation and runtime health metrics
-3. richer Evidence ingestion from Black Oracle Case / News / Council outputs
-4. calibration and attribution by regime, signal engine, evidence state, and exit reason
-5. Trading workspace UI after execution and persistence contracts stabilize
+1. deploy the Paper gateway onto storage that survives host replacement, or migrate the checkpoint adapter to a remote database
+2. run unattended Paper observation and collect operational / performance history
+3. add ingestion adapters from Black Oracle Case / News / Council into structured Evidence
+4. add attribution by regime, evidence state, signal component, and exit reason
+5. build the Trading workspace UI after persistence and accounting contracts stabilize
