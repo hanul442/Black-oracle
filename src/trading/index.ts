@@ -1,4 +1,5 @@
 export * from './config';
+export * from './evidence';
 export * from './executionPolicy';
 export * from './indicators';
 export * from './ledger';
@@ -7,6 +8,7 @@ export * from './meanReversion';
 export * from './multiTimeframe';
 export * from './paperBroker';
 export * from './paperPortfolio';
+export * from './performance';
 export * from './regime';
 export * from './risk';
 export * from './signalFusion';
