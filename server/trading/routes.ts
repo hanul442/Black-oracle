@@ -6,6 +6,8 @@ import { tradingEvidenceStore } from './evidenceStore';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
+import { buildRuntimeHealth } from './runtimeHealth';
+import { runtimePersistenceStatus, saveRuntimeCheckpoint } from './runtimeState';
 import { buildKrwLiquidityUniverse } from './universe';
 import { getMinuteCandles, listKrwMarkets } from './upbitPublic';
 
@@ -111,6 +113,24 @@ const handleRouteError = (error: unknown, res: Response) => {
 };
 
 export const registerTradingRoutes = (app: Express) => {
+  app.get('/api/trading/runtime/health', (_req: Request, res: Response) => {
+    const health = buildRuntimeHealth();
+    return res.status(health.success ? 200 : 503).json(health);
+  });
+
+  app.get('/api/trading/runtime/persistence', (_req: Request, res: Response) => {
+    return res.json({ success: true, persistence: runtimePersistenceStatus() });
+  });
+
+  app.post('/api/trading/runtime/checkpoint', async (_req: Request, res: Response) => {
+    try {
+      const saved = await saveRuntimeCheckpoint('manual-api');
+      return res.json({ success: true, savedAt: saved.checkpoint.savedAt, persistence: saved.persistence });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
   app.get('/api/trading/markets', async (_req: Request, res: Response) => {
     try {
       const markets = await listKrwMarkets();
@@ -185,23 +205,34 @@ export const registerTradingRoutes = (app: Express) => {
     }
   });
 
-  app.post('/api/trading/evidence', (req: Request, res: Response) => {
+  app.post('/api/trading/evidence', async (req: Request, res: Response) => {
     try {
       const evidence = tradingEvidenceStore.upsert(buildEvidenceFromBody(req.body));
+      await saveRuntimeCheckpoint('evidence-upsert');
       return res.status(201).json({ success: true, evidence, aggregate: tradingEvidenceStore.aggregate(evidence.market) });
     } catch (error) {
       return handleRouteError(error, res);
     }
   });
 
-  app.delete('/api/trading/evidence/:id', (req: Request, res: Response) => {
-    const removed = tradingEvidenceStore.remove(String(req.params.id));
-    return res.json({ success: true, removed });
+  app.delete('/api/trading/evidence/:id', async (req: Request, res: Response) => {
+    try {
+      const removed = tradingEvidenceStore.remove(String(req.params.id));
+      await saveRuntimeCheckpoint('evidence-remove');
+      return res.json({ success: true, removed });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
   });
 
-  app.post('/api/trading/evidence/clear', (_req: Request, res: Response) => {
-    tradingEvidenceStore.clear();
-    return res.json({ success: true });
+  app.post('/api/trading/evidence/clear', async (_req: Request, res: Response) => {
+    try {
+      tradingEvidenceStore.clear();
+      await saveRuntimeCheckpoint('evidence-clear');
+      return res.json({ success: true });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
   });
 
   app.get('/api/trading/paper/state', (_req: Request, res: Response) => {
@@ -212,11 +243,13 @@ export const registerTradingRoutes = (app: Express) => {
     return res.json({ success: true, performance: paperTradingSession.performance() });
   });
 
-  app.post('/api/trading/paper/reset', (req: Request, res: Response) => {
+  app.post('/api/trading/paper/reset', async (req: Request, res: Response) => {
     try {
       paperLoopController.stop();
       const initialCash = parseInitialCash(req.body?.initialCash, 1_000_000);
-      return res.json({ success: true, ...paperTradingSession.reset(initialCash) });
+      const state = paperTradingSession.reset(initialCash);
+      await saveRuntimeCheckpoint('paper-reset');
+      return res.json({ success: true, ...state });
     } catch (error) {
       return handleRouteError(error, res);
     }
@@ -228,6 +261,7 @@ export const registerTradingRoutes = (app: Express) => {
       const manualScore = parseOptionalEventScore(req.body?.eventScore);
       const resolved = resolvedEventScore(market, manualScore);
       const result = await paperTradingSession.step(market, resolved.eventScore);
+      await saveRuntimeCheckpoint('paper-step');
       return res.json({ ...result, evidence: resolved.evidence, eventScoreSource: resolved.source });
     } catch (error) {
       return handleRouteError(error, res);
@@ -244,19 +278,27 @@ export const registerTradingRoutes = (app: Express) => {
       const status = paperLoopController.start(config);
       const runImmediately = req.body?.runImmediately !== false;
       const firstCycle = runImmediately && !status.cycleInProgress ? await paperLoopController.runCycle() : null;
+      await saveRuntimeCheckpoint('paper-loop-start');
       return res.json({ success: true, status: paperLoopController.status(), firstCycle });
     } catch (error) {
       return handleRouteError(error, res);
     }
   });
 
-  app.post('/api/trading/paper/loop/stop', (_req: Request, res: Response) => {
-    return res.json({ success: true, ...paperLoopController.stop() });
+  app.post('/api/trading/paper/loop/stop', async (_req: Request, res: Response) => {
+    try {
+      const status = paperLoopController.stop();
+      await saveRuntimeCheckpoint('paper-loop-stop');
+      return res.json({ success: true, ...status });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
   });
 
   app.post('/api/trading/paper/loop/cycle', async (_req: Request, res: Response) => {
     try {
       const cycle = await paperLoopController.runCycle();
+      await saveRuntimeCheckpoint('paper-loop-cycle');
       return res.json({ success: true, cycle, performance: paperTradingSession.performance() });
     } catch (error) {
       return handleRouteError(error, res);
