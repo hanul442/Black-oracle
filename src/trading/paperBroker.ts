@@ -15,6 +15,17 @@ export class PaperBroker {
     this.slippageBps = options.slippageBps ?? 8;
   }
 
+  restoreProcessedOrderIds(orderIds: string[]) {
+    this.processedOrderIds.clear();
+    for (const orderId of orderIds) {
+      if (typeof orderId === 'string' && orderId.trim()) this.processedOrderIds.add(orderId);
+    }
+  }
+
+  processedOrderIdsSnapshot() {
+    return Array.from(this.processedOrderIds);
+  }
+
   executeMarketOrder(order: PaperOrderRequest): PaperFill {
     if (this.processedOrderIds.has(order.id)) {
       throw new Error(`Duplicate paper order id: ${order.id}`);
