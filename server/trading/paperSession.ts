@@ -2,15 +2,25 @@ import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
-import { PaperPortfolio } from '../../src/trading/paperPortfolio';
+import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
-import type { LiquiditySnapshot, PaperFill } from '../../src/trading/types';
+import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
 
 interface EntryMetadata {
   fill: PaperFill;
   oracleTradeScore: number;
+}
+
+export interface PaperTradingSessionCheckpoint {
+  schemaVersion: 1;
+  portfolio: PaperPortfolioState;
+  markPrices: Array<[string, number]>;
+  entryMetadata: Array<[string, EntryMetadata]>;
+  closedTrades: ClosedPaperTrade[];
+  ledger: TradingLedgerEvent[];
+  processedOrderIds: string[];
 }
 
 export class PaperTradingSession {
@@ -25,6 +35,46 @@ export class PaperTradingSession {
     this.portfolio = new PaperPortfolio(initialCash);
     this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
     this.ledger = new TradingLedger();
+  }
+
+  checkpoint(): PaperTradingSessionCheckpoint {
+    return {
+      schemaVersion: 1,
+      portfolio: this.portfolio.exportState(),
+      markPrices: Array.from(this.markPrices.entries()),
+      entryMetadata: Array.from(this.entryMetadata.entries()).map(([market, metadata]) => [market, {
+        fill: { ...metadata.fill },
+        oracleTradeScore: metadata.oracleTradeScore,
+      }]),
+      closedTrades: this.closedTrades.map((trade) => ({ ...trade })),
+      ledger: this.ledger.snapshot().map((event) => ({ ...event, payload: { ...event.payload } })),
+      processedOrderIds: this.broker.processedOrderIdsSnapshot(),
+    };
+  }
+
+  restore(checkpoint: PaperTradingSessionCheckpoint) {
+    if (!checkpoint || checkpoint.schemaVersion !== 1) throw new Error('Unsupported Paper session checkpoint schema.');
+    this.portfolio = PaperPortfolio.restore(checkpoint.portfolio);
+    this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
+    this.broker.restoreProcessedOrderIds(checkpoint.processedOrderIds ?? []);
+    this.ledger = TradingLedger.restore(checkpoint.ledger ?? []);
+
+    this.markPrices.clear();
+    for (const [market, price] of checkpoint.markPrices ?? []) {
+      if (/^KRW-[A-Z0-9]+$/.test(market) && Number.isFinite(price) && price > 0) this.markPrices.set(market, price);
+    }
+
+    this.entryMetadata.clear();
+    for (const [market, metadata] of checkpoint.entryMetadata ?? []) {
+      if (!metadata?.fill || !Number.isFinite(metadata.oracleTradeScore)) continue;
+      this.entryMetadata.set(market, {
+        fill: { ...metadata.fill },
+        oracleTradeScore: metadata.oracleTradeScore,
+      });
+    }
+
+    this.closedTrades.splice(0, this.closedTrades.length, ...(checkpoint.closedTrades ?? []).slice(-5_000).map((trade) => ({ ...trade })));
+    return this.state();
   }
 
   reset(initialCash = 1_000_000) {
