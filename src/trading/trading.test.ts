@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { TradingLedger } from './ledger';
+import { evaluateLiquidity } from './liquidity';
 import { buildMeanReversionSignal } from './meanReversion';
 import { PaperBroker } from './paperBroker';
 import { evaluateRisk } from './risk';
-import { TradingLedger } from './ledger';
+import { buildSignalFusion } from './signalFusion';
+import { buildMomentumSignal, buildTrendSignal } from './trendMomentum';
 import type { IndicatorSnapshot, RegimeSnapshot } from './types';
 
 const baseIndicators: IndicatorSnapshot = {
@@ -18,6 +21,7 @@ const baseIndicators: IndicatorSnapshot = {
   macd: 0,
   macdSignal: 0,
   macdHistogram: 0,
+  roc20: 0,
   bollingerMiddle: 100,
   bollingerUpper: 110,
   bollingerLower: 90,
@@ -71,6 +75,100 @@ test('oversold cluster can produce a range-regime buy signal with reversal confi
   assert.equal(signal.state, 'OVERSOLD');
   assert.equal(signal.action, 'BUY');
   assert.ok(signal.score >= 60);
+});
+
+test('trend engine recognizes aligned bullish EMA structure', () => {
+  const signal = buildTrendSignal(
+    {
+      ...baseIndicators,
+      close: 120,
+      ema20: 115,
+      ema50: 108,
+      ema200: 96,
+    },
+    {
+      ...rangeRegime,
+      regime: 'STRONG_UPTREND',
+      confidence: 0.86,
+      trendStrength: 0.82,
+    },
+  );
+
+  assert.equal(signal.action, 'BUY');
+  assert.ok(signal.directionalScore >= 70);
+});
+
+test('momentum engine combines ROC MACD RSI and volume confirmation', () => {
+  const signal = buildMomentumSignal({
+    ...baseIndicators,
+    rsi14: 67,
+    macdHistogram: 1.5,
+    roc20: 0.07,
+    volumeZScore: 2.2,
+  });
+
+  assert.equal(signal.action, 'BUY');
+  assert.ok(signal.directionalScore >= 50);
+});
+
+test('range regime gives mean reversion the largest fusion weight', () => {
+  const fusion = buildSignalFusion(
+    { action: 'WAIT', directionalScore: 10, strength: 10, confidence: 0.55, reasons: [] },
+    { action: 'WAIT', directionalScore: 5, strength: 5, confidence: 0.55, reasons: [] },
+    { action: 'BUY', state: 'OVERSOLD', score: 90, confidence: 0.8, rawExtremeScore: 95, trendPenalty: 1, reasons: [] },
+    rangeRegime,
+  );
+
+  assert.ok(fusion.weights.meanReversion > fusion.weights.trend);
+  assert.equal(fusion.action, 'BUY');
+  assert.ok(fusion.oracleTradeScore > 60);
+});
+
+test('high volatility reduces fusion risk multiplier', () => {
+  const fusion = buildSignalFusion(
+    { action: 'BUY', directionalScore: 80, strength: 80, confidence: 0.8, reasons: [] },
+    { action: 'BUY', directionalScore: 70, strength: 70, confidence: 0.75, reasons: [] },
+    { action: 'WAIT', state: 'OVERBOUGHT', score: 50, confidence: 0.6, rawExtremeScore: 80, trendPenalty: 0.45, reasons: [] },
+    { ...rangeRegime, regime: 'STRONG_UPTREND', highVolatility: true, trendStrength: 0.9 },
+    30,
+  );
+
+  assert.equal(fusion.action, 'BUY');
+  assert.equal(fusion.positionRiskMultiplier, 0.5);
+});
+
+test('liquidity filter rejects wide-spread markets even with strong turnover', () => {
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-TEST',
+    tradePrice: 100,
+    accTradePrice24h: 500_000_000_000,
+    signedChangeRate: 0.01,
+    bestBid: 99,
+    bestAsk: 101,
+    top5BidDepthKrw: 100_000_000,
+    top5AskDepthKrw: 100_000_000,
+    warning: false,
+  });
+
+  assert.equal(liquidity.eligible, false);
+  assert.ok(liquidity.spreadBps > 25);
+});
+
+test('liquidity filter passes deep tight high-turnover markets', () => {
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-BTC',
+    tradePrice: 100_000_000,
+    accTradePrice24h: 800_000_000_000,
+    signedChangeRate: 0.01,
+    bestBid: 99_990_000,
+    bestAsk: 100_010_000,
+    top5BidDepthKrw: 500_000_000,
+    top5AskDepthKrw: 450_000_000,
+    warning: false,
+  });
+
+  assert.equal(liquidity.eligible, true);
+  assert.ok(liquidity.score >= 70);
 });
 
 test('risk gate rejects a position above 2 percent of equity', () => {
