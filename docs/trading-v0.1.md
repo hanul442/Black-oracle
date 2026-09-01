@@ -218,4 +218,6 @@ The code path for scheduled 24/7 Paper observation is now implemented, but it is
 4. a successful authenticated cycle observed in runtime logs
 5. subsequent Supabase checkpoint timestamps proving repeated persistence
 
+The connected Vercel project should create a Preview deployment whenever `feat/trading-core-v0.1` receives a new commit; that Preview can then be promoted after verification.
+
 Only after multi-day Paper data exists should Approval Live authentication/order reconciliation be added.
