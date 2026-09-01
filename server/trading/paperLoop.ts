@@ -25,6 +25,14 @@ export interface PaperLoopCycleResult {
   }>;
 }
 
+export interface PaperLoopCheckpoint {
+  schemaVersion: 1;
+  running: boolean;
+  config: PaperLoopConfig;
+  cycleCount: number;
+  lastCycle: PaperLoopCycleResult | null;
+}
+
 const DEFAULT_CONFIG: PaperLoopConfig = {
   intervalMs: 15 * 60 * 1000,
   maxMarkets: 6,
@@ -33,12 +41,53 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const validateConfig = (config: PaperLoopConfig) => {
+  if (!Number.isInteger(config.intervalMs) || config.intervalMs < 5 * 60 * 1000) {
+    throw new Error('Paper loop intervalMs must be at least 300000 (5 minutes).');
+  }
+  if (!Number.isInteger(config.maxMarkets) || config.maxMarkets < 1 || config.maxMarkets > 12) {
+    throw new Error('Paper loop maxMarkets must be an integer between 1 and 12.');
+  }
+  if (!Number.isInteger(config.maxOpenPositions) || config.maxOpenPositions < 1 || config.maxOpenPositions > 8) {
+    throw new Error('Paper loop maxOpenPositions must be an integer between 1 and 8.');
+  }
+};
+
 export class PaperLoopController {
   private timer: NodeJS.Timeout | null = null;
   private cycleInProgress = false;
   private config: PaperLoopConfig = { ...DEFAULT_CONFIG };
   private lastCycle: PaperLoopCycleResult | null = null;
   private cycleCount = 0;
+
+  checkpoint(): PaperLoopCheckpoint {
+    return {
+      schemaVersion: 1,
+      running: this.timer !== null,
+      config: { ...this.config },
+      cycleCount: this.cycleCount,
+      lastCycle: this.lastCycle ? {
+        ...this.lastCycle,
+        errors: this.lastCycle.errors.map((item) => ({ ...item })),
+        markets: this.lastCycle.markets.map((item) => ({ ...item })),
+      } : null,
+    };
+  }
+
+  restore(checkpoint: PaperLoopCheckpoint, resume = false) {
+    if (!checkpoint || checkpoint.schemaVersion !== 1) throw new Error('Unsupported Paper loop checkpoint schema.');
+    validateConfig(checkpoint.config);
+    this.stop();
+    this.config = { ...checkpoint.config };
+    this.cycleCount = Number.isInteger(checkpoint.cycleCount) && checkpoint.cycleCount >= 0 ? checkpoint.cycleCount : 0;
+    this.lastCycle = checkpoint.lastCycle ? {
+      ...checkpoint.lastCycle,
+      errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
+      markets: checkpoint.lastCycle.markets.map((item) => ({ ...item })),
+    } : null;
+    if (checkpoint.running && resume) this.start(this.config);
+    return this.status();
+  }
 
   status() {
     return {
@@ -53,15 +102,7 @@ export class PaperLoopController {
 
   start(config: Partial<PaperLoopConfig> = {}) {
     const next: PaperLoopConfig = { ...this.config, ...config };
-    if (!Number.isInteger(next.intervalMs) || next.intervalMs < 5 * 60 * 1000) {
-      throw new Error('Paper loop intervalMs must be at least 300000 (5 minutes).');
-    }
-    if (!Number.isInteger(next.maxMarkets) || next.maxMarkets < 1 || next.maxMarkets > 12) {
-      throw new Error('Paper loop maxMarkets must be an integer between 1 and 12.');
-    }
-    if (!Number.isInteger(next.maxOpenPositions) || next.maxOpenPositions < 1 || next.maxOpenPositions > 8) {
-      throw new Error('Paper loop maxOpenPositions must be an integer between 1 and 8.');
-    }
+    validateConfig(next);
 
     this.config = next;
     if (this.timer) return this.status();
