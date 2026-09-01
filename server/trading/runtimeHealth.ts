@@ -18,7 +18,7 @@ export const buildRuntimeHealth = () => {
     now - lastCycleFinishedAt > loop.config.intervalMs * 2.5,
   );
   const lastCycleErrors = loop.lastCycle?.errors.length ?? 0;
-  const persistenceFault = Boolean(persistence.lastError);
+  const persistenceFault = Boolean(persistence.lastError) || !persistence.configured;
   const riskLocked =
     session.portfolio.dailyPnlPct <= -DEFAULT_RISK_LIMITS.maxDailyLossPct ||
     session.portfolio.drawdownPct >= DEFAULT_RISK_LIMITS.maxTotalDrawdownPct;
