@@ -11,7 +11,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "test:trading": "tsx --test src/trading/*.test.ts",
+    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts",
     "smoke:trading": "tsx scripts/trading-smoke.ts"
   },
   "dependencies": {
