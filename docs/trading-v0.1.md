@@ -1,4 +1,4 @@
-# Black Oracle Trading v0.1.5
+# Black Oracle Trading v0.1.6
 
 ## Goal
 
@@ -11,37 +11,29 @@ The first-month success criterion is engineering safety and a verifiable Paper -
 ```text
 Upbit public market data
         |
-        +---- Ticker / Orderbook ----> Liquidity Universe
-        +---- 4H / 1H / 15M candles
-        |
         v
-Indicators -> Regime -> Trend / Momentum / Mean Reversion
+Liquidity + 4H / 1H / 15M intelligence
         |
-Structured Evidence
+Regime / Trend / Momentum / Mean Reversion / Evidence
         |
-        v
-Regime-weighted Fusion -> Oracle Trade Score
-        |
-4H / 1H / 15M Consensus
+Oracle Trade Score + MTF Consensus
         |
 Deterministic Entry / Exit -> Risk Gate <= 2%
         |
-Paper Broker -> Paper Portfolio -> Closed Trades / Performance
-        |
-Continuous Paper Universe Loop
+Paper Broker -> Portfolio -> Closed Trades -> Performance
         |
 Versioned Runtime Checkpoint
         |
-  +-----+------------------+
-  |                        |
-Local atomic JSON      Supabase/Postgres
-(dev / fallback)       (durable remote)
-  |                        |
-  +-----------+------------+
-              |
-        Restart Recovery
-              |
-          Runtime Health
+        v
+Supabase durable state
+        ^
+        |
+Scheduled single-cycle worker
+(Vercel Cron or another authenticated scheduler)
+        |
+Distributed Supabase lease
+        |
+restore -> one Paper cycle -> checkpoint -> exit
 ```
 
 ## Strategy and risk summary
@@ -55,18 +47,6 @@ Local atomic JSON      Supabase/Postgres
 - RSI is not a direct trigger. RSI / Stoch RSI / Bollinger extremes are regime-aware, so overbought in a strong uptrend can remain WAIT.
 - Structured Evidence is bounded, expires/decays, supports contradictions, and never has direct order authority.
 
-## Continuous Paper Loop
-
-Default configuration:
-
-- interval: 15 minutes
-- minimum allowed interval: 5 minutes
-- maximum ranked new candidates per cycle: 6
-- maximum simultaneous Paper positions: 4
-- currently open positions remain monitored even if they leave the top-liquidity shortlist
-
-The loop can resume after restart when its checkpoint says it was running and `TRADING_RESUME_LOOP` is not `false`.
-
 ## Performance analytics
 
 Closed Paper trades feed trade count, wins/losses, win rate, gross/net P&L, expectancy, average win/loss, payoff ratio, profit factor, total return, max/current drawdown, and entry Oracle Trade Score buckets (50-59 through 90-100).
@@ -79,7 +59,7 @@ The persistence layer has a common `TradingCheckpointStore` contract and two imp
 
 ### Local JSON
 
-Default development backend:
+Development/fallback backend:
 
 ```text
 TRADING_PERSISTENCE_BACKEND=json
@@ -99,54 +79,85 @@ SUPABASE_SERVICE_ROLE_KEY=<server secret>
 TRADING_RUNTIME_ID=black-oracle-paper
 ```
 
-The server uses the Supabase REST endpoint with the **service-role key only on the server**. Never expose this key in Vite/client code.
-
-Schema migration:
+Schema migrations:
 
 ```text
 supabase/migrations/202609010001_black_oracle_trading_runtime.sql
+supabase/migrations/202609010002_black_oracle_trading_cycle_lease.sql
 ```
 
-The table is `public.black_oracle_trading_runtime`, keyed by `runtime_id`. It stores the complete versioned checkpoint as JSONB plus schema version, save timestamp, and reason.
+`public.black_oracle_trading_runtime` stores the complete versioned checkpoint as JSONB keyed by `runtime_id`.
 
 Security boundary:
 
 - RLS is enabled.
 - `anon`, `authenticated`, and `PUBLIC` receive no table privileges.
-- only `service_role` is granted server-side access.
-- no permissive client RLS policy is created intentionally.
+- only `service_role` gets server-side access.
+- the service-role key must never be exposed in Vite/client code.
+- missing runtime row = fresh Paper account; malformed/unsupported checkpoint fails closed.
 
-A missing row is treated as a fresh Paper account. Corrupt or unsupported checkpoint data fails closed rather than silently resetting an existing runtime.
+## Scheduled serverless Paper cycles
+
+v0.1.6 no longer requires a permanently alive `setInterval` process for unattended Paper observation. A scheduled worker can execute exactly one cycle and exit:
+
+```text
+Cron request
+   |
+Bearer CRON_SECRET validation
+   |
+Supabase distributed lease
+   |
+Restore checkpoint
+   |
+Run one ranked Paper universe cycle
+   |
+Persist checkpoint
+   |
+Release lease
+   |
+Function exits
+```
+
+Vercel handler:
+
+```text
+GET /api/trading-paper-cycle
+```
+
+`vercel.json` declares a 15-minute schedule and a bounded function duration. `CRON_SECRET` protects the endpoint using the Authorization header supplied by Vercel Cron.
+
+Required server environment for scheduled mode:
+
+```text
+TRADING_PERSISTENCE_BACKEND=supabase
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<server secret>
+TRADING_RUNTIME_ID=black-oracle-paper
+CRON_SECRET=<long random server secret>
+```
+
+The scheduled endpoint refuses to run when persistence is not Supabase, so an ephemeral serverless invocation cannot silently fall back to local disk.
+
+### Distributed cycle lease
+
+A scheduled call can overlap because of retries, latency, or manual invocation. `black_oracle_trading_cycle_leases` prevents two workers from mutating the same Paper runtime concurrently.
+
+The server-only RPCs are:
+
+```text
+claim_black_oracle_trading_cycle_lease
+release_black_oracle_trading_cycle_lease
+```
+
+The default lease is 840 seconds. A second owner receives `false` while an active lease exists, causing the scheduled worker to skip rather than double-process a cycle. Lease access is service-role only.
 
 ## Checkpoint contents
 
-Each checkpoint contains:
-
-- Paper Portfolio accounting state
-- open positions / stop / take-profit
-- mark prices
-- entry metadata for trade attribution
-- closed-trade journal
-- Trading Ledger
-- processed Paper order IDs
-- structured Evidence, including expired history
-- Paper loop configuration, running intent, cycle count, and last-cycle summary
-
-Mutating API calls checkpoint immediately; periodic autosave adds recovery coverage; graceful SIGINT/SIGTERM shutdown writes a final checkpoint.
+Each checkpoint contains Paper Portfolio accounting, open positions/protection, mark prices, entry metadata, closed trades, Ledger, processed Paper order IDs, structured Evidence, and loop/cycle state. This is enough for the next stateless scheduled invocation to resume from the prior cycle.
 
 ## Runtime health
 
-`/health` and `/api/trading/runtime/health` report:
-
-- strategy version and uptime
-- active persistence backend/location
-- save/restore counts and last persistence fault
-- autosave / restore state
-- loop cadence, cycle count, stale-loop detection, last-cycle errors
-- equity, cash, positions, daily P&L, drawdown, risk lock
-- trades, win rate, expectancy, profit factor, max drawdown
-
-A persistence fault or stale running loop degrades health.
+`/health` and `/api/trading/runtime/health` report strategy version, active persistence backend/location, save/restore counts and faults, loop/cycle telemetry, equity/cash/positions, daily P&L/drawdown/risk lock, and core performance metrics.
 
 ## Gateway routes
 
@@ -172,7 +183,7 @@ Evidence:
 - `DELETE /api/trading/evidence/:id`
 - `POST /api/trading/evidence/clear`
 
-Paper account / loop:
+Paper account / in-process loop:
 
 - `GET /api/trading/paper/state`
 - `GET /api/trading/paper/performance`
@@ -183,6 +194,10 @@ Paper account / loop:
 - `POST /api/trading/paper/loop/stop`
 - `POST /api/trading/paper/loop/cycle`
 
+Scheduled serverless worker:
+
+- `GET /api/trading-paper-cycle` (Bearer `CRON_SECRET` required)
+
 ## Validation
 
 ```bash
@@ -191,16 +206,16 @@ npm run test:trading
 npm run build
 ```
 
-Trading tests include strategy/risk/accounting tests, JSON checkpoint recovery, and mocked Supabase upsert/load behavior including service-role headers and missing-runtime handling.
+Trading tests cover strategy/risk/accounting, local checkpoint recovery, mocked Supabase upsert/load, and restart primitives. The Supabase lease SQL has also been smoke-tested for acquire, competing-owner rejection, and release behavior.
 
-## Remaining deployment boundary
+## Deployment boundary
 
-Remote persistence removes the host-disk state-loss problem, but the **Trading gateway itself still needs an always-on host** to run the 15-minute in-process Paper loop continuously. The Supabase database does not keep this Node process alive.
+The code path for scheduled 24/7 Paper observation is now implemented, but it is not considered operational until a production deployment has:
 
-Before Approval Live:
+1. the GitHub branch deployed as a Vercel project or equivalent function host
+2. Supabase and cron secrets configured server-side
+3. the scheduler activated at an allowed cadence
+4. a successful authenticated cycle observed in runtime logs
+5. subsequent Supabase checkpoint timestamps proving repeated persistence
 
-1. deploy the Paper gateway to an always-on/appropriately scheduled runtime
-2. inject `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as server secrets
-3. start the Paper loop and observe it unattended for multiple days
-4. inspect operational faults + expectancy / profit factor / max DD / calibration
-5. only then design Approval Live exchange authentication and order reconciliation
+Only after multi-day Paper data exists should Approval Live authentication/order reconciliation be added.
