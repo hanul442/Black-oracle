@@ -7,6 +7,7 @@ import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
 import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
+import { CommandCenterView } from './views/CommandCenterView';
 import { OracleFieldView } from './views/OracleFieldView';
 import { CasesView } from './views/CasesView';
 import { CouncilView } from './views/CouncilView';
@@ -48,9 +49,9 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (currentView !== 'watchlist') return;
-    if (sessionStorage.getItem('oracle_v2_booted') === 'true') return;
-    sessionStorage.setItem('oracle_v2_booted', 'true');
-    setCurrentView('oracle-field');
+    if (sessionStorage.getItem('oracle_v3_booted') === 'true') return;
+    sessionStorage.setItem('oracle_v3_booted', 'true');
+    setCurrentView('command');
   }, [currentView, setCurrentView]);
 
   useEffect(() => {
@@ -90,6 +91,9 @@ const AppContent: React.FC = () => {
       case 'login':
         view = <LoginView />;
         break;
+      case 'command':
+        view = <CommandCenterView />;
+        break;
       case 'oracle-field':
       case 'oracle-feed':
         view = <OracleFieldView />;
@@ -98,7 +102,7 @@ const AppContent: React.FC = () => {
         view = <CasesView />;
         break;
       case 'watchlist':
-        view = <WatchlistView />;
+        view = <CommandCenterView />;
         break;
       case 'forecast':
         view = <ForecastOrbitView />;
@@ -119,7 +123,7 @@ const AppContent: React.FC = () => {
         view = <SettingsView />;
         break;
       default:
-        view = <OracleFieldView />;
+        view = <CommandCenterView />;
     }
 
     return (
