@@ -1,8 +1,30 @@
 import { TRADING_STRATEGY_VERSION } from './config';
 import type { TradingLedgerEvent } from './types';
 
+const cloneEvent = (event: TradingLedgerEvent): TradingLedgerEvent => ({
+  ...event,
+  payload: { ...event.payload },
+});
+
 export class TradingLedger {
   private readonly events: TradingLedgerEvent[] = [];
+
+  static restore(events: TradingLedgerEvent[]) {
+    if (!Array.isArray(events)) throw new Error('Trading ledger checkpoint must be an array.');
+    const ledger = new TradingLedger();
+    const ordered = events.slice().sort((a, b) => a.sequence - b.sequence);
+    for (let index = 0; index < ordered.length; index += 1) {
+      const event = ordered[index];
+      if (!event || !event.id || !Number.isFinite(event.timestamp)) throw new Error('Trading ledger checkpoint contains an invalid event.');
+      const restored = Object.freeze({
+        ...cloneEvent(event),
+        sequence: index + 1,
+        payload: Object.freeze({ ...event.payload }),
+      }) as TradingLedgerEvent;
+      ledger.events.push(restored);
+    }
+    return ledger;
+  }
 
   append<T extends Record<string, unknown>>(
     type: TradingLedgerEvent['type'],
@@ -26,11 +48,12 @@ export class TradingLedger {
   }
 
   snapshot(): readonly TradingLedgerEvent[] {
-    return this.events.slice();
+    return this.events.map(cloneEvent);
   }
 
   latest(): TradingLedgerEvent | null {
-    return this.events[this.events.length - 1] ?? null;
+    const event = this.events[this.events.length - 1];
+    return event ? cloneEvent(event) : null;
   }
 
   get size() {
