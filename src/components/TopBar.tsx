@@ -18,7 +18,7 @@ export const TopBar: React.FC = () => {
   const [showFeeds, setShowFeeds] = useState(false);
 
   const navItems = [
-    { id: 'oracle-field', label: 'FIELD' },
+    { id: 'command', label: 'COMMAND' },
     { id: 'cases', label: 'CASES' },
     { id: 'forecast', label: 'FORECASTS' },
     { id: 'council', label: 'COUNCIL' },
@@ -49,10 +49,10 @@ export const TopBar: React.FC = () => {
   return (
     <header className="relative z-[70] flex h-14 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#05070A]/94 px-3 backdrop-blur-xl md:px-6">
       <div className="flex min-w-0 items-center gap-4 md:gap-8">
-        <button onClick={() => setCurrentView('oracle-field')} className="flex shrink-0 items-center gap-2.5">
+        <button onClick={() => setCurrentView('command')} className="flex shrink-0 items-center gap-2.5">
           <span className="relative flex h-5 w-5 items-center justify-center">
-            <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/40" />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6] shadow-[0_0_10px_rgba(67,217,230,0.7)]" />
+            <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/30" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6] shadow-[0_0_10px_rgba(67,217,230,0.55)]" />
           </span>
           <span className="font-mono text-[9px] font-medium uppercase tracking-[0.21em] text-[#E9EDF1] sm:text-[10px] md:text-[11px] md:tracking-[0.24em]">
             Black Oracle
@@ -62,9 +62,8 @@ export const TopBar: React.FC = () => {
         <nav className="hidden items-center lg:flex">
           {navItems.map((item) => {
             const active = currentView === item.id ||
-              (item.id === 'cases' && currentView === 'watchlist') ||
-              (item.id === 'council' && currentView === 'hypothesis-summary') ||
-              (item.id === 'oracle-field' && currentView === 'oracle-feed');
+              (item.id === 'command' && currentView === 'watchlist') ||
+              (item.id === 'council' && currentView === 'hypothesis-summary');
             return (
               <button
                 key={item.id}
