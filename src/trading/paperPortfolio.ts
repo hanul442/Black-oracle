@@ -1,5 +1,20 @@
 import type { PaperFill, PaperPortfolioSnapshot, PaperPosition } from './types';
 
+export interface PaperPortfolioState {
+  initialEquity: number;
+  cash: number;
+  dailyStartEquity: number;
+  realizedPnl: number;
+  feesPaid: number;
+  peakEquity: number;
+  positions: PaperPosition[];
+  equityCurve: Array<{ timestamp: number; equity: number }>;
+}
+
+const assertFiniteNonNegative = (value: number, label: string) => {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be finite and non-negative.`);
+};
+
 export class PaperPortfolio {
   private cash: number;
   private readonly initialEquity: number;
@@ -16,6 +31,55 @@ export class PaperPortfolio {
     this.initialEquity = initialCash;
     this.dailyStartEquity = initialCash;
     this.peakEquity = initialCash;
+  }
+
+  static restore(state: PaperPortfolioState) {
+    if (!state || !Number.isFinite(state.initialEquity) || state.initialEquity <= 0) {
+      throw new Error('Paper portfolio checkpoint initialEquity is invalid.');
+    }
+    assertFiniteNonNegative(state.cash, 'Paper portfolio checkpoint cash');
+    assertFiniteNonNegative(state.dailyStartEquity, 'Paper portfolio checkpoint dailyStartEquity');
+    assertFiniteNonNegative(state.feesPaid, 'Paper portfolio checkpoint feesPaid');
+    assertFiniteNonNegative(state.peakEquity, 'Paper portfolio checkpoint peakEquity');
+    if (!Number.isFinite(state.realizedPnl)) throw new Error('Paper portfolio checkpoint realizedPnl must be finite.');
+    if (!Array.isArray(state.positions) || !Array.isArray(state.equityCurve)) {
+      throw new Error('Paper portfolio checkpoint arrays are invalid.');
+    }
+
+    const portfolio = new PaperPortfolio(state.initialEquity);
+    portfolio.cash = state.cash;
+    portfolio.dailyStartEquity = state.dailyStartEquity;
+    portfolio.realizedPnl = state.realizedPnl;
+    portfolio.feesPaid = state.feesPaid;
+    portfolio.peakEquity = Math.max(state.initialEquity, state.peakEquity);
+
+    for (const position of state.positions) {
+      if (!/^KRW-[A-Z0-9]+$/.test(position.market)) throw new Error(`Invalid restored paper market: ${position.market}`);
+      if (!Number.isFinite(position.quantity) || position.quantity <= 0) throw new Error('Restored paper position quantity must be positive.');
+      portfolio.positions.set(position.market, { ...position });
+    }
+
+    for (const point of state.equityCurve.slice(-2_000)) {
+      if (!Number.isFinite(point.timestamp) || !Number.isFinite(point.equity) || point.equity < 0) {
+        throw new Error('Restored equity curve contains an invalid point.');
+      }
+      portfolio.equityCurve.push({ ...point });
+    }
+
+    return portfolio;
+  }
+
+  exportState(): PaperPortfolioState {
+    return {
+      initialEquity: this.initialEquity,
+      cash: this.cash,
+      dailyStartEquity: this.dailyStartEquity,
+      realizedPnl: this.realizedPnl,
+      feesPaid: this.feesPaid,
+      peakEquity: this.peakEquity,
+      positions: Array.from(this.positions.values()).map((position) => ({ ...position })),
+      equityCurve: this.equityCurve.slice(),
+    };
   }
 
   applyFill(fill: PaperFill): PaperPosition | null {
