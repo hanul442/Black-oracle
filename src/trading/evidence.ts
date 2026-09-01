@@ -137,6 +137,13 @@ export class TradingEvidenceStore {
     return { ...normalized, tags: normalized.tags?.slice() };
   }
 
+  replaceAll(evidence: TradingEvidence[]) {
+    if (!Array.isArray(evidence)) throw new Error('Evidence checkpoint must be an array.');
+    this.items.clear();
+    for (const item of evidence) this.upsert(item);
+    return this.list(undefined, true);
+  }
+
   remove(id: string) {
     return this.items.delete(id);
   }
