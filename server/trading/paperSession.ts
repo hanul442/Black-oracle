@@ -3,15 +3,23 @@ import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio } from '../../src/trading/paperPortfolio';
-import type { PaperFill } from '../../src/trading/types';
+import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
+import type { LiquiditySnapshot, PaperFill } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
+
+interface EntryMetadata {
+  fill: PaperFill;
+  oracleTradeScore: number;
+}
 
 export class PaperTradingSession {
   private portfolio: PaperPortfolio;
   private broker: PaperBroker;
   private ledger: TradingLedger;
   private readonly markPrices = new Map<string, number>();
+  private readonly entryMetadata = new Map<string, EntryMetadata>();
+  private readonly closedTrades: ClosedPaperTrade[] = [];
 
   constructor(initialCash = 1_000_000) {
     this.portfolio = new PaperPortfolio(initialCash);
@@ -24,22 +32,44 @@ export class PaperTradingSession {
     this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
     this.ledger = new TradingLedger();
     this.markPrices.clear();
+    this.entryMetadata.clear();
+    this.closedTrades.splice(0, this.closedTrades.length);
     return this.state();
   }
 
+  performance(timestamp = Date.now()) {
+    const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp);
+    return buildPaperPerformance(
+      this.closedTrades,
+      portfolio.equityCurve,
+      portfolio.initialEquity,
+      portfolio.equity,
+      portfolio.drawdownPct,
+    );
+  }
+
   state() {
+    const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices));
     return {
       mode: 'PAPER' as const,
       strategyVersion: TRADING_STRATEGY_VERSION,
-      portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices)),
+      portfolio,
+      performance: buildPaperPerformance(
+        this.closedTrades,
+        portfolio.equityCurve,
+        portfolio.initialEquity,
+        portfolio.equity,
+        portfolio.drawdownPct,
+      ),
+      closedTrades: this.closedTrades.slice(-100),
       ledger: this.ledger.snapshot(),
     };
   }
 
-  async step(market: string, eventScore?: number) {
+  async step(market: string, eventScore?: number, precomputedLiquidity?: LiquiditySnapshot) {
     const normalized = market.toUpperCase();
     const [liquidity, multiTimeframe] = await Promise.all([
-      getMarketLiquidity(normalized),
+      precomputedLiquidity ? Promise.resolve(precomputedLiquidity) : getMarketLiquidity(normalized),
       buildMarketMultiTimeframe(normalized, eventScore),
     ]);
     this.markPrices.set(normalized, liquidity.tradePrice);
@@ -60,16 +90,19 @@ export class PaperTradingSession {
       price: liquidity.tradePrice,
       liquidityScore: liquidity.score,
       multiTimeframeScore: multiTimeframe.oracleTradeScore,
+      eventScore: eventScore ?? null,
     });
     this.ledger.append('SIGNAL', {
       market: normalized,
       action: decision.action,
       side: decision.side,
       directionalScore: multiTimeframe.directionalScore,
+      oracleTradeScore: multiTimeframe.oracleTradeScore,
       confidence: decision.confidence,
     });
 
     let fill: PaperFill | null = null;
+    let closedTrade: ClosedPaperTrade | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
       const orderId = `paper-${Date.now()}-${normalized}-buy`;
       this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional });
@@ -83,6 +116,7 @@ export class PaperTradingSession {
         strategyVersion: TRADING_STRATEGY_VERSION,
       });
       this.portfolio.applyFill(fill);
+      this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
       if (decision.stopLossPrice && decision.takeProfitPrice) {
         this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       }
@@ -100,21 +134,59 @@ export class PaperTradingSession {
         timestamp: Date.now(),
         strategyVersion: TRADING_STRATEGY_VERSION,
       });
+
+      const entry = this.entryMetadata.get(normalized);
+      const costBasis = position.averageCost * fill.quantity;
+      const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
+      const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity;
+      const netPnl = fill.notional - fill.fee - costBasis;
+      closedTrade = {
+        id: `trade-${normalized}-${position.openedAt}-${fill.timestamp}`,
+        market: normalized,
+        openedAt: position.openedAt,
+        closedAt: fill.timestamp,
+        entryPrice: position.entryPrice,
+        exitPrice: fill.fillPrice,
+        quantity: fill.quantity,
+        grossPnl,
+        fees: entryFee + fill.fee,
+        netPnl,
+        returnPct: costBasis > 0 ? netPnl / costBasis : 0,
+        exitReason: decision.reasons[0] ?? 'Exit policy triggered.',
+        strategyVersion: TRADING_STRATEGY_VERSION,
+        entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
+        exitOracleTradeScore: multiTimeframe.oracleTradeScore,
+      };
+
       this.portfolio.applyFill(fill);
+      this.entryMetadata.delete(normalized);
+      this.closedTrades.push(closedTrade);
+      if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
       this.ledger.append('ORDER_FILLED', { ...fill });
-      this.ledger.append('POSITION_UPDATED', { market: normalized, position: null });
+      this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
     }
 
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now());
+    const performance = buildPaperPerformance(
+      this.closedTrades,
+      after.equityCurve,
+      after.initialEquity,
+      after.equity,
+      after.drawdownPct,
+    );
+
     return {
       success: true,
       mode: 'PAPER' as const,
       strategyVersion: TRADING_STRATEGY_VERSION,
       liquidity,
       multiTimeframe,
+      eventScore: eventScore ?? null,
       decision,
       fill,
+      closedTrade,
       portfolio: after,
+      performance,
       ledgerTail: this.ledger.snapshot().slice(-8),
     };
   }
