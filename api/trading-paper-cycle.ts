@@ -1,8 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { paperLoopController } from '../server/trading/paperLoop';
-import { claimTradingCycleLease, releaseTradingCycleLease } from '../server/trading/runtimeLease';
-import { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } from '../server/trading/runtimeState';
-
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
 
@@ -35,11 +30,26 @@ export default async function handler(request: any, response: any) {
   }
 
   const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
-  const owner = `scheduled-worker-${randomUUID()}`;
+  const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeRestored = false;
+  let releaseLease: null | ((runtimeId: string, owner: string) => Promise<boolean>) = null;
+  let saveCheckpoint: null | ((reason?: string) => Promise<any>) = null;
 
   try {
+    const [loopModule, leaseModule, runtimeModule] = await Promise.all([
+      import('../server/trading/paperLoop'),
+      import('../server/trading/runtimeLease'),
+      import('../server/trading/runtimeState'),
+    ]);
+
+    const { paperLoopController } = loopModule;
+    const { claimTradingCycleLease, releaseTradingCycleLease } = leaseModule;
+    const { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } = runtimeModule;
+
+    releaseLease = releaseTradingCycleLease;
+    saveCheckpoint = saveRuntimeCheckpoint;
+
     leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
     if (!leaseAcquired) {
       return json(response, 409, {
@@ -67,23 +77,26 @@ export default async function handler(request: any, response: any) {
       persistence: saved.persistence,
     });
   } catch (error) {
-    if (runtimeRestored) {
+    if (runtimeRestored && saveCheckpoint) {
       try {
-        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
+        await saveCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
       }
     }
 
+    const message = error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
+    console.error('Scheduled Paper cycle failed:', error);
     return json(response, 500, {
       success: false,
       runtimeId,
-      error: error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.',
+      phase: runtimeRestored ? 'cycle' : 'startup',
+      error: message,
     });
   } finally {
-    if (leaseAcquired) {
+    if (leaseAcquired && releaseLease) {
       try {
-        await releaseTradingCycleLease(runtimeId, owner);
+        await releaseLease(runtimeId, owner);
       } catch (releaseError) {
         console.error('Failed to release scheduled Paper cycle lease:', releaseError);
       }
