@@ -10,6 +10,7 @@ import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
 import { CommandCenterView } from './views/CommandCenterView';
 import { OracleFieldView } from './views/OracleFieldView';
+import { MobileNexusView } from './views/MobileNexusView';
 import { CasesView } from './views/CasesView';
 import { CouncilView } from './views/CouncilView';
 import { LedgerView } from './views/LedgerView';
@@ -78,6 +79,8 @@ const AppContent: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [currentView, addNotification, coreInterests, user?.uid]);
 
+  const isFieldView = currentView === 'oracle-field' || currentView === 'oracle-feed';
+
   const renderView = () => {
     let view: React.ReactNode;
     switch (currentView) {
@@ -89,7 +92,12 @@ const AppContent: React.FC = () => {
         break;
       case 'oracle-field':
       case 'oracle-feed':
-        view = <OracleFieldView />;
+        view = (
+          <>
+            <div className="h-full lg:hidden"><MobileNexusView /></div>
+            <div className="hidden h-full lg:block"><OracleFieldView /></div>
+          </>
+        );
         break;
       case 'cases':
         view = <CasesView />;
@@ -149,7 +157,7 @@ const AppContent: React.FC = () => {
 
         <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
           <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
-          {currentView !== 'watchlist' && <DetailBottomSheet />}
+          {currentView !== 'watchlist' && !isFieldView && <DetailBottomSheet />}
 
           <AnimatePresence>
             {workflowQuery && (
@@ -202,7 +210,7 @@ const AppContent: React.FC = () => {
             </AnimatePresence>
           </div>
 
-          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && (
+          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
