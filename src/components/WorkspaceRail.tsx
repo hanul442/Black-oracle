@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Activity,
   BookOpen,
   BrainCircuit,
   ChevronRight,
@@ -15,6 +16,7 @@ import { useAppContext } from '../store';
 
 const primary = [
   { id: 'command', label: 'Command', icon: LayoutDashboard },
+  { id: 'operations', label: 'Operations', icon: Activity },
   { id: 'cases', label: 'Cases', icon: BookOpen },
   { id: 'forecast', label: 'Forecasts', icon: GitBranch },
   { id: 'council', label: 'Council', icon: BrainCircuit },
