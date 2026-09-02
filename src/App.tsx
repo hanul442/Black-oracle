@@ -23,7 +23,6 @@ import { AlertTriangle, CheckCircle, Info, Search, XCircle } from 'lucide-react'
 const AppContent: React.FC = () => {
   const {
     currentView,
-    setCurrentView,
     addNotification,
     notifications,
     coreInterests,
@@ -46,13 +45,6 @@ const AppContent: React.FC = () => {
     setHasSeenTutorial(true);
     localStorage.setItem('oracle_tutorial_seen', 'true');
   };
-
-  useEffect(() => {
-    if (currentView !== 'watchlist') return;
-    if (sessionStorage.getItem('oracle_v3_booted') === 'true') return;
-    sessionStorage.setItem('oracle_v3_booted', 'true');
-    setCurrentView('command');
-  }, [currentView, setCurrentView]);
 
   useEffect(() => {
     if (currentView === 'login') return;
@@ -102,7 +94,7 @@ const AppContent: React.FC = () => {
         view = <CasesView />;
         break;
       case 'watchlist':
-        view = <CommandCenterView />;
+        view = <WatchlistView />;
         break;
       case 'forecast':
         view = <ForecastOrbitView />;
@@ -153,7 +145,7 @@ const AppContent: React.FC = () => {
 
       <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
         <div className="relative h-full w-full flex-1">{renderView()}</div>
-        <DetailBottomSheet />
+        {currentView !== 'watchlist' && <DetailBottomSheet />}
 
         <AnimatePresence>
           {workflowQuery && (
@@ -206,7 +198,7 @@ const AppContent: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        {currentView !== 'settings' && currentView !== 'login' && (
+        {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
