@@ -6,6 +6,7 @@ import { auth, useAppContext } from '../store';
 
 const viewLabel: Record<string, string> = {
   command: 'Command',
+  operations: 'Operations',
   cases: 'Cases',
   watchlist: 'Deep Case',
   forecast: 'Forecasts',
