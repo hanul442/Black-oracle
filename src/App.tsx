@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useAppContext } from './store';
 import { TopBar } from './components/TopBar';
+import { WorkspaceRail } from './components/WorkspaceRail';
 import { MobileNavigation } from './components/MobileNavigation';
 import { DetailBottomSheet } from './components/DetailBottomSheet';
 import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
@@ -122,10 +123,10 @@ const AppContent: React.FC = () => {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentView}
-          initial={{ opacity: 0, y: 4 }}
+          initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          exit={{ opacity: 0, y: -3 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="absolute inset-0 z-10"
         >
           {view}
@@ -135,108 +136,112 @@ const AppContent: React.FC = () => {
   };
 
   if (currentView === 'login') {
-    return <div className="h-screen w-full bg-[#05070A] text-[#E9EDF1]">{renderView()}</div>;
+    return <div className="h-[100dvh] w-full bg-[#05070A] text-[#E9EDF1]">{renderView()}</div>;
   }
 
   return (
-    <div className="relative flex h-screen w-full select-none flex-col overflow-hidden bg-[#05070A] text-[#E9EDF1]">
-      <TopBar />
-      {!hasSeenTutorial && <TutorialOverlay onComplete={completeTutorial} />}
+    <div className="relative flex h-[100dvh] w-full select-none overflow-hidden bg-[#05070A] text-[#E9EDF1]">
+      <WorkspaceRail />
 
-      <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
-        <div className="relative h-full w-full flex-1">{renderView()}</div>
-        {currentView !== 'watchlist' && <DetailBottomSheet />}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <TopBar />
+        {!hasSeenTutorial && <TutorialOverlay onComplete={completeTutorial} />}
 
-        <AnimatePresence>
-          {workflowQuery && (
-            <CollectionWorkflow
-              query={workflowQuery}
-              onClose={() => {
-                setWorkflowQuery(null);
-                setIsWorkflowMinimized(false);
-              }}
-              onComplete={() => {
-                setWorkflowQuery(null);
-                setIsWorkflowMinimized(false);
-              }}
-            />
-          )}
-        </AnimatePresence>
+        <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
+          <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
+          {currentView !== 'watchlist' && <DetailBottomSheet />}
 
-        {isWorkflowMinimized && workflowQuery && (
-          <button
-            onClick={() => setIsWorkflowMinimized(false)}
-            className="absolute left-1/2 top-4 z-[140] flex -translate-x-1/2 items-center gap-3 border border-[#43D9E6]/25 bg-[#090D12]/95 px-4 py-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#43D9E6] backdrop-blur-xl"
-          >
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#43D9E6]" />
-            Collecting: {workflowQuery.length > 24 ? `${workflowQuery.slice(0, 24)}…` : workflowQuery}
-          </button>
-        )}
-
-        <div className="pointer-events-none absolute right-4 top-4 z-[150] flex flex-col gap-2">
           <AnimatePresence>
-            {(notifications || []).map((notification: any) => (
-              <motion.div
-                key={notification.id}
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 12 }}
-                className="pointer-events-auto flex w-[min(320px,calc(100vw-32px))] items-start gap-3 border border-white/[0.08] bg-[#090D12]/95 p-3 shadow-2xl backdrop-blur-xl"
-              >
-                {notification.type === 'error' ? (
-                  <XCircle className="mt-0.5 h-4 w-4 text-[#D66565]" />
-                ) : notification.type === 'success' ? (
-                  <CheckCircle className="mt-0.5 h-4 w-4 text-[#43D9E6]" />
-                ) : notification.type === 'warning' ? (
-                  <AlertTriangle className="mt-0.5 h-4 w-4 text-[#C7A96B]" />
-                ) : (
-                  <Info className="mt-0.5 h-4 w-4 text-[#77818C]" />
-                )}
-                <span className="text-[11px] leading-relaxed text-[#D8DEE5]">{notification.message}</span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-
-        {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="pointer-events-none absolute bottom-[70px] left-1/2 z-40 w-[calc(100%-24px)] max-w-[620px] -translate-x-1/2 lg:bottom-7"
-          >
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const query = localQuery.trim();
-                if (!query) return;
-                setLocalQuery('');
-                setWorkflowQuery(query);
-              }}
-              className="pointer-events-auto flex items-center border border-white/[0.1] bg-[#090D12]/95 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-2xl focus-within:border-[#43D9E6]/35"
-            >
-              <span className="ml-3 mr-2 hidden font-mono text-[8px] uppercase tracking-[0.22em] text-[#43D9E6] sm:inline">Ask Oracle</span>
-              <input
-                type="text"
-                value={localQuery}
-                onChange={(event) => setLocalQuery(event.target.value)}
-                placeholder="Trace a signal, test a scenario, open a question…"
-                className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[13px] text-[#E9EDF1] outline-none placeholder:text-[#59636D] sm:text-sm"
+            {workflowQuery && (
+              <CollectionWorkflow
+                query={workflowQuery}
+                onClose={() => {
+                  setWorkflowQuery(null);
+                  setIsWorkflowMinimized(false);
+                }}
+                onComplete={() => {
+                  setWorkflowQuery(null);
+                  setIsWorkflowMinimized(false);
+                }}
               />
-              <button
-                type="submit"
-                className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/[0.08] bg-white/[0.025] text-[#9AA4AE] transition hover:border-[#43D9E6]/30 hover:text-[#E9EDF1]"
-              >
-                <Search className="h-4 w-4" />
-              </button>
-            </form>
-          </motion.div>
-        )}
-      </main>
+            )}
+          </AnimatePresence>
 
-      <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[8px] uppercase tracking-[0.12em] text-[#4F5963] lg:flex">
-        <span>{signals?.length || 0} signals · {hypotheses?.length || 0} hypotheses · {scenarios?.length || 0} scenarios</span>
-        <span className="text-[#43D9E6]/70">● field sync active</span>
-      </footer>
+          {isWorkflowMinimized && workflowQuery && (
+            <button
+              onClick={() => setIsWorkflowMinimized(false)}
+              className="absolute left-1/2 top-4 z-[140] flex -translate-x-1/2 items-center gap-3 border border-[#43D9E6]/20 bg-[#090D12]/95 px-4 py-2 font-mono text-[8px] uppercase tracking-[0.16em] text-[#77CDD5] backdrop-blur-xl"
+            >
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#43D9E6]" />
+              Collecting: {workflowQuery.length > 24 ? `${workflowQuery.slice(0, 24)}…` : workflowQuery}
+            </button>
+          )}
+
+          <div className="pointer-events-none absolute right-3 top-3 z-[150] flex flex-col gap-2 md:right-4 md:top-4">
+            <AnimatePresence>
+              {(notifications || []).map((notification: any) => (
+                <motion.div
+                  key={notification.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  className="pointer-events-auto flex w-[min(320px,calc(100vw-32px))] items-start gap-3 border border-white/[0.08] bg-[#090D12]/95 p-3 shadow-2xl backdrop-blur-xl"
+                >
+                  {notification.type === 'error' ? (
+                    <XCircle className="mt-0.5 h-4 w-4 text-[#D66565]" />
+                  ) : notification.type === 'success' ? (
+                    <CheckCircle className="mt-0.5 h-4 w-4 text-[#72B6A0]" />
+                  ) : notification.type === 'warning' ? (
+                    <AlertTriangle className="mt-0.5 h-4 w-4 text-[#C7A96B]" />
+                  ) : (
+                    <Info className="mt-0.5 h-4 w-4 text-[#77818C]" />
+                  )}
+                  <span className="text-[11px] leading-relaxed text-[#D8DEE5]">{notification.message}</span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
+          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="pointer-events-none absolute bottom-[70px] left-1/2 z-40 w-[calc(100%-24px)] max-w-[580px] -translate-x-1/2 lg:bottom-5"
+            >
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const query = localQuery.trim();
+                  if (!query) return;
+                  setLocalQuery('');
+                  setWorkflowQuery(query);
+                }}
+                className="pointer-events-auto flex items-center border border-white/[0.09] bg-[#080C11]/96 p-1.5 shadow-[0_16px_46px_rgba(0,0,0,0.42)] backdrop-blur-2xl focus-within:border-[#43D9E6]/28"
+              >
+                <span className="ml-3 mr-2 hidden font-mono text-[7px] uppercase tracking-[0.2em] text-[#70CAD2] sm:inline">Ask Oracle</span>
+                <input
+                  type="text"
+                  value={localQuery}
+                  onChange={(event) => setLocalQuery(event.target.value)}
+                  placeholder="Trace a signal, test a scenario, open a question…"
+                  className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[12px] text-[#E9EDF1] outline-none placeholder:text-[#4F5963] sm:text-[13px]"
+                />
+                <button
+                  type="submit"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/[0.07] bg-white/[0.02] text-[#7C8791] transition hover:border-[#43D9E6]/25 hover:text-[#DCE3E8]"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </button>
+              </form>
+            </motion.div>
+          )}
+        </main>
+
+        <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[7px] uppercase tracking-[0.12em] text-[#46515B] lg:flex">
+          <span>{signals?.length || 0} signals · {hypotheses?.length || 0} hypotheses · {scenarios?.length || 0} scenarios</span>
+          <span className="text-[#6CB3A0]">● field monitor active</span>
+        </footer>
+      </div>
 
       <MobileNavigation />
       <GlobalLoadingOverlay />
