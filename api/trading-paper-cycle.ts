@@ -1,3 +1,7 @@
+import { paperLoopController } from '../server/trading/paperLoop';
+import { claimTradingCycleLease, releaseTradingCycleLease } from '../server/trading/runtimeLease';
+import { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } from '../server/trading/runtimeState';
+
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
 
@@ -33,27 +37,8 @@ export default async function handler(request: any, response: any) {
   const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeRestored = false;
-  let releaseLease: null | ((runtimeId: string, owner: string) => Promise<boolean>) = null;
-  let saveCheckpoint: null | ((reason?: string) => Promise<any>) = null;
 
   try {
-    // Vercel emits the server-side TypeScript modules as ESM JavaScript files.
-    // Node's ESM resolver does not add extensions for dynamic imports, so use
-    // explicit .js specifiers here. TypeScript's bundler resolution maps these
-    // back to the .ts sources during type checking/build tracing.
-    const [loopModule, leaseModule, runtimeModule] = await Promise.all([
-      import('../server/trading/paperLoop.js'),
-      import('../server/trading/runtimeLease.js'),
-      import('../server/trading/runtimeState.js'),
-    ]);
-
-    const { paperLoopController } = loopModule;
-    const { claimTradingCycleLease, releaseTradingCycleLease } = leaseModule;
-    const { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } = runtimeModule;
-
-    releaseLease = releaseTradingCycleLease;
-    saveCheckpoint = saveRuntimeCheckpoint;
-
     leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
     if (!leaseAcquired) {
       return json(response, 409, {
@@ -81,9 +66,9 @@ export default async function handler(request: any, response: any) {
       persistence: saved.persistence,
     });
   } catch (error) {
-    if (runtimeRestored && saveCheckpoint) {
+    if (runtimeRestored) {
       try {
-        await saveCheckpoint('scheduled-paper-cycle-error');
+        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
       }
@@ -98,9 +83,9 @@ export default async function handler(request: any, response: any) {
       error: message,
     });
   } finally {
-    if (leaseAcquired && releaseLease) {
+    if (leaseAcquired) {
       try {
-        await releaseLease(runtimeId, owner);
+        await releaseTradingCycleLease(runtimeId, owner);
       } catch (releaseError) {
         console.error('Failed to release scheduled Paper cycle lease:', releaseError);
       }
