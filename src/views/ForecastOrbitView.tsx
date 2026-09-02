@@ -1,16 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowUpRight,
-  CheckCircle2,
   Crosshair,
   Eye,
   GitBranch,
-  Minus,
   Radar,
   ShieldAlert,
   Target,
-  TrendingUp,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAppContext } from '../store';
@@ -104,17 +102,17 @@ export const ForecastOrbitView: React.FC = () => {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-40 pt-6 text-[#E9EDF1] md:px-8 md:pb-28 md:pt-8">
+    <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-40 pt-5 text-[#E9EDF1] md:px-6 md:pb-28 md:pt-6 xl:px-8">
       <div className="mx-auto max-w-[1420px]">
-        <header className="mb-5 flex flex-col gap-5 border-b border-white/[0.06] pb-6 xl:flex-row xl:items-end xl:justify-between">
+        <header className="mb-4 flex flex-col gap-5 border-b border-white/[0.06] pb-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="mb-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.24em] text-[#C7A96B]">
+            <div className="mb-2 flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.22em] text-[#B89E69]">
               <GitBranch className="h-3.5 w-3.5" />
               Forecast operating view
             </div>
-            <h1 className="text-2xl font-medium tracking-[-0.04em] md:text-3xl">Scenario Forecasts</h1>
-            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#77818C]">
-              Compare modeled branches by probability, impact, and evidence pressure. The goal is not to pick a story — it is to see what can change the decision.
+            <h1 className="text-2xl font-medium tracking-[-0.04em] md:text-[28px]">Scenario Forecasts</h1>
+            <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-[#6F7A84] md:text-xs">
+              Read the transmission path first, then compare probability, impact, and evidence pressure. Every branch remains conditional.
             </p>
           </div>
 
@@ -126,13 +124,16 @@ export const ForecastOrbitView: React.FC = () => {
           </div>
         </header>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_360px]">
+        <ScenarioFlow
+          active={active}
+          hypothesis={activeHypothesis}
+          branches={sorted.filter((item) => !active || item.hypothesisId === active.hypothesisId).slice(0, 4)}
+          onSelect={activate}
+        />
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_360px]">
           <section className="border border-white/[0.07] bg-[#080C11]">
-            <SectionHeader
-              eyebrow="Probability stack"
-              title="Branch distribution"
-              detail={`${contested} contested`}
-            />
+            <SectionHeader eyebrow="Probability stack" title="Branch distribution" detail={`${contested} contested`} />
             <div className="p-3 md:p-4">
               {sorted.length ? (
                 <div className="space-y-2">
@@ -165,9 +166,7 @@ export const ForecastOrbitView: React.FC = () => {
                                 </>
                               )}
                             </div>
-                            <h2 className="line-clamp-2 text-[13px] font-medium leading-snug text-[#D7DDE3] md:text-sm">
-                              {item.title}
-                            </h2>
+                            <h2 className="line-clamp-2 text-[13px] font-medium leading-snug text-[#D7DDE3] md:text-sm">{item.title}</h2>
                           </div>
                           <div className="shrink-0 text-right">
                             <div className="text-xl font-light tabular-nums text-[#E8ECEF] md:text-2xl">{item.probability}%</div>
@@ -227,9 +226,7 @@ export const ForecastOrbitView: React.FC = () => {
                   <div className="border-b border-white/[0.06] pb-4">
                     <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#C7A96B]">ACTIVE BRANCH</div>
                     <h2 className="mt-2 text-base font-medium leading-snug text-[#E0E5EA]">{active.title}</h2>
-                    {activeHypothesis && (
-                      <p className="mt-2 text-[10px] leading-relaxed text-[#66717B]">Thesis: {activeHypothesis.title}</p>
-                    )}
+                    {activeHypothesis && <p className="mt-2 text-[10px] leading-relaxed text-[#66717B]">Thesis: {activeHypothesis.title}</p>}
                   </div>
 
                   <div className="grid grid-cols-3 gap-px border-b border-white/[0.06] bg-white/[0.04] py-px">
@@ -288,6 +285,83 @@ export const ForecastOrbitView: React.FC = () => {
   );
 };
 
+const ScenarioFlow = ({ active, hypothesis, branches, onSelect }: any) => (
+  <section className="border border-white/[0.07] bg-[#070B10]">
+    <div className="flex items-end justify-between gap-4 border-b border-white/[0.06] px-4 py-3">
+      <div>
+        <div className="font-mono text-[6px] uppercase tracking-[0.2em] text-[#4F5963]">Conditional transmission</div>
+        <div className="mt-1 text-sm font-medium text-[#CBD2D9]">Scenario Flow</div>
+      </div>
+      <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#46515B]">selected neighborhood</div>
+    </div>
+
+    {active ? (
+      <div className="overflow-x-auto p-3 md:p-4">
+        <div className="grid min-w-[860px] grid-cols-[170px_34px_190px_34px_270px_34px_190px] items-center gap-2">
+          <FlowNode label="Trigger" value={active.trigger} tone="cyan" />
+          <FlowArrow />
+          <FlowNode label="Thesis" value={hypothesis?.title || 'Linked thesis unavailable.'} />
+          <FlowArrow />
+
+          <div className="space-y-1.5">
+            {(branches?.length ? branches : [active]).map((branch: ForecastScenario) => {
+              const selected = branch.id === active.id;
+              const tail = branch.impact >= 70 && branch.probability <= 35;
+              return (
+                <button
+                  key={branch.id}
+                  onClick={() => onSelect(branch)}
+                  className={`flex w-full items-center gap-3 border px-3 py-2.5 text-left transition ${
+                    selected
+                      ? tail
+                        ? 'border-[#D66565]/40 bg-[#D66565]/[0.05]'
+                        : 'border-[#43D9E6]/30 bg-[#43D9E6]/[0.045]'
+                      : 'border-white/[0.055] bg-[#05080C] hover:border-white/[0.12]'
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tail ? 'bg-[#D66565]' : selected ? 'bg-[#43D9E6]' : 'bg-[#59636D]'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[10px] text-[#B9C2CA]">{branch.title}</span>
+                    <span className="mt-1 block font-mono text-[6px] uppercase tracking-[0.12em] text-[#4F5963]">{branch.probability}% · impact {branch.impact}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <FlowArrow />
+          <FlowNode label="Expected outcome" value={active.outcome} tone={active.impact >= 70 ? 'risk' : 'gold'} />
+        </div>
+      </div>
+    ) : (
+      <div className="p-8 text-center font-mono text-[7px] uppercase tracking-[0.16em] text-[#4F5963]">No active transmission path</div>
+    )}
+  </section>
+);
+
+const FlowNode = ({ label, value, tone }: any) => {
+  const toneClass = tone === 'cyan'
+    ? 'border-[#43D9E6]/24 bg-[#43D9E6]/[0.035]'
+    : tone === 'risk'
+      ? 'border-[#D66565]/25 bg-[#D66565]/[0.035]'
+      : tone === 'gold'
+        ? 'border-[#C7A96B]/24 bg-[#C7A96B]/[0.035]'
+        : 'border-white/[0.06] bg-[#05080C]';
+  return (
+    <div className={`min-h-[88px] border p-3 ${toneClass}`}>
+      <div className="font-mono text-[6px] uppercase tracking-[0.16em] text-[#4F5963]">{label}</div>
+      <div className="mt-2 line-clamp-3 text-[10px] leading-relaxed text-[#AEB7BF]">{value}</div>
+    </div>
+  );
+};
+
+const FlowArrow = () => (
+  <div className="flex items-center justify-center text-[#3F4952]">
+    <span className="h-px w-4 bg-white/[0.08]" />
+    <ArrowRight className="-ml-0.5 h-3 w-3" />
+  </div>
+);
+
 const RiskMatrix = ({ scenarios, active, leading, onSelect }: any) => (
   <div className="absolute inset-4">
     <div className="absolute inset-0 border-l border-b border-white/[0.08]">
@@ -299,12 +373,8 @@ const RiskMatrix = ({ scenarios, active, leading, onSelect }: any) => (
       ))}
     </div>
 
-    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 font-mono text-[7px] uppercase tracking-[0.17em] text-[#4F5963]">
-      Impact →
-    </div>
-    <div className="pointer-events-none absolute left-0 top-1/2 -translate-x-[42%] -translate-y-1/2 -rotate-90 font-mono text-[7px] uppercase tracking-[0.17em] text-[#4F5963]">
-      Probability →
-    </div>
+    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 font-mono text-[7px] uppercase tracking-[0.17em] text-[#4F5963]">Impact →</div>
+    <div className="pointer-events-none absolute left-0 top-1/2 -translate-x-[42%] -translate-y-1/2 -rotate-90 font-mono text-[7px] uppercase tracking-[0.17em] text-[#4F5963]">Probability →</div>
 
     <div className="pointer-events-none absolute left-[64%] top-[8%] font-mono text-[6px] uppercase tracking-[0.15em] text-[#D66565]/55">HIGH-CONVICTION RISK</div>
     <div className="pointer-events-none absolute left-[64%] bottom-[10%] font-mono text-[6px] uppercase tracking-[0.15em] text-[#C7A96B]/50">TAIL RISK</div>
@@ -340,9 +410,7 @@ const RiskMatrix = ({ scenarios, active, leading, onSelect }: any) => (
             }}
           >
             {item.probability}
-            {item.contradicting > 0 && (
-              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-[#05070A] bg-[#D66565]" />
-            )}
+            {item.contradicting > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-[#05070A] bg-[#D66565]" />}
           </span>
           {isActive && (
             <span className="absolute left-1/2 top-[calc(100%+7px)] w-28 -translate-x-1/2 text-center font-mono text-[6px] leading-relaxed text-[#8D97A1]">
@@ -357,9 +425,7 @@ const RiskMatrix = ({ scenarios, active, leading, onSelect }: any) => (
 
 const EvidenceBalance = ({ item }: { item: ForecastScenario }) => {
   const total = item.supporting + item.contradicting + item.neutral;
-  if (!total) {
-    return <div className="h-1.5 bg-white/[0.045]" />;
-  }
+  if (!total) return <div className="h-1.5 bg-white/[0.045]" />;
   const supportWidth = (item.supporting / total) * 100;
   const contradictWidth = (item.contradicting / total) * 100;
   const neutralWidth = 100 - supportWidth - contradictWidth;
