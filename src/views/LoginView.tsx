@@ -17,6 +17,13 @@ import {
 } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
 
+const developmentAccessAllowed = () => {
+  const hostname = window.location.hostname.toLowerCase();
+  return hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || (hostname.endsWith('.vercel.app') && hostname !== 'black-oracle.vercel.app');
+};
+
 export const LoginView: React.FC = () => {
   const { setCurrentView } = useAppContext();
   const [isSignUp, setIsSignUp] = useState(false);
@@ -82,8 +89,9 @@ export const LoginView: React.FC = () => {
         await createUserWithEmailAndPassword(auth, username, password);
         completeAccess();
       } else {
-        // Legacy local access path retained for compatibility with the existing app.
-        if (username === 'admin' && password === 'oracle') {
+        // Development shortcut is permitted only on local or protected Preview hosts.
+        // The stable production alias must always authenticate through Firebase.
+        if (developmentAccessAllowed() && username === 'admin' && password === 'oracle') {
           completeAccess();
           return;
         }
