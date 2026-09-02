@@ -9,6 +9,7 @@ import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
 import { CommandCenterView } from './views/CommandCenterView';
+import { OperationsView } from './views/OperationsView';
 import { OracleFieldView } from './views/OracleFieldView';
 import { MobileNexusView } from './views/MobileNexusView';
 import { CasesView } from './views/CasesView';
@@ -80,6 +81,7 @@ const AppContent: React.FC = () => {
   }, [currentView, addNotification, coreInterests, user?.uid]);
 
   const isFieldView = currentView === 'oracle-field' || currentView === 'oracle-feed';
+  const isOperationsView = currentView === 'operations';
 
   const renderView = () => {
     let view: React.ReactNode;
@@ -89,6 +91,9 @@ const AppContent: React.FC = () => {
         break;
       case 'command':
         view = <CommandCenterView />;
+        break;
+      case 'operations':
+        view = <OperationsView />;
         break;
       case 'oracle-field':
       case 'oracle-feed':
@@ -157,7 +162,7 @@ const AppContent: React.FC = () => {
 
         <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
           <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
-          {currentView !== 'watchlist' && !isFieldView && <DetailBottomSheet />}
+          {currentView !== 'watchlist' && !isFieldView && !isOperationsView && <DetailBottomSheet />}
 
           <AnimatePresence>
             {workflowQuery && (
@@ -210,7 +215,7 @@ const AppContent: React.FC = () => {
             </AnimatePresence>
           </div>
 
-          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && (
+          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && !isOperationsView && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
