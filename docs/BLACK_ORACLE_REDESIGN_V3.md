@@ -136,6 +136,10 @@ Large fixed canvases are replaced with selected-neighborhood or list equivalents
 - `MobileNexus`
 - `CommandPanel`
 
+## Merge gate
+
+The structural redesign is considered complete when Command, Cases, Forecasts, Council, Ledger, Deep Case, Login, Settings, Workspace Rail, and Mobile Nexus all build successfully. Remaining work after that gate is limited to real-device visual QA, spacing/copy polish, and defect fixes discovered during the logged-in Preview review.
+
 ## Migration rule
 
 The redesign must not change the trading engine, persistence, forecasting semantics, or safety gates. Presentation and navigation can change aggressively; decision logic remains isolated.
