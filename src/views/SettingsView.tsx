@@ -41,7 +41,7 @@ export const SettingsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('collection');
   const [isClearing, setIsClearing] = useState(false);
   const [clearProgress, setClearProgress] = useState(0);
-  const [selectedItemsToClear, setSelectedItemsToClear] = useState<Set<string>>(new Set());
+  const [selectedItemsToClear, setSelectedItemsToClear] = useState<Set<string>>(new Set<string>());
   const [isWipeConfirmed, setIsWipeConfirmed] = useState(false);
   const [syncTimeLeft, setSyncTimeLeft] = useState<number | null>(null);
 
@@ -115,13 +115,14 @@ export const SettingsView: React.FC = () => {
     setIsClearing(true);
     setClearProgress(0);
     try {
-      const items = Array.from(selectedItemsToClear).map((value) => {
+      const selectedIds: string[] = [...selectedItemsToClear];
+      const items = selectedIds.map((value: string) => {
         const [type, ...idParts] = value.split('-');
         return { type, id: idParts.join('-') };
       });
       await deleteSpecificItems(items, (progress: number) => setClearProgress(progress));
       setClearProgress(100);
-      setSelectedItemsToClear(new Set());
+      setSelectedItemsToClear(new Set<string>());
       window.setTimeout(() => setIsClearing(false), 600);
     } catch {
       setIsClearing(false);
@@ -325,7 +326,7 @@ export const SettingsView: React.FC = () => {
                             type="checkbox"
                             checked={checked}
                             onChange={(event) => {
-                              const next = new Set(selectedItemsToClear);
+                              const next = new Set<string>(selectedItemsToClear);
                               if (event.target.checked) next.add(key);
                               else next.delete(key);
                               setSelectedItemsToClear(next);
