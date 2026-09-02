@@ -1,10 +1,10 @@
 import React from 'react';
-import { BookOpen, BrainCircuit, GitBranch, Orbit, ScanLine } from 'lucide-react';
+import { BookOpen, BrainCircuit, GitBranch, Orbit, PanelsTopLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../store';
 
 const items = [
-  { id: 'oracle-field', label: 'FIELD', icon: ScanLine },
+  { id: 'command', label: 'COMMAND', icon: PanelsTopLeft },
   { id: 'cases', label: 'CASES', icon: BookOpen },
   { id: 'forecast', label: 'FORECAST', icon: Orbit },
   { id: 'council', label: 'COUNCIL', icon: BrainCircuit },
@@ -15,9 +15,8 @@ export const MobileNavigation: React.FC = () => {
   const { currentView, setCurrentView } = useAppContext() as any;
 
   const isActive = (id: string) => {
-    if (id === 'cases') return currentView === 'cases' || currentView === 'watchlist';
+    if (id === 'command') return currentView === 'command' || currentView === 'watchlist';
     if (id === 'council') return currentView === 'council' || currentView === 'hypothesis-summary';
-    if (id === 'oracle-field') return currentView === 'oracle-field' || currentView === 'oracle-feed';
     return currentView === id;
   };
 
