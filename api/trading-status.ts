@@ -34,7 +34,9 @@ export default async function handler(request: any, response: any) {
 
     const now = Date.now();
     const portfolio = checkpoint.session.portfolio;
-    const lastCurvePoint = portfolio.equityCurve.at(-1) ?? null;
+    const lastCurvePoint = portfolio.equityCurve.length
+      ? portfolio.equityCurve[portfolio.equityCurve.length - 1]
+      : null;
     const equity = lastCurvePoint?.equity ?? portfolio.initialEquity;
     const currentDrawdownPct = portfolio.peakEquity > 0
       ? Math.max(0, (portfolio.peakEquity - equity) / portfolio.peakEquity)
@@ -80,9 +82,13 @@ export default async function handler(request: any, response: any) {
       returnPct: trade.returnPct,
       fees: trade.fees,
       exitReason: trade.exitReason,
+      strategyVersion: trade.strategyVersion,
       entryOracleTradeScore: trade.entryOracleTradeScore,
       exitOracleTradeScore: trade.exitOracleTradeScore,
     }));
+    const lastClosedTrade = checkpoint.session.closedTrades.length
+      ? checkpoint.session.closedTrades[checkpoint.session.closedTrades.length - 1]
+      : null;
 
     return response.status(200).json({
       success: true,
@@ -90,7 +96,7 @@ export default async function handler(request: any, response: any) {
       status,
       now,
       mode: 'PAPER',
-      strategyVersion: recentTrades[0]?.strategyVersion ?? undefined,
+      strategyVersion: lastClosedTrade?.strategyVersion ?? null,
       checkpoint: {
         savedAt: checkpoint.savedAt,
         reason: checkpoint.reason,
