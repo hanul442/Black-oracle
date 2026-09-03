@@ -37,7 +37,7 @@ jobs:
         run: npm run test:trading
 
       - name: Serverless bundle smoke
-        run: npm run test:serverless-bundle
+        run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
 
       - name: Production build
         run: npm run build
