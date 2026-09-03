@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/trading-core-v0.1
+      - integration/black-oracle-v0.2
   pull_request:
     branches:
       - feat/oracle-field-v2
@@ -34,6 +35,9 @@ jobs:
 
       - name: Trading core tests
         run: npm run test:trading
+
+      - name: Serverless bundle smoke
+        run: npm run test:serverless-bundle
 
       - name: Production build
         run: npm run build
