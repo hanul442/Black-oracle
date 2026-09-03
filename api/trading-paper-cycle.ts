@@ -40,9 +40,9 @@ export default async function handler(request: any, response: any) {
 
   try {
     const [paperLoopModule, leaseModule, runtimeStateModule] = await Promise.all([
-      import('../server/trading/paperLoop.js'),
-      import('../server/trading/runtimeLease.js'),
-      import('../server/trading/runtimeState.js'),
+      import('../server/trading/paperLoop'),
+      import('../server/trading/runtimeLease'),
+      import('../server/trading/runtimeState'),
     ]);
 
     paperLoopController = paperLoopModule.paperLoopController;
