@@ -12,6 +12,7 @@
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts",
+    "test:serverless-bundle": "esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs",
     "smoke:trading": "tsx scripts/trading-smoke.ts"
   },
   "dependencies": {
@@ -20,7 +21,6 @@
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.5",
     "@types/d3-shape": "^3.1.8",
-    "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "d3-sankey": "^0.12.3",
