@@ -1,7 +1,3 @@
-import { paperLoopController } from '../server/trading/paperLoop';
-import { claimTradingCycleLease, releaseTradingCycleLease } from '../server/trading/runtimeLease';
-import { restoreRuntimeCheckpoint, saveRuntimeCheckpoint } from '../server/trading/runtimeState';
-
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
 
@@ -15,6 +11,9 @@ const isAuthorizedScheduler = (authorization: string | undefined) => {
 
   return accepted.some((secret) => secret === presented);
 };
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'GET') {
@@ -30,6 +29,33 @@ export default async function handler(request: any, response: any) {
     return json(response, 503, {
       success: false,
       error: 'Scheduled Paper cycles require TRADING_PERSISTENCE_BACKEND=supabase.',
+    });
+  }
+
+  let paperLoopController: any;
+  let claimTradingCycleLease: any;
+  let releaseTradingCycleLease: any;
+  let restoreRuntimeCheckpoint: any;
+  let saveRuntimeCheckpoint: any;
+
+  try {
+    const [paperLoopModule, leaseModule, runtimeStateModule] = await Promise.all([
+      import('../server/trading/paperLoop.js'),
+      import('../server/trading/runtimeLease.js'),
+      import('../server/trading/runtimeState.js'),
+    ]);
+
+    paperLoopController = paperLoopModule.paperLoopController;
+    claimTradingCycleLease = leaseModule.claimTradingCycleLease;
+    releaseTradingCycleLease = leaseModule.releaseTradingCycleLease;
+    restoreRuntimeCheckpoint = runtimeStateModule.restoreRuntimeCheckpoint;
+    saveRuntimeCheckpoint = runtimeStateModule.saveRuntimeCheckpoint;
+  } catch (error) {
+    console.error('Scheduled Paper cycle module initialization failed:', error);
+    return json(response, 500, {
+      success: false,
+      phase: 'startup-import',
+      error: errorMessage(error),
     });
   }
 
@@ -74,7 +100,7 @@ export default async function handler(request: any, response: any) {
       }
     }
 
-    const message = error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
+    const message = errorMessage(error);
     console.error('Scheduled Paper cycle failed:', error);
     return json(response, 500, {
       success: false,
