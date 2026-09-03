@@ -11,6 +11,9 @@ const isAuthorizedInternalCall = (authorization: string | undefined) => {
   return Boolean(secret && presented === secret);
 };
 
+const resolveOpenAIKey = () =>
+  process.env.OPENAI_API_KEY?.trim() || process.env.OPEN_AI_API?.trim() || '';
+
 const clampText = (value: unknown, max = 4_000) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 
@@ -201,8 +204,8 @@ export default async function handler(request: any, response: any) {
     return json(response, 401, { success: false, error: 'Unauthorized internal invocation.' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return json(response, 503, { success: false, error: 'OPENAI_API_KEY is not configured.' });
+  const apiKey = resolveOpenAIKey();
+  if (!apiKey) return json(response, 503, { success: false, error: 'OpenAI API key is not configured.' });
 
   const body = request.body && typeof request.body === 'object' ? request.body : {};
   const context = {
