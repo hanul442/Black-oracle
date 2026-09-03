@@ -17,6 +17,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const vercelAutomationBypassSecret = Deno.env.get("VERCEL_AUTOMATION_BYPASS_SECRET");
 
   if (!supabaseUrl || !serviceRoleKey) {
     return json({ success: false, error: "Supabase server credentials are unavailable." }, 500);
@@ -63,12 +64,18 @@ Deno.serve(async (req: Request) => {
   let downstreamError: string | null = null;
 
   try {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${serviceRoleKey}`,
+      accept: "application/json",
+    };
+
+    if (vercelAutomationBypassSecret) {
+      headers["x-vercel-protection-bypass"] = vercelAutomationBypassSecret;
+    }
+
     const response = await fetch(target.toString(), {
       method: "GET",
-      headers: {
-        authorization: `Bearer ${serviceRoleKey}`,
-        accept: "application/json",
-      },
+      headers,
       signal: controller.signal,
     });
 
