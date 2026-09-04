@@ -64,11 +64,22 @@ export default async function handler(request: any, response: any) {
     const expiredEvidence = checkpoint.evidence.length - activeEvidence.length;
 
     const decisionTape = (lastCycle?.markets ?? []).map((item) => ({
-      timestamp: lastCycle?.finishedAt ?? checkpoint.savedAt,
+      timestamp: item.timestamp ?? lastCycle?.finishedAt ?? checkpoint.savedAt,
       market: item.market,
       decision: item.decision,
+      regime: item.regime ?? null,
+      regimeConfidence: item.regimeConfidence ?? null,
       oracleTradeScore: item.oracleTradeScore,
-      eventScore: item.eventScore,
+      confidence: item.confidence ?? null,
+      strategyDisposition: item.strategyDisposition ?? null,
+      riskDisposition: item.riskDisposition ?? 'NOT_EVALUATED',
+      eventScore: item.eventScore ?? null,
+      evidenceActiveCount: item.evidenceActiveCount ?? 0,
+      evidenceContradictionCount: item.evidenceContradictionCount ?? 0,
+      evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+      primaryReason: item.primaryReason ?? null,
+      reasons: Array.isArray(item.reasons) ? item.reasons : [],
+      riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
     }));
 
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
@@ -116,6 +127,7 @@ export default async function handler(request: any, response: any) {
           entered: lastCycle.entered,
           exited: lastCycle.exited,
           held: lastCycle.held,
+          noTrade: lastCycle.noTrade ?? 0,
           errors: lastCycle.errors,
         } : null,
         ageMs: cycleAgeMs,
