@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "dev:trading": "tsx trading-server.ts",
+    "build": "esbuild server/trading/runtimeBundleEntry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/trading/runtime-bundle.mjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "preview": "vite preview",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts",
+    "smoke:trading": "tsx scripts/trading-smoke.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

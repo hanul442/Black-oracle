@@ -1,645 +1,479 @@
-import React, { useState, useEffect } from "react";
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Settings,
-  Server,
-  Database,
-  Shield,
-  Radio,
-  Key,
-  HardDrive,
-  Cpu,
-  Sliders,
-  Lock,
-  Target,
   Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Cpu,
+  Database,
   Info,
-} from "lucide-react";
-import { useAppContext, auth } from "../store";
+  Radio,
+  RefreshCw,
+  Settings,
+  Shield,
+  Sliders,
+  Trash2,
+} from 'lucide-react';
+import { auth, useAppContext } from '../store';
+
+type SettingsTab = 'collection' | 'engine' | 'security' | 'retention';
 
 export const SettingsView: React.FC = () => {
-  const { 
-    sources, signals, questions, hypotheses, scenarios,
-    coreInterests, 
-    setCoreInterests, 
-    addNotification, 
+  const {
+    sources,
+    signals,
+    questions,
+    hypotheses,
+    scenarios,
+    coreInterests,
+    setCoreInterests,
+    hypothesisThreshold,
+    setHypothesisThreshold,
+    reliabilityThreshold,
+    setReliabilityThreshold,
+    addNotification,
     clearAllData,
     deleteSpecificItems,
     isIngestingData,
     setIsIngestingData,
-    setCycleIndex 
+    setCycleIndex,
   } = useAppContext() as any;
 
-  // Add missing state for local settings
-  const [hypothesisThreshold, setHypothesisThreshold] = useState<number>(75);
-  const [reliabilityThreshold, setReliabilityThreshold] = useState<number>(60);
-  const [activeTab, setActiveTab] = useState<
-    "collection" | "nodes" | "security" | "retention"
-  >("collection");
+  const [activeTab, setActiveTab] = useState<SettingsTab>('collection');
   const [isClearing, setIsClearing] = useState(false);
   const [clearProgress, setClearProgress] = useState(0);
-  const [selectedItemsToClear, setSelectedItemsToClear] = useState<Set<string>>(new Set());
-
-  const [isDeepContextEnabled, setIsDeepContextEnabled] = useState(() => {
-    const val = localStorage.getItem("oracle_deep_ctx");
-    return val !== null ? val === "true" : true;
-  });
-  const [isHighFreqEnabled, setIsHighFreqEnabled] = useState(() => {
-    const val = localStorage.getItem("oracle_high_freq");
-    return val !== null ? val === "true" : true;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("oracle_deep_ctx", isDeepContextEnabled.toString());
-  }, [isDeepContextEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem("oracle_high_freq", isHighFreqEnabled.toString());
-  }, [isHighFreqEnabled]);
-
+  const [selectedItemsToClear, setSelectedItemsToClear] = useState<Set<string>>(new Set<string>());
   const [isWipeConfirmed, setIsWipeConfirmed] = useState(false);
   const [syncTimeLeft, setSyncTimeLeft] = useState<number | null>(null);
 
+  const [isDeepContextEnabled, setIsDeepContextEnabled] = useState(() => {
+    const value = localStorage.getItem('oracle_deep_ctx');
+    return value !== null ? value === 'true' : true;
+  });
+  const [isHighFreqEnabled, setIsHighFreqEnabled] = useState(() => {
+    const value = localStorage.getItem('oracle_high_freq');
+    return value !== null ? value === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('oracle_deep_ctx', isDeepContextEnabled.toString());
+  }, [isDeepContextEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('oracle_high_freq', isHighFreqEnabled.toString());
+  }, [isHighFreqEnabled]);
+
+  const allItems = useMemo(() => [
+    ...(sources || []).map((item: any) => ({ _internal_type: 'sources', typeLabel: 'Source', ...item })),
+    ...(signals || []).map((item: any) => ({ _internal_type: 'signals', typeLabel: 'Signal', ...item })),
+    ...(questions || []).map((item: any) => ({ _internal_type: 'questions', typeLabel: 'Question', ...item })),
+    ...(hypotheses || []).map((item: any) => ({ _internal_type: 'hypotheses', typeLabel: 'Hypothesis', ...item })),
+    ...(scenarios || []).map((item: any) => ({ _internal_type: 'scenarios', typeLabel: 'Scenario', ...item })),
+  ], [sources, signals, questions, hypotheses, scenarios]);
+
   const handleSyncProtocol = async () => {
     setIsIngestingData(true);
-    setCycleIndex(0); // COLLECTING
-    setSyncTimeLeft(12); // Estimated 12 seconds
-    
-    // Simulate process stages while waiting
-    const timer1 = setTimeout(() => setCycleIndex(1), 2000); // NORMALIZING
-    const timer2 = setTimeout(() => setCycleIndex(6), 4000); // EXTRACTING_SIGNALS
-    const timer3 = setTimeout(() => setCycleIndex(11), 7000); // SCENARIO_UPDATING
+    setCycleIndex(0);
+    setSyncTimeLeft(12);
 
-    const countdown = setInterval(() => {
-        setSyncTimeLeft((prev) => {
-           if (prev && prev > 0) return prev - 1;
-           return 0;
-        });
+    const stageTimers = [
+      window.setTimeout(() => setCycleIndex(1), 2000),
+      window.setTimeout(() => setCycleIndex(6), 4000),
+      window.setTimeout(() => setCycleIndex(11), 7000),
+    ];
+    const countdown = window.setInterval(() => {
+      setSyncTimeLeft((previous) => previous && previous > 0 ? previous - 1 : 0);
     }, 1000);
 
     try {
-      const resp = await fetch('/api/fetch-rss', { 
-        method: 'POST', 
+      const response = await fetch('/api/fetch-rss', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: (auth.currentUser as any)?.uid, coreInterests: coreInterests })
+        body: JSON.stringify({ userId: auth.currentUser?.uid, coreInterests }),
       });
-      const data = await resp.json();
+      const data = await response.json();
       if (data.success) {
-         addNotification(`수집 매개변수 동기화 및 수집 완료 (${data.sourcesAnalyzed}개 소스)`, 'success');
+        addNotification(`Field synchronized across ${data.sourcesAnalyzed || 0} sources.`, 'success');
       } else {
-         addNotification(`수집 실패: ${data.error}`, 'error');
+        addNotification(data.error || 'Field synchronization failed.', 'error');
       }
-    } catch (e) {
-      console.error(e);
-      addNotification("네트워크 오류 발생", "error");
+    } catch {
+      addNotification('Network error while synchronizing the field.', 'error');
     } finally {
-      clearInterval(countdown);
+      window.clearInterval(countdown);
+      stageTimers.forEach(window.clearTimeout);
       setSyncTimeLeft(null);
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
       setIsIngestingData(false);
       setCycleIndex(11);
-      setTimeout(() => setCycleIndex(-1), 1000);
+      window.setTimeout(() => setCycleIndex(-1), 1000);
     }
   };
 
+  const deleteSelected = async () => {
+    if (!selectedItemsToClear.size) return;
+    if (!window.confirm(`선택한 ${selectedItemsToClear.size}개의 데이터를 삭제하시겠습니까?`)) return;
+
+    setIsClearing(true);
+    setClearProgress(0);
+    try {
+      const selectedIds: string[] = [...selectedItemsToClear];
+      const items = selectedIds.map((value: string) => {
+        const [type, ...idParts] = value.split('-');
+        return { type, id: idParts.join('-') };
+      });
+      await deleteSpecificItems(items, (progress: number) => setClearProgress(progress));
+      setClearProgress(100);
+      setSelectedItemsToClear(new Set<string>());
+      window.setTimeout(() => setIsClearing(false), 600);
+    } catch {
+      setIsClearing(false);
+      addNotification('Selected data could not be deleted.', 'error');
+    }
+  };
+
+  const wipeAll = async () => {
+    if (!isWipeConfirmed) return;
+    if (!window.confirm('정말로 모든 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+
+    setIsClearing(true);
+    setClearProgress(0);
+    try {
+      await clearAllData((progress: number) => setClearProgress(progress));
+      setClearProgress(100);
+      setIsWipeConfirmed(false);
+      window.setTimeout(() => setIsClearing(false), 600);
+    } catch {
+      setIsClearing(false);
+      addNotification('Database wipe failed.', 'error');
+    }
+  };
+
+  const tabs: { id: SettingsTab; label: string; icon: any }[] = [
+    { id: 'collection', label: 'Collection', icon: Radio },
+    { id: 'engine', label: 'Engine', icon: Cpu },
+    { id: 'security', label: 'Access', icon: Shield },
+    { id: 'retention', label: 'Data', icon: Database },
+  ];
+
   return (
-    <div className="w-full h-full p-8 md:p-12 flex flex-col gap-10 bg-[#020510] overflow-y-auto custom-scrollbar relative z-10">
-      <header className="flex flex-col md:flex-row justify-between items-start border-b border-white/5 pb-6 shrink-0 gap-4">
-        <div>
-          <h1 className="text-3xl font-display text-white tracking-tight leading-none mb-2">
-            시스템 설정 (SYSTEM CONFIGURATION)
-          </h1>
-          <p className="font-mono text-[11px] text-gray-500 tracking-widest uppercase">
-            운영 매개변수 및 인텔리전스 엔진 구조
-          </p>
-        </div>
-      </header>
+    <div className="h-full overflow-y-auto bg-[#05070A] text-[#E9EDF1] custom-scrollbar">
+      {isClearing && <ClearOverlay progress={clearProgress} />}
 
-      {/* Full-screen popup for data deletion progress */}
-      {isClearing && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="w-[90%] max-w-md bg-[#0a0d1a] border border-red-500/30 p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-300">
-            {clearProgress < 100 ? (
-              <div className="w-12 h-12 rounded-full border-4 border-red-500 border-t-transparent animate-spin mb-2" />
-            ) : (
-             <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mb-2">
-                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-             </div>
-            )}
-            <div className="text-center">
-              <h3 className="text-xl font-display text-white mb-2">
-                {clearProgress < 100 ? "데이터베이스 포맷 중..." : "삭제 완료"}
-              </h3>
-              <p className="text-sm text-gray-400 font-mono">
-                {clearProgress < 100 ? "작업이 완료될 때까지 기다려 주세요..." : "선택한 모든 데이터가 안전하게 삭제되었습니다."}
-              </p>
+      <div className="mx-auto max-w-7xl px-4 pb-32 pt-6 md:px-8 md:pb-20 md:pt-8">
+        <header className="mb-6 flex flex-col gap-4 border-b border-white/[0.06] pb-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.22em] text-[#43D9E6]">
+              <Settings className="h-3.5 w-3.5" /> Operator configuration
             </div>
-            
-            <div className="w-full">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-mono text-red-400">
-                  진행 상태
-                </span>
-                <span className="text-xs font-mono text-red-400">
-                  {clearProgress}%
-                </span>
-              </div>
-              <div className="h-2 w-full bg-red-950 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-red-500 transition-all duration-300"
-                  style={{ width: `${clearProgress}%` }}
-                />
-              </div>
-            </div>
+            <h1 className="text-2xl font-medium tracking-[-0.03em]">System Settings</h1>
+            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#68727C]">
+              Configure collection, analytical thresholds, workspace modules, and retained intelligence without changing trading execution permissions.
+            </p>
           </div>
-        </div>
-      )}
+          <div className="grid grid-cols-3 gap-px border border-white/[0.06] bg-white/[0.05]">
+            <MiniMetric label="SOURCES" value={(sources || []).length} />
+            <MiniMetric label="CASES" value={(questions || []).length} />
+            <MiniMetric label="SCENARIOS" value={(scenarios || []).length} />
+          </div>
+        </header>
 
-      <div className="flex flex-col lg:flex-row gap-8 max-w-7xl">
-        {/* Lateral menu */}
-        <div className="w-full lg:w-64 flex flex-col gap-2 shrink-0">
-          <button
-            onClick={() => setActiveTab("collection")}
-            className={`flex items-center gap-3 px-5 py-4 ${activeTab === "collection" ? "bg-white/5 border-white/10 text-white shadow-lg" : "hover:bg-white/5 border-transparent text-gray-400"} border rounded-xl text-[13px] font-sans font-medium transition-colors relative overflow-hidden group`}
-          >
-            {activeTab === "collection" && (
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500 shadow-[0_0_10px_#06b6d4]" />
-            )}
-            <Radio
-              className={`w-4 h-4 ${activeTab === "collection" ? "text-cyan-400" : ""} group-hover:scale-110 transition-transform`}
-            />{" "}
-            수집 프로토콜
-          </button>
-          <button
-            onClick={() => setActiveTab("nodes")}
-            className={`flex items-center gap-3 px-5 py-4 ${activeTab === "nodes" ? "bg-white/5 border-white/10 text-white shadow-lg" : "hover:bg-white/5 border-transparent text-gray-400"} border rounded-xl text-[13px] font-sans transition-colors relative group`}
-          >
-            {activeTab === "nodes" && (
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 shadow-[0_0_10px_#3b82f6]" />
-            )}
-            <Cpu
-              className={`w-4 h-4 ${activeTab === "nodes" ? "text-blue-400" : ""} group-hover:scale-110 transition-transform`}
-            />{" "}
-            신경망 처리 노드
-          </button>
-          <button
-            onClick={() => setActiveTab("security")}
-            className={`flex items-center gap-3 px-5 py-4 ${activeTab === "security" ? "bg-white/5 border-white/10 text-white shadow-lg" : "hover:bg-white/5 border-transparent text-gray-400"} border rounded-xl text-[13px] font-sans transition-colors relative group`}
-          >
-            {activeTab === "security" && (
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_10px_#10b981]" />
-            )}
-            <Shield
-              className={`w-4 h-4 ${activeTab === "security" ? "text-emerald-400" : ""} group-hover:scale-110 transition-transform`}
-            />{" "}
-            접근 관리 및 방어
-          </button>
-          <button
-            onClick={() => setActiveTab("retention")}
-            className={`flex items-center gap-3 px-5 py-4 ${activeTab === "retention" ? "bg-white/5 border-white/10 text-white shadow-lg" : "hover:bg-white/5 border-transparent text-gray-400"} border rounded-xl text-[13px] font-sans transition-colors relative group`}
-          >
-            {activeTab === "retention" && (
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500 shadow-[0_0_10px_#8b5cf6]" />
-            )}
-            <Database
-              className={`w-4 h-4 ${activeTab === "retention" ? "text-violet-400" : ""} group-hover:scale-110 transition-transform`}
-            />{" "}
-            데이터 보존 정책
-          </button>
-        </div>
+        <div className="grid gap-4 lg:grid-cols-[210px_1fr]">
+          <nav className="grid grid-cols-4 gap-px self-start border border-white/[0.07] bg-white/[0.05] lg:grid-cols-1">
+            {tabs.map(({ id, label, icon: Icon }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex min-h-[52px] items-center justify-center gap-2 bg-[#080C11] px-3 font-mono text-[7px] uppercase tracking-[0.13em] transition lg:justify-start ${active ? 'text-[#DCE2E8]' : 'text-[#59636D] hover:text-[#AEB7C0]'}`}
+                >
+                  <Icon className={`h-3.5 w-3.5 ${active ? 'text-[#43D9E6]' : ''}`} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
 
-        {/* Main Config Area */}
-        <div className="flex-1 flex flex-col gap-6">
-          {activeTab === "collection" && (
-            <>
-              <div className="bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden flex flex-col shadow-2xl">
-                <div className="p-8 flex-1">
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-center gap-3">
-                      <Sliders className="w-5 h-5 text-gray-400" />
-                      <h2 className="text-xl font-display text-white font-medium tracking-wide">
-                        핵심 수집 규칙 (Core Directives)
-                      </h2>
-                    </div>
-                    <div className="px-3 py-1 bg-cyan-950/30 rounded text-[9px] font-mono text-cyan-400 border border-cyan-900/50 uppercase tracking-widest flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />{" "}
-                      활성 노드 (Active)
-                    </div>
-                  </div>
-                  <p className="text-[13px] text-gray-400 font-sans mb-8 leading-relaxed">
-                    오라클이 자율적으로 모니터링할 주요 의미론적 영역을
-                    정의합니다. 항목을 쉼표로 구분하여 입력하면 시스템의 정보
-                    수집 휴리스틱이 재배열됩니다.
+          <div className="min-w-0">
+            {activeTab === 'collection' && (
+              <div className="grid gap-4">
+                <Panel title="Collection directives" icon={Radio} note={isIngestingData ? 'SYNCING' : 'READY'}>
+                  <p className="mb-5 max-w-3xl text-[11px] leading-relaxed text-[#68727C]">
+                    Define the semantic domains the collection workflow should prioritize. Separate topics with commas.
                   </p>
-
                   <textarea
                     value={coreInterests}
-                    onChange={(e) => setCoreInterests(e.target.value)}
-                    className="w-full bg-[#0a0d1a]/50 border border-white/5 rounded-xl p-5 text-gray-200 font-sans text-sm focus:outline-none focus:border-cyan-500/50 transition-colors h-32 resize-none shadow-inner"
-                    placeholder="예: 지정학, 반도체 공급망, 차세대 인공지능, 에너지 기후 동향 등"
+                    onChange={(event) => setCoreInterests(event.target.value)}
+                    className="h-28 w-full resize-none border border-white/[0.08] bg-[#05070A] p-4 text-[12px] leading-relaxed text-[#CBD2D9] outline-none placeholder:text-[#46505A] focus:border-[#43D9E6]/35"
+                    placeholder="Artificial Intelligence, Semiconductor, Global Macro"
                   />
-                </div>
-
-                <div className="px-8 py-5 border-t border-white/5 bg-[#050814]/80 flex justify-between items-center">
-                  <span className="text-[10px] font-mono text-cyan-500 tracking-widest uppercase flex items-center gap-2">
-                    {isIngestingData ? "상태: 동기화 진행 중... (Syncing)" : "상태: 동기화 대기 중 (Pending)"}
-                    {isIngestingData && syncTimeLeft !== null && (
-                      <span className="text-cyan-300">
-                        (예상 남은 시간: {syncTimeLeft}초)
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    onClick={handleSyncProtocol}
-                    disabled={isIngestingData}
-                    className="bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-800 text-cyan-300 text-[10px] font-mono px-6 py-2.5 rounded-lg transition-all shadow-lg uppercase tracking-widest flex items-center gap-2 font-bold disabled:opacity-50"
-                  >
-                    <Radio className={`w-3 h-3 ${isIngestingData ? 'animate-pulse' : ''}`} /> {isIngestingData ? '동기화 중...' : '프로토콜 동기화'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden flex flex-col relative group">
-                <div className="p-8 flex-1">
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-center gap-3">
-                      <Target className="w-5 h-5 text-gray-400" />
-                      <h2 className="text-xl font-display text-gray-300 font-medium tracking-wide">
-                        예측 신뢰도 설정 (Confidence)
-                      </h2>
+                  <div className="mt-4 flex flex-col gap-3 border-t border-white/[0.05] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="font-mono text-[7px] uppercase tracking-[0.13em] text-[#59636D]">
+                      {isIngestingData && syncTimeLeft !== null ? `estimated ${syncTimeLeft}s remaining` : 'manual synchronization available'}
                     </div>
-                    <div className="px-3 py-1 bg-cyan-950/20 rounded text-[9px] font-mono text-cyan-500 border border-cyan-900/40 uppercase tracking-widest flex items-center gap-2">
-                      사용자 정의 활성
-                    </div>
-                  </div>
-
-                  <p className="text-[13px] text-gray-500 font-sans mb-8 leading-relaxed">
-                    자동화된 시나리오 생성 및 인과망 확장에 필요한 최소 확률
-                    한계치를 설정합니다. 이 값을 수정하면 시스템의 근본적인 위험
-                    수용도(Risk Tolerance)가 변경됩니다.
-                  </p>
-
-                  <div className="flex flex-col gap-6">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-[12px] font-sans text-gray-400 font-medium">
-                          가설 생성 트리거 한계선
-                        </span>
-                        <span className="text-[11px] font-mono text-cyan-400 tracking-widest">
-                          {hypothesisThreshold.toFixed(1)}%
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={hypothesisThreshold}
-                        onChange={(e) =>
-                          setHypothesisThreshold(Number(e.target.value))
-                        }
-                        className="w-full h-1 bg-gray-900 rounded-full appearance-none outline-none focus:outline-none cursor-pointer accent-cyan-500 transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-[12px] font-sans text-gray-400 font-medium">
-                          데이터 소스 최소 신뢰 필터
-                        </span>
-                        <span className="text-[11px] font-mono text-blue-400 tracking-widest">
-                          {reliabilityThreshold.toFixed(1)}%
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={reliabilityThreshold}
-                        onChange={(e) =>
-                          setReliabilityThreshold(Number(e.target.value))
-                        }
-                        className="w-full h-1 bg-gray-900 rounded-full appearance-none outline-none focus:outline-none cursor-pointer accent-blue-500 transition-all"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === "nodes" && (
-            <div className="bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-8 shadow-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                <Cpu className="w-5 h-5 text-gray-400" />
-                <h2 className="text-xl font-display text-white font-medium tracking-wide">
-                  신경망 처리 노드 (Neural Nodes)
-                </h2>
-              </div>
-              <p className="text-[13px] text-gray-400 font-sans mb-8 leading-relaxed">
-                현재 연결된 글로벌 인텔리전스 노드 및 LLM 프로세서의 상태를
-                확인합니다.
-              </p>
-              <div className="space-y-4">
-                {[
-                  "Gemini 1.5 Pro",
-                  "Gemini Flash",
-                  "Semantic Search Engine",
-                ].map((node, i) => (
-                  <div
-                    key={i}
-                    className="flex justify-between items-center p-4 bg-white/5 rounded-lg border border-white/5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-sm font-sans text-gray-300">
-                        {node}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">
-                      Active
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "security" && (
-            <div className="bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-8 shadow-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                <Shield className="w-5 h-5 text-emerald-400" />
-                <h2 className="text-xl font-display text-white font-medium tracking-wide">
-                  접근 관리 및 방어 (Security & Access)
-                </h2>
-              </div>
-              <p className="text-[13px] text-gray-400 font-sans mb-8 leading-relaxed">
-                시스템의 보안 강도 및 엔드 투 엔드 암호화 키를 관리합니다.
-              </p>
-              <div className="p-4 bg-emerald-950/20 border border-emerald-900/30 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-sans text-gray-300">
-                    엔드 투 엔드 암호화 (E2EE)
-                  </span>
-                  <Lock className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-xs text-gray-500">
-                  모든 분석 데이터와 수집된 인텔리전스는 AES-256 규격으로
-                  암호화됩니다.
-                </p>
-              </div>
-
-              <div className="mt-8 pt-8 border-t border-white/5">
-                <div className="flex items-center gap-3 mb-4">
-                  <Sliders className="w-5 h-5 text-gray-400" />
-                  <h3 className="text-lg font-display text-white tracking-wide">
-                    사용자 인터페이스 (UI Config)
-                  </h3>
-                </div>
-                <button
-                  onClick={() => {
-                    localStorage.removeItem("oracle_tutorial_seen");
-                    addNotification(
-                      "튜토리얼 상태가 초기화되었습니다. 새로고침 시 나타납니다.",
-                      "success",
-                    );
-                  }}
-                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-[12px] px-6 py-2.5 rounded-lg transition-all"
-                >
-                  초기 튜토리얼 다시 보기
-                </button>
-              </div>
-
-              <div className="mt-8 pt-8 border-t border-white/5">
-                <div className="flex items-center gap-3 mb-4">
-                  <Cpu className="w-5 h-5 text-violet-400" />
-                  <h3 className="text-lg font-display text-white tracking-wide">
-                    고도화된 예측 모델 앙상블 (Advanced Modules)
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div
-                    className={`p-5 rounded-xl border transition-all ${isDeepContextEnabled ? "border-violet-500 bg-violet-900/20" : "border-white/10 bg-white/5"}`}
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="font-bold text-white flex items-center gap-2">
-                        <Database className="w-4 h-4 text-violet-400" /> 1. LLM
-                        자율 추론 (Semantic Search)
-                      </div>
-                      <button
-                        onClick={() =>
-                          setIsDeepContextEnabled(!isDeepContextEnabled)
-                        }
-                        className={`w-10 h-5 rounded-full relative transition-colors ${isDeepContextEnabled ? "bg-violet-600" : "bg-gray-700"}`}
-                      >
-                        <div
-                          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isDeepContextEnabled ? "translate-x-5" : "translate-x-0"}`}
-                        />
-                      </button>
-                    </div>
-                    <p className="text-[12px] text-gray-400 leading-relaxed">
-                      입력된 단일 데이터에서 그치지 않고, 자율 에이전트가 연관된
-                      백그라운드 웹 문서를 병렬 검색하여 숨겨진 의도와
-                      내러티브를 자동 생성합니다.
-                    </p>
-                  </div>
-
-                  <div
-                    className={`p-5 rounded-xl border transition-all ${isHighFreqEnabled ? "border-cyan-500 bg-cyan-900/20" : "border-white/10 bg-white/5"}`}
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="font-bold text-white flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-cyan-400" /> 2. 시계열
-                        확산망 (Time-Series Vector)
-                      </div>
-                      <button
-                        onClick={() => setIsHighFreqEnabled(!isHighFreqEnabled)}
-                        className={`w-10 h-5 rounded-full relative transition-colors ${isHighFreqEnabled ? "bg-cyan-600" : "bg-gray-700"}`}
-                      >
-                        <div
-                          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isHighFreqEnabled ? "translate-x-5" : "translate-x-0"}`}
-                        />
-                      </button>
-                    </div>
-                    <p className="text-[12px] text-gray-400 leading-relaxed">
-                      과거 데이터 웨이트를 반영하여 시계열 예측 가중치를
-                      부여합니다. 단발성 이슈가 아닌 장기 트렌드를 딥 다이브에
-                      통합 반영합니다.
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg flex items-center gap-2 text-xs text-blue-300">
-                  <Info className="w-4 h-4" /> 두 모듈을 활성화하면 데이터 수집
-                  및 질문/가설 생성 단계(워크플로우)에서 앙상블 분석을 거치게
-                  되어 시간이 +10초 소요됩니다.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "retention" && (
-            <div className="bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-8 shadow-2xl flex flex-col gap-8">
-              <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <Database className="w-5 h-5 text-violet-400" />
-                  <h2 className="text-xl font-display text-white font-medium tracking-wide">
-                    데이터 보존 정책 (Retention)
-                  </h2>
-                </div>
-                <p className="text-[13px] text-gray-400 font-sans mb-8 leading-relaxed">
-                  수집된 정보의 스토리지 및 보존 주기를 구성합니다.
-                </p>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm text-gray-300 mb-2">
-                      <span>자동 파기 주기 (Auto-purge)</span>
-                      <span className="font-mono text-violet-400">90일</span>
-                    </div>
-                    <div className="w-full h-1 bg-gray-900 rounded-full">
-                      <div className="h-full bg-violet-500 w-[60%] rounded-full"></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm text-gray-300 mb-2">
-                      <span>현재 스토리지 용량 (Storage Usage)</span>
-                      <span className="font-mono text-violet-400">
-                        42% (2.1GB/5GB)
-                      </span>
-                    </div>
-                    <div className="w-full h-1 bg-gray-900 rounded-full">
-                      <div className="h-full bg-violet-500 w-[42%] rounded-full"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-red-950/20 border border-red-900/30 rounded-xl p-6">
-                <h3 className="text-red-400 font-medium mb-2">
-                  위험 구역 (Danger Zone)
-                </h3>
-                <p className="text-xs text-gray-400 mb-4">
-                  현재 데이터베이스에 저장된 모든 소스, 신호, 가설, 시나리오를
-                  영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다.
-                </p>
-                <div className="flex flex-col gap-4">
-                  <div className="text-sm text-gray-400 mb-2 font-mono">
-                    개별 데이터 선택 삭제
-                  </div>
-                  <div className="max-h-60 overflow-y-auto border border-white/10 rounded-lg bg-black/20 p-2 flex flex-col gap-1 custom-scrollbar">
-
-                      {(() => {
-                        const allItems = [
-                          ...(sources || []).map((s: any) => ({ _internal_type: 'sources', typeLabel: 'Source', ...s })),
-                          ...(signals || []).map((s: any) => ({ _internal_type: 'signals', typeLabel: 'Signal', ...s })),
-                          ...(questions || []).map((q: any) => ({ _internal_type: 'questions', typeLabel: 'Question', ...q })),
-                          ...(hypotheses || []).map((h: any) => ({ _internal_type: 'hypotheses', typeLabel: 'Hypothesis', ...h })),
-                          ...(scenarios || []).map((s: any) => ({ _internal_type: 'scenarios', typeLabel: 'Scenario', ...s })),
-                        ];
-                        if (allItems.length === 0) {
-                          return <div className="text-gray-500 text-xs p-2 text-center">데이터가 없습니다.</div>;
-                        }
-                        return allItems.map((item) => (
-                          <label key={`${item._internal_type}-${item.id}`} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              checked={selectedItemsToClear.has(`${item._internal_type}-${item.id}`)}
-                              onChange={(e) => {
-                                const newSet = new Set(selectedItemsToClear);
-                                if (e.target.checked) newSet.add(`${item._internal_type}-${item.id}`);
-                                else newSet.delete(`${item._internal_type}-${item.id}`);
-                                setSelectedItemsToClear(newSet);
-                              }}
-                              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 accent-red-600"
-                            />
-                            <div className="flex flex-col overflow-hidden">
-                              <div className="text-xs text-gray-300 truncate font-sans">
-                                {item.title || item.text || item.description || item.id}
-                              </div>
-                              <div className="text-[10px] text-gray-600 font-mono">
-                                {item.typeLabel}
-                              </div>
-                            </div>
-                          </label>
-                        ));
-                      })()}
-                    </div>
-                    {selectedItemsToClear.size > 0 && (
-                      <button
-                        disabled={isClearing}
-                        onClick={async () => {
-                          if (!window.confirm(`선택한 ${selectedItemsToClear.size}개의 데이터를 삭제하시겠습니까?`)) return;
-                          setIsClearing(true);
-                          setClearProgress(0);
-                          try {
-                            const itemsToDelete = Array.from(selectedItemsToClear).map((val: string) => {
-                              const splitValues = val.split('-');
-                              const type = splitValues[0];
-                              const id = splitValues.slice(1).join('-'); // re-join in case id has hyphen
-                              return { type, id };
-                            });
-                            await deleteSpecificItems(itemsToDelete, (progress: number) => {
-                              setClearProgress(progress);
-                            });
-                            setClearProgress(100);
-                            setSelectedItemsToClear(new Set());
-                            setTimeout(() => {
-                              setIsClearing(false);
-                            }, 600);
-                          } catch (err) {
-                            setIsClearing(false);
-                          }
-                        }}
-                        className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30 px-6 py-2 rounded-lg text-sm transition-colors w-full sm:w-auto disabled:opacity-50 flex items-center gap-2 justify-center self-start"
-                      >
-                        선택한 {selectedItemsToClear.size}개 데이터 삭제
-                      </button>
-                    )}
-
-                    <div className="w-full h-px bg-white/10 my-4" />
-
-                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-red-950/30 rounded-lg border border-red-900/50 w-full sm:w-auto mt-2">
-                        <input 
-                            type="checkbox" 
-                            checked={isWipeConfirmed} 
-                            onChange={(e) => setIsWipeConfirmed(e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-600 outline-none text-red-500 accent-red-600 bg-gray-700" 
-                        />
-                        <span className="text-sm text-red-300">
-                            모든 정보 삭제 위험성을 인지하였으며 일괄 삭제(Wipe All)에 동의합니다.
-                        </span>
-                    </label>
-
                     <button
-                      disabled={isClearing || !isWipeConfirmed}
-                      onClick={async () => {
-                        if (!window.confirm("정말로 모든 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
-                        setIsClearing(true);
-                        setClearProgress(0);
-                        try {
-                          await clearAllData((progress: number) => {
-                            setClearProgress(progress);
-                          });
-                          setClearProgress(100);
-                          setIsWipeConfirmed(false);
-                          setTimeout(() => {
-                            setIsClearing(false);
-                          }, 600);
-                        } catch (err) {
-                          setIsClearing(false);
-                        }
-                      }}
-                      className="bg-red-500/20 hover:bg-red-500/30 text-red-500 border border-red-500/30 px-6 py-2 rounded-lg text-sm transition-colors w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 justify-center self-start"
+                      onClick={handleSyncProtocol}
+                      disabled={isIngestingData}
+                      className="flex h-10 items-center justify-center gap-2 border border-[#43D9E6]/25 bg-[#43D9E6]/[0.045] px-4 font-mono text-[7px] uppercase tracking-[0.15em] text-[#BCEFF3] transition hover:bg-[#43D9E6]/[0.075] disabled:opacity-45"
                     >
-                      모든 데이터베이스 초기화 (Wipe All Data)
+                      <RefreshCw className={`h-3.5 w-3.5 ${isIngestingData ? 'animate-spin' : ''}`} />
+                      {isIngestingData ? 'Synchronizing' : 'Synchronize field'}
                     </button>
                   </div>
+                </Panel>
+
+                <Panel title="Decision thresholds" icon={Sliders} note="LIVE STORE VALUES">
+                  <Threshold
+                    label="Hypothesis formation threshold"
+                    value={Number(hypothesisThreshold ?? 65)}
+                    onChange={(value) => setHypothesisThreshold(value)}
+                    accent="#43D9E6"
+                  />
+                  <Threshold
+                    label="Minimum source reliability"
+                    value={Number(reliabilityThreshold ?? 40)}
+                    onChange={(value) => setReliabilityThreshold(value)}
+                    accent="#C7A96B"
+                  />
+                </Panel>
               </div>
-            </div>
-          )}
+            )}
+
+            {activeTab === 'engine' && (
+              <div className="grid gap-4">
+                <Panel title="Analytical modules" icon={Cpu} note="WORKSPACE FLAGS">
+                  <p className="mb-5 max-w-3xl text-[11px] leading-relaxed text-[#68727C]">
+                    These toggles are workspace preferences stored locally. They do not by themselves prove that a remote model or data source is available.
+                  </p>
+                  <div className="grid gap-px bg-white/[0.05] md:grid-cols-2">
+                    <ModuleToggle
+                      icon={Database}
+                      title="Deep context"
+                      description="Permit collection workflows to request broader contextual analysis when supported by the configured backend."
+                      enabled={isDeepContextEnabled}
+                      onToggle={() => setIsDeepContextEnabled((value) => !value)}
+                      tone="#9B8AFB"
+                    />
+                    <ModuleToggle
+                      icon={Activity}
+                      title="Time-series emphasis"
+                      description="Bias downstream interpretation toward persistence and longitudinal evidence when supported by available data."
+                      enabled={isHighFreqEnabled}
+                      onToggle={() => setIsHighFreqEnabled((value) => !value)}
+                      tone="#43D9E6"
+                    />
+                  </div>
+                </Panel>
+
+                <Panel title="Current model objects" icon={Activity} note="OBSERVED IN CLIENT STATE">
+                  <div className="grid gap-px bg-white/[0.05] sm:grid-cols-2 xl:grid-cols-4">
+                    <ObjectCount label="Signals" value={(signals || []).length} />
+                    <ObjectCount label="Hypotheses" value={(hypotheses || []).length} />
+                    <ObjectCount label="Scenarios" value={(scenarios || []).length} />
+                    <ObjectCount label="Questions" value={(questions || []).length} />
+                  </div>
+                </Panel>
+              </div>
+            )}
+
+            {activeTab === 'security' && (
+              <div className="grid gap-4">
+                <Panel title="Access boundary" icon={Shield} note="AUTH PROVIDER">
+                  <div className="grid gap-px bg-white/[0.05] sm:grid-cols-2">
+                    <StatusBlock
+                      icon={CheckCircle2}
+                      label="IDENTITY"
+                      value={auth.currentUser ? auth.currentUser.email || 'Authenticated user' : 'Legacy/local session'}
+                      description="Authentication state is supplied by the configured Firebase identity provider when present."
+                      tone="#43D9E6"
+                    />
+                    <StatusBlock
+                      icon={Info}
+                      label="CLIENT BOUNDARY"
+                      value="No secret display"
+                      description="This settings surface does not expose API keys, service-role credentials, or trading secrets."
+                      tone="#C7A96B"
+                    />
+                  </div>
+                </Panel>
+
+                <Panel title="Interface state" icon={Settings} note="LOCAL DEVICE">
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('oracle_tutorial_seen');
+                      addNotification('Tutorial state reset. It will appear after refresh.', 'success');
+                    }}
+                    className="flex h-10 items-center gap-2 border border-white/[0.08] px-4 font-mono text-[7px] uppercase tracking-[0.14em] text-[#9AA4AE] transition hover:border-white/[0.14] hover:text-[#E1E6EB]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Reset onboarding tutorial
+                  </button>
+                </Panel>
+              </div>
+            )}
+
+            {activeTab === 'retention' && (
+              <div className="grid gap-4">
+                <Panel title="Data register" icon={Database} note={`${allItems.length} OBJECTS`}>
+                  <p className="mb-4 text-[11px] leading-relaxed text-[#68727C]">
+                    Select individual analytical objects for deletion. This list reflects the currently loaded client state.
+                  </p>
+                  <div className="max-h-[340px] overflow-y-auto border border-white/[0.07] bg-[#05070A] custom-scrollbar">
+                    {allItems.map((item: any) => {
+                      const key = `${item._internal_type}-${item.id}`;
+                      const checked = selectedItemsToClear.has(key);
+                      return (
+                        <label key={key} className="flex min-h-[48px] cursor-pointer items-center gap-3 border-b border-white/[0.045] px-3 py-2.5 last:border-b-0 hover:bg-white/[0.018]">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              const next = new Set<string>(selectedItemsToClear);
+                              if (event.target.checked) next.add(key);
+                              else next.delete(key);
+                              setSelectedItemsToClear(next);
+                            }}
+                            className="h-4 w-4 accent-[#D66565]"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[10px] text-[#B8C0C8]">{item.title || item.text || item.description || item.id}</div>
+                            <div className="mt-1 font-mono text-[6px] uppercase tracking-[0.11em] text-[#4F5963]">{item.typeLabel}</div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {!allItems.length && <div className="px-4 py-10 text-center font-mono text-[7px] uppercase tracking-[0.14em] text-[#46505A]">No analytical objects loaded</div>}
+                  </div>
+                  {selectedItemsToClear.size > 0 && (
+                    <button
+                      onClick={deleteSelected}
+                      disabled={isClearing}
+                      className="mt-4 flex h-10 items-center gap-2 border border-[#C7A96B]/25 bg-[#C7A96B]/[0.04] px-4 font-mono text-[7px] uppercase tracking-[0.14em] text-[#D8C79F] disabled:opacity-45"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Delete {selectedItemsToClear.size} selected
+                    </button>
+                  )}
+                </Panel>
+
+                <section className="border border-[#D66565]/20 bg-[#10090B]">
+                  <div className="flex items-start gap-3 border-b border-[#D66565]/15 p-4 md:p-5">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#D66565]" />
+                    <div>
+                      <div className="font-mono text-[8px] uppercase tracking-[0.16em] text-[#D66565]">Danger zone</div>
+                      <p className="mt-2 text-[10px] leading-relaxed text-[#9C777A]">Wipe all loaded intelligence objects. This action is destructive and cannot be reversed from this interface.</p>
+                    </div>
+                  </div>
+                  <div className="p-4 md:p-5">
+                    <label className="flex cursor-pointer items-start gap-3 border border-[#D66565]/16 bg-[#0B0708] p-3">
+                      <input
+                        type="checkbox"
+                        checked={isWipeConfirmed}
+                        onChange={(event) => setIsWipeConfirmed(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-[#D66565]"
+                      />
+                      <span className="text-[10px] leading-relaxed text-[#B18A8D]">I understand that Wipe All permanently deletes the loaded source, signal, question, hypothesis, and scenario records.</span>
+                    </label>
+                    <button
+                      onClick={wipeAll}
+                      disabled={isClearing || !isWipeConfirmed}
+                      className="mt-4 flex h-10 items-center gap-2 border border-[#D66565]/30 px-4 font-mono text-[7px] uppercase tracking-[0.14em] text-[#D98B8B] transition hover:bg-[#D66565]/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Wipe all data
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
+const Panel = ({ title, icon: Icon, note, children }: any) => (
+  <section className="border border-white/[0.07] bg-[#080C11]">
+    <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3 md:px-5">
+      <div className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.16em] text-[#87919B]">
+        <Icon className="h-3.5 w-3.5 text-[#43D9E6]" /> {title}
+      </div>
+      <span className="font-mono text-[6px] uppercase tracking-[0.13em] text-[#46505A]">{note}</span>
+    </div>
+    <div className="p-4 md:p-5">{children}</div>
+  </section>
+);
+
+const MiniMetric = ({ label, value }: any) => (
+  <div className="min-w-[86px] bg-[#080C11] px-3 py-2.5">
+    <div className="font-mono text-[6px] uppercase tracking-[0.12em] text-[#4F5963]">{label}</div>
+    <div className="mt-1 text-sm font-light text-[#CBD2D9]">{value}</div>
+  </div>
+);
+
+const Threshold = ({ label, value, onChange, accent }: any) => (
+  <div className="border-b border-white/[0.05] py-4 first:pt-0 last:border-b-0 last:pb-0">
+    <div className="mb-3 flex items-center justify-between gap-4">
+      <span className="text-[11px] text-[#9AA4AE]">{label}</span>
+      <span className="font-mono text-[8px] tracking-[0.1em]" style={{ color: accent }}>{Number(value).toFixed(1)}%</span>
+    </div>
+    <input
+      type="range"
+      min="0"
+      max="100"
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="h-1 w-full cursor-pointer appearance-none bg-white/[0.07] outline-none accent-[#43D9E6]"
+    />
+  </div>
+);
+
+const ModuleToggle = ({ icon: Icon, title, description, enabled, onToggle, tone }: any) => (
+  <div className="bg-[#070A0E] p-4">
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5" style={{ color: tone }} />
+        <span className="text-[11px] text-[#C4CBD2]">{title}</span>
+      </div>
+      <button
+        onClick={onToggle}
+        role="switch"
+        aria-checked={enabled}
+        className="relative h-5 w-9 border border-white/[0.09] bg-[#05070A]"
+        aria-label={`Toggle ${title}`}
+      >
+        <span className="absolute top-[3px] h-3 w-3 transition-all" style={{ left: enabled ? 19 : 3, backgroundColor: enabled ? tone : '#4F5963' }} />
+      </button>
+    </div>
+    <p className="mt-3 text-[9px] leading-relaxed text-[#59636D]">{description}</p>
+    <div className="mt-3 font-mono text-[6px] uppercase tracking-[0.12em]" style={{ color: enabled ? tone : '#4F5963' }}>{enabled ? 'enabled' : 'disabled'}</div>
+  </div>
+);
+
+const ObjectCount = ({ label, value }: any) => (
+  <div className="bg-[#070A0E] p-4">
+    <div className="font-mono text-[6px] uppercase tracking-[0.12em] text-[#4F5963]">{label}</div>
+    <div className="mt-2 text-2xl font-light text-[#CBD2D9]">{value}</div>
+  </div>
+);
+
+const StatusBlock = ({ icon: Icon, label, value, description, tone }: any) => (
+  <div className="bg-[#070A0E] p-4">
+    <div className="flex items-center gap-2 font-mono text-[6px] uppercase tracking-[0.13em]" style={{ color: tone }}><Icon className="h-3.5 w-3.5" />{label}</div>
+    <div className="mt-3 text-[11px] text-[#C3CBD2]">{value}</div>
+    <p className="mt-2 text-[9px] leading-relaxed text-[#59636D]">{description}</p>
+  </div>
+);
+
+const ClearOverlay = ({ progress }: { progress: number }) => (
+  <div className="fixed inset-0 z-[160] flex items-center justify-center bg-[#05070A]/92 px-5 backdrop-blur-sm">
+    <div className="w-full max-w-[420px] border border-[#D66565]/25 bg-[#10090B] p-5">
+      <div className="flex items-center gap-3">
+        {progress < 100 ? <RefreshCw className="h-4 w-4 animate-spin text-[#D66565]" /> : <CheckCircle2 className="h-4 w-4 text-[#43D9E6]" />}
+        <div>
+          <div className="font-mono text-[8px] uppercase tracking-[0.16em] text-[#D8B0B0]">{progress < 100 ? 'Mutating database' : 'Operation complete'}</div>
+          <div className="mt-1 text-[9px] text-[#805F62]">Do not close the workspace while the operation is running.</div>
+        </div>
+      </div>
+      <div className="mt-5 flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.12em] text-[#805F62]"><span>progress</span><span>{progress}%</span></div>
+      <div className="mt-2 h-px bg-[#D66565]/15"><div className="h-px bg-[#D66565] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div>
+    </div>
+  </div>
+);

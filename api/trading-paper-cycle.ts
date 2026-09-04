@@ -1,0 +1,161 @@
+const json = (response: any, status: number, body: Record<string, unknown>) =>
+  response.status(status).json(body);
+
+const isAuthorizedScheduler = (authorization: string | undefined) => {
+  if (!authorization?.startsWith('Bearer ')) return false;
+
+  const presented = authorization.slice('Bearer '.length);
+  const accepted = [process.env.CRON_SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return accepted.some((secret) => secret === presented);
+};
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
+
+export default async function handler(request: any, response: any) {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET');
+    return json(response, 405, { success: false, error: 'Method not allowed.' });
+  }
+
+  if (!isAuthorizedScheduler(request.headers.authorization)) {
+    return json(response, 401, { success: false, error: 'Unauthorized scheduled invocation.' });
+  }
+
+  if ((process.env.TRADING_PERSISTENCE_BACKEND ?? '').toLowerCase() !== 'supabase') {
+    return json(response, 503, {
+      success: false,
+      error: 'Scheduled Paper cycles require TRADING_PERSISTENCE_BACKEND=supabase.',
+    });
+  }
+
+  let paperLoopController: any;
+  let claimTradingCycleLease: any;
+  let releaseTradingCycleLease: any;
+  let restoreRuntimeCheckpoint: any;
+  let saveRuntimeCheckpoint: any;
+
+  try {
+    // The full Paper runtime is bundled during the build step so Vercel's Node ESM
+    // loader never has to resolve the runtime's extensionless TypeScript imports.
+    // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
+    const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
+
+    paperLoopController = runtimeModule.paperLoopController;
+    claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
+    releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
+    restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
+    saveRuntimeCheckpoint = runtimeModule.saveRuntimeCheckpoint;
+
+    if (
+      !paperLoopController ||
+      typeof claimTradingCycleLease !== 'function' ||
+      typeof releaseTradingCycleLease !== 'function' ||
+      typeof restoreRuntimeCheckpoint !== 'function' ||
+      typeof saveRuntimeCheckpoint !== 'function'
+    ) {
+      throw new Error('Trading runtime bundle is missing required exports.');
+    }
+  } catch (error) {
+    console.error('Scheduled Paper cycle module initialization failed:', error);
+    return json(response, 500, {
+      success: false,
+      phase: 'startup-import',
+      error: errorMessage(error),
+    });
+  }
+
+  const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+  const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
+  let leaseAcquired = false;
+  let runtimeRestored = false;
+  let responseStatus = 500;
+  let responseBody: Record<string, unknown> = {
+    success: false,
+    runtimeId,
+    phase: 'startup',
+    error: 'Paper cycle did not complete.',
+  };
+
+  try {
+    leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
+    if (!leaseAcquired) {
+      responseStatus = 409;
+      responseBody = {
+        success: false,
+        skipped: true,
+        reason: 'Another Paper cycle currently owns the runtime lease.',
+        runtimeId,
+      };
+    } else {
+      const restore = await restoreRuntimeCheckpoint(false);
+      runtimeRestored = true;
+      const cycle = await paperLoopController.runCycle();
+      const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+
+      responseStatus = 200;
+      responseBody = {
+        success: true,
+        runtimeId,
+        restore: {
+          restored: restore.restored,
+          savedAt: restore.savedAt,
+          reason: restore.reason,
+        },
+        cycle,
+        persistence: saved.persistence,
+      };
+    }
+  } catch (error) {
+    if (runtimeRestored) {
+      try {
+        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
+      } catch (checkpointError) {
+        console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
+      }
+    }
+
+    const message = errorMessage(error);
+    console.error('Scheduled Paper cycle failed:', error);
+    responseStatus = 500;
+    responseBody = {
+      success: false,
+      runtimeId,
+      phase: runtimeRestored ? 'cycle' : 'startup',
+      error: message,
+    };
+  }
+
+  if (leaseAcquired) {
+    try {
+      const released = await releaseTradingCycleLease(runtimeId, owner);
+      if (!released) {
+        throw new Error('Runtime lease release returned false.');
+      }
+    } catch (releaseError) {
+      const cleanupError = errorMessage(releaseError);
+      console.error('Failed to release scheduled Paper cycle lease:', releaseError);
+
+      if (responseStatus === 200) {
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          runtimeId,
+          phase: 'cleanup',
+          cycleCompleted: true,
+          error: cleanupError,
+        };
+      } else {
+        responseBody = {
+          ...responseBody,
+          cleanupError,
+        };
+      }
+    }
+  }
+
+  return json(response, responseStatus, responseBody);
+}

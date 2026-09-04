@@ -1,0 +1,46 @@
+name: Black Oracle Trading CI
+
+on:
+  push:
+    branches:
+      - feat/trading-core-v0.1
+      - integration/black-oracle-v0.2
+  pull_request:
+    branches:
+      - feat/oracle-field-v2
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-trading-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Trading core tests
+        run: npm run test:trading
+
+      - name: Build trading runtime bundle
+        run: npx esbuild server/trading/runtimeBundleEntry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/trading/runtime-bundle.mjs
+
+      - name: Serverless bundle smoke
+        run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
+
+      - name: Production build
+        run: npm run build
