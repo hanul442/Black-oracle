@@ -31,8 +31,9 @@ export const MobileNavigation: React.FC = () => {
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id)}
-              className="relative flex min-h-[48px] flex-col items-center justify-center gap-1"
+              className="relative flex min-h-[48px] touch-manipulation flex-col items-center justify-center gap-1"
               aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
             >
               {active && (
                 <motion.span
@@ -40,8 +41,8 @@ export const MobileNavigation: React.FC = () => {
                   className="absolute top-0 h-px w-7 bg-[#43D9E6]"
                 />
               )}
-              <Icon className={`h-4 w-4 transition-colors ${active ? 'text-[#DCE2E8]' : 'text-[#515B65]'}`} />
-              <span className={`font-mono text-[6px] tracking-[0.1em] transition-colors ${active ? 'text-[#AEB7C0]' : 'text-[#46505A]'}`}>
+              <Icon className={`h-[18px] w-[18px] transition-colors ${active ? 'text-[#DCE2E8]' : 'text-[#515B65]'}`} />
+              <span className={`font-mono text-[7px] tracking-[0.08em] transition-colors ${active ? 'text-[#AEB7C0]' : 'text-[#56616B]'}`}>
                 {item.label}
               </span>
             </button>
