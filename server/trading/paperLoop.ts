@@ -160,7 +160,7 @@ export class PaperLoopController {
         const currentState = paperTradingSession.state();
         const currentlyOpen = currentState.portfolio.positions.map((position) => position.market);
         const alreadyOpen = currentlyOpen.includes(market);
-        if (!alreadyOpen && currentlyOpen.length >= this.config.maxOpenPositions) continue;
+        const newEntryAllowed = alreadyOpen || currentlyOpen.length < this.config.maxOpenPositions;
 
         try {
           let liquidity: LiquiditySnapshot | undefined = liquidityByMarket.get(market);
@@ -170,6 +170,7 @@ export class PaperLoopController {
             market,
             evidence.activeCount > 0 ? evidence.score : undefined,
             liquidity,
+            newEntryAllowed,
           );
           const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
           const trace = buildDecisionTrace({
