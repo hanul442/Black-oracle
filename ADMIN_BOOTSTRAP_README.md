@@ -1,0 +1,1 @@
+Temporary branch used to bootstrap the initial Black Oracle Firebase admin operator account. No credentials are stored in this repository.
