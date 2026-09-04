@@ -1,4 +1,5 @@
 import type { EvidenceAggregate } from './evidence';
+import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
 import type {
   ExecutionDecision,
   MarketRegime,
@@ -20,6 +21,7 @@ export interface DecisionTrace {
   strategyDisposition: StrategyDisposition;
   riskDisposition: RiskDisposition;
   eventScore: number | null;
+  forecast: EvidenceForecast;
   evidenceActiveCount: number;
   evidenceContradictionCount: number;
   evidenceIds: string[];
@@ -50,6 +52,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const action = classifyDecisionTraceAction(decision.action, input.hasOpenPositionAfterStep);
   const oneHourRegime = multiTimeframe.frames.oneHour.regime;
   const primaryReason = decision.reasons[0] ?? 'No explicit decision reason was recorded.';
+  const forecast = buildEvidenceForecast(evidence);
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -62,6 +65,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     strategyDisposition: 'LEGACY_FUSION',
     riskDisposition: decision.riskDisposition,
     eventScore: evidence.activeCount > 0 ? evidence.score : null,
+    forecast,
     evidenceActiveCount: evidence.activeCount,
     evidenceContradictionCount: evidence.contradictionCount,
     evidenceIds: evidence.evidenceIds.slice(),
