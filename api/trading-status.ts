@@ -16,10 +16,16 @@ export default async function handler(request: any, response: any) {
       });
     }
 
-    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildRiskProfileComparison }] = await Promise.all([
+    const [
+      { tradingCheckpointStore },
+      { buildPaperPerformance },
+      { buildRiskProfileComparison },
+      { assessPortfolioExposure },
+    ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
       import('../src/trading/riskProfiles.js'),
+      import('../src/trading/portfolioExposure.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -135,6 +141,24 @@ export default async function handler(request: any, response: any) {
       };
     });
 
+    const exposurePositions = positionEvidence.map((position) => ({
+      market: position.market,
+      marketValue: position.marketValue,
+    }));
+    const exposureLab = riskLab.map((item) => ({
+      profileId: item.profile.id,
+      profileLabel: item.profile.label,
+      assessment: assessPortfolioExposure(
+        equity,
+        exposurePositions,
+        {
+          grossExposureCapPct: item.profile.grossExposureCapPct,
+          cryptoClusterExposureCapPct: item.profile.cryptoClusterExposureCapPct,
+        },
+        [],
+      ),
+    }));
+
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
       id: trade.id,
       market: trade.market,
@@ -199,6 +223,7 @@ export default async function handler(request: any, response: any) {
       performance,
       validation,
       riskLab,
+      exposureLab,
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
