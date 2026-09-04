@@ -116,7 +116,12 @@ export class PaperTradingSession {
     };
   }
 
-  async step(market: string, eventScore?: number, precomputedLiquidity?: LiquiditySnapshot) {
+  async step(
+    market: string,
+    eventScore?: number,
+    precomputedLiquidity?: LiquiditySnapshot,
+    newEntryAllowed = true,
+  ) {
     const normalized = market.toUpperCase();
     const [liquidity, multiTimeframe] = await Promise.all([
       precomputedLiquidity ? Promise.resolve(precomputedLiquidity) : getMarketLiquidity(normalized),
@@ -133,6 +138,7 @@ export class PaperTradingSession {
       portfolio: before,
       position,
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
+      newEntryAllowed,
     });
 
     this.ledger.append('MARKET_SNAPSHOT', {
