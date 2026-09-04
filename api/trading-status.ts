@@ -87,6 +87,51 @@ export default async function handler(request: any, response: any) {
       riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
     }));
 
+    const decisionByMarket = new Map(decisionTape.map((item) => [item.market, item]));
+    const markPriceByMarket = new Map(checkpoint.session.markPrices ?? []);
+    const positionEvidence = portfolio.positions.map((position) => {
+      const decision = decisionByMarket.get(position.market);
+      const markPrice = Number(markPriceByMarket.get(position.market) ?? position.entryPrice);
+      const marketValue = markPrice * position.quantity;
+      const costBasis = position.averageCost * position.quantity;
+      const externalEvidenceActive = decision?.evidenceActiveCount ?? 0;
+      const externalEvidenceContradictions = decision?.evidenceContradictionCount ?? 0;
+      const evidenceState = stale
+        ? 'STALE'
+        : externalEvidenceContradictions > 0
+          ? 'CONTESTED'
+          : externalEvidenceActive > 0
+            ? 'EVIDENCE_SUPPORTED'
+            : 'TECHNICAL_ONLY';
+
+      return {
+        market: position.market,
+        openedAt: position.openedAt,
+        quantity: position.quantity,
+        entryPrice: position.entryPrice,
+        averageCost: position.averageCost,
+        markPrice,
+        marketValue,
+        unrealizedPnl: marketValue - costBasis,
+        stopLossPrice: position.stopLossPrice,
+        takeProfitPrice: position.takeProfitPrice,
+        evidenceState,
+        lastDecisionAt: decision?.timestamp ?? null,
+        decision: decision?.decision ?? null,
+        regime: decision?.regime ?? null,
+        regimeConfidence: decision?.regimeConfidence ?? null,
+        router: decision?.strategyDisposition ?? null,
+        confidence: decision?.confidence ?? null,
+        oracleTradeScore: decision?.oracleTradeScore ?? null,
+        riskDisposition: decision?.riskDisposition ?? 'NOT_EVALUATED',
+        externalEvidenceActive,
+        externalEvidenceContradictions,
+        evidenceIds: decision?.evidenceIds ?? [],
+        forecast: decision?.forecast ?? null,
+        primaryReason: decision?.primaryReason ?? 'No persisted decision explanation is available for this position.',
+      };
+    });
+
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
       id: trade.id,
       market: trade.market,
@@ -158,6 +203,7 @@ export default async function handler(request: any, response: any) {
         scannedMarketsLastCycle: lastCycle?.scanned ?? 0,
         lastCycleErrors: cycleErrors,
       },
+      positionEvidence,
       equityCurve: portfolio.equityCurve.slice(-120),
       decisionTape,
       recentTrades,
