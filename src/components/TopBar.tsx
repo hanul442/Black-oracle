@@ -53,14 +53,14 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="relative z-[70] flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#06090D]/96 px-3 backdrop-blur-xl md:px-4">
+    <header className="relative z-[70] flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#06090D]/96 px-2 backdrop-blur-xl sm:px-3 md:px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <button onClick={() => setCurrentView('command')} className="flex shrink-0 items-center gap-2 lg:hidden">
+        <button onClick={() => setCurrentView('command')} className="flex min-h-[44px] shrink-0 touch-manipulation items-center gap-2 lg:hidden">
           <span className="relative flex h-5 w-5 items-center justify-center">
             <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/25" />
             <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6]" />
           </span>
-          <span className="font-mono text-[9px] font-medium uppercase tracking-[0.2em] text-[#E4E9ED]">Black Oracle</span>
+          <span className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#E4E9ED]">Black Oracle</span>
         </button>
 
         <div className="hidden items-center gap-2 lg:flex">
@@ -70,14 +70,14 @@ export const TopBar: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 md:gap-2">
+      <div className="flex items-center gap-1 md:gap-2">
         <button
           onClick={handleFetchData}
           disabled={isIngestingData}
-          className="flex h-8 items-center gap-2 border border-white/[0.07] bg-white/[0.015] px-2.5 font-mono text-[7px] uppercase tracking-[0.15em] text-[#747F89] transition hover:border-[#43D9E6]/20 hover:text-[#BEC7CE] disabled:opacity-40"
+          className="flex h-11 min-w-11 touch-manipulation items-center justify-center gap-2 border border-white/[0.07] bg-white/[0.015] px-2.5 font-mono text-[7px] uppercase tracking-[0.15em] text-[#747F89] transition hover:border-[#43D9E6]/20 hover:text-[#BEC7CE] disabled:opacity-40 sm:h-8 sm:min-w-0"
           aria-label="Synchronize field"
         >
-          <Radar className={`h-3 w-3 ${isIngestingData ? 'animate-spin text-[#43D9E6]' : ''}`} />
+          <Radar className={`h-3.5 w-3.5 sm:h-3 sm:w-3 ${isIngestingData ? 'animate-spin text-[#43D9E6]' : ''}`} />
           <span className="hidden sm:inline">{isIngestingData ? 'Syncing' : 'Sync'}</span>
         </button>
 
@@ -115,14 +115,14 @@ export const TopBar: React.FC = () => {
 
         <button
           onClick={() => setCurrentView('settings')}
-          className={`flex h-8 w-8 items-center justify-center border transition lg:hidden ${
+          className={`flex h-11 w-11 touch-manipulation items-center justify-center border transition sm:h-8 sm:w-8 lg:hidden ${
             currentView === 'settings'
               ? 'border-[#43D9E6]/25 text-[#43D9E6]'
               : 'border-white/[0.07] text-[#606B75] hover:text-[#C7CED4]'
           }`}
           aria-label="Settings"
         >
-          <Settings className="h-3.5 w-3.5" />
+          <Settings className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
         </button>
 
         <button
