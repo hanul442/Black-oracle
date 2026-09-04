@@ -10,14 +10,25 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 
-const readAction = async (req: Request) => {
-  if (req.method !== "POST") return "cycle" as const;
+type RequestMode = {
+  action: "cycle" | "status";
+  targetBaseUrl?: string;
+};
+
+const readMode = async (req: Request): Promise<RequestMode> => {
+  if (req.method !== "POST") return { action: "cycle" };
   try {
-    const body = await req.json() as { action?: unknown };
-    return body?.action === "status" ? "status" as const : "cycle" as const;
+    const body = await req.json() as { action?: unknown; targetBaseUrl?: unknown };
+    if (body?.action === "status") {
+      return {
+        action: "status",
+        targetBaseUrl: typeof body.targetBaseUrl === "string" ? body.targetBaseUrl.trim() : undefined,
+      };
+    }
   } catch {
-    return "cycle" as const;
+    // Default to the scheduler cycle path for malformed/non-JSON POST bodies.
   }
+  return { action: "cycle" };
 };
 
 Deno.serve(async (req: Request) => {
@@ -25,7 +36,7 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: "Method not allowed." }, 405);
   }
 
-  const action = await readAction(req);
+  const mode = await readMode(req);
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const vercelAutomationBypassSecret = Deno.env.get("VERCEL_AUTOMATION_BYPASS_SECRET");
@@ -48,17 +59,21 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: `Scheduler config read failed: ${configError.message}` }, 500);
   }
 
-  if (!config.target_base_url) {
-    return json({ success: true, skipped: true, reason: "Target URL is unset." });
+  if (mode.action === "cycle" && (!config.enabled || !config.target_base_url)) {
+    return json({ success: true, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
   }
 
-  if (action === "cycle" && !config.enabled) {
-    return json({ success: true, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
+  const baseUrl = mode.action === "status"
+    ? (mode.targetBaseUrl || config.target_base_url)
+    : config.target_base_url;
+
+  if (!baseUrl) {
+    return json({ success: false, error: "Target URL is unset." }, 500);
   }
 
   let target: URL;
   try {
-    target = new URL(config.target_base_url);
+    target = new URL(baseUrl);
   } catch {
     return json({ success: false, error: "Configured Vercel target URL is invalid." }, 500);
   }
@@ -67,12 +82,12 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: "Configured target must be an HTTPS vercel.app deployment." }, 500);
   }
 
-  target.pathname = action === "status" ? "/api/trading-status" : "/api/trading-paper-cycle";
+  target.pathname = mode.action === "status" ? "/api/trading-status" : "/api/trading-paper-cycle";
   target.search = "";
   target.hash = "";
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), action === "status" ? 15_000 : 55_000);
+  const timeout = setTimeout(() => controller.abort(), mode.action === "status" ? 15_000 : 55_000);
 
   let downstreamStatus: number | null = null;
   let downstreamOk = false;
@@ -80,11 +95,9 @@ Deno.serve(async (req: Request) => {
   let downstreamBody: unknown = null;
 
   try {
-    const headers: Record<string, string> = {
-      accept: "application/json",
-    };
+    const headers: Record<string, string> = { accept: "application/json" };
 
-    if (action === "cycle") {
+    if (mode.action === "cycle") {
       headers.authorization = `Bearer ${serviceRoleKey}`;
     }
 
@@ -100,11 +113,11 @@ Deno.serve(async (req: Request) => {
 
     downstreamStatus = response.status;
     const bodyText = await response.text();
-    downstreamOk = action === "cycle"
+    downstreamOk = mode.action === "cycle"
       ? response.ok || response.status === 409
       : response.ok;
 
-    if (action === "status") {
+    if (mode.action === "status") {
       try {
         downstreamBody = bodyText ? JSON.parse(bodyText) : null;
       } catch {
@@ -121,16 +134,16 @@ Deno.serve(async (req: Request) => {
     clearTimeout(timeout);
   }
 
-  if (action === "status") {
+  if (mode.action === "status") {
     if (!downstreamOk) {
       return json({
         success: false,
-        action,
+        action: mode.action,
         downstreamStatus,
         error: downstreamError ?? "Trading status probe failed.",
       }, 502);
     }
-    return json({ success: true, action, downstreamStatus, data: downstreamBody });
+    return json({ success: true, action: mode.action, downstreamStatus, data: downstreamBody });
   }
 
   const now = new Date().toISOString();
