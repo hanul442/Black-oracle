@@ -2,6 +2,7 @@ export type TradingMode = 'PAPER' | 'APPROVAL_LIVE' | 'AUTO_LIVE';
 export type TradeSide = 'BUY' | 'SELL';
 export type SignalAction = 'BUY' | 'SELL' | 'WAIT';
 export type MarketRegime = 'STRONG_UPTREND' | 'UPTREND' | 'RANGE' | 'DOWNTREND' | 'STRONG_DOWNTREND';
+export type RiskDisposition = 'APPROVE' | 'REJECT' | 'NOT_EVALUATED';
 
 export interface Candle {
   market: string;
@@ -230,6 +231,8 @@ export interface ExecutionDecision {
   confidence: number;
   stopLossPrice: number | null;
   takeProfitPrice: number | null;
+  riskDisposition: RiskDisposition;
+  riskReasons: string[];
   reasons: string[];
 }
 

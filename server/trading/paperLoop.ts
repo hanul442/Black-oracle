@@ -1,3 +1,4 @@
+import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import type { LiquiditySnapshot } from '../../src/trading/types';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
@@ -16,13 +17,9 @@ export interface PaperLoopCycleResult {
   entered: number;
   exited: number;
   held: number;
+  noTrade: number;
   errors: Array<{ market: string; error: string }>;
-  markets: Array<{
-    market: string;
-    decision: string;
-    oracleTradeScore: number | null;
-    eventScore: number;
-  }>;
+  markets: Array<DecisionTrace & { decision: DecisionTrace['action'] }>;
 }
 
 export interface PaperLoopCheckpoint {
@@ -69,7 +66,12 @@ export class PaperLoopController {
       lastCycle: this.lastCycle ? {
         ...this.lastCycle,
         errors: this.lastCycle.errors.map((item) => ({ ...item })),
-        markets: this.lastCycle.markets.map((item) => ({ ...item })),
+        markets: this.lastCycle.markets.map((item) => ({
+          ...item,
+          evidenceIds: item.evidenceIds.slice(),
+          reasons: item.reasons.slice(),
+          riskReasons: item.riskReasons.slice(),
+        })),
       } : null,
     };
   }
@@ -82,8 +84,14 @@ export class PaperLoopController {
     this.cycleCount = Number.isInteger(checkpoint.cycleCount) && checkpoint.cycleCount >= 0 ? checkpoint.cycleCount : 0;
     this.lastCycle = checkpoint.lastCycle ? {
       ...checkpoint.lastCycle,
+      noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0,
       errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
-      markets: checkpoint.lastCycle.markets.map((item) => ({ ...item })),
+      markets: checkpoint.lastCycle.markets.map((item) => ({
+        ...item,
+        evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.slice() : [],
+        reasons: Array.isArray(item.reasons) ? item.reasons.slice() : [],
+        riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons.slice() : [],
+      })),
     } : null;
     if (checkpoint.running && resume) this.start(this.config);
     return this.status();
@@ -135,6 +143,7 @@ export class PaperLoopController {
       entered: 0,
       exited: 0,
       held: 0,
+      noTrade: 0,
       errors: [],
       markets: [],
     };
@@ -151,7 +160,7 @@ export class PaperLoopController {
         const currentState = paperTradingSession.state();
         const currentlyOpen = currentState.portfolio.positions.map((position) => position.market);
         const alreadyOpen = currentlyOpen.includes(market);
-        if (!alreadyOpen && currentlyOpen.length >= this.config.maxOpenPositions) continue;
+        const newEntryAllowed = alreadyOpen || currentlyOpen.length < this.config.maxOpenPositions;
 
         try {
           let liquidity: LiquiditySnapshot | undefined = liquidityByMarket.get(market);
@@ -161,18 +170,24 @@ export class PaperLoopController {
             market,
             evidence.activeCount > 0 ? evidence.score : undefined,
             liquidity,
+            newEntryAllowed,
           );
+          const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
+          const trace = buildDecisionTrace({
+            timestamp: Date.now(),
+            market,
+            decision: step.decision,
+            multiTimeframe: step.multiTimeframe,
+            evidence,
+            hasOpenPositionAfterStep,
+          });
 
           result.scanned += 1;
-          if (step.decision.action === 'ENTER') result.entered += 1;
-          else if (step.decision.action === 'EXIT') result.exited += 1;
-          else result.held += 1;
-          result.markets.push({
-            market,
-            decision: step.decision.action,
-            oracleTradeScore: step.multiTimeframe.oracleTradeScore,
-            eventScore: evidence.score,
-          });
+          if (trace.action === 'ENTER') result.entered += 1;
+          else if (trace.action === 'EXIT') result.exited += 1;
+          else if (trace.action === 'HOLD') result.held += 1;
+          else result.noTrade += 1;
+          result.markets.push({ ...trace, decision: trace.action });
         } catch (error) {
           result.errors.push({
             market,

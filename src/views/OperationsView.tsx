@@ -17,8 +17,27 @@ type DecisionTapeItem = {
   timestamp: number;
   market: string;
   decision: string;
+  regime?: string | null;
+  regimeConfidence?: number | null;
   oracleTradeScore: number | null;
-  eventScore: number;
+  confidence?: number | null;
+  strategyDisposition?: string | null;
+  riskDisposition?: 'APPROVE' | 'REJECT' | 'NOT_EVALUATED' | string;
+  eventScore?: number | null;
+  forecast?: null | {
+    available: boolean;
+    direction: string;
+    probabilityBullish: number | null;
+    probabilityBearish: number | null;
+    confidence: number;
+    uncertainty: number;
+  };
+  evidenceActiveCount?: number;
+  evidenceContradictionCount?: number;
+  evidenceIds?: string[];
+  primaryReason?: string | null;
+  reasons?: string[];
+  riskReasons?: string[];
 };
 
 type ClosedTrade = {
@@ -65,6 +84,7 @@ type OperationsPayload = {
       entered: number;
       exited: number;
       held: number;
+      noTrade?: number;
       errors: Array<{ market: string; error: string }>;
     };
     ageMs: number | null;
@@ -230,7 +250,13 @@ export const OperationsView: React.FC = () => {
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,.85fr)]">
               <Panel>
-                <PanelHeader title="Live decision tape" eyebrow="Latest cycle" detail={data?.loop?.lastCycle ? `${data.loop.lastCycle.scanned} scanned` : 'awaiting cycle'} />
+                <PanelHeader
+                  title="Live decision tape"
+                  eyebrow="Latest cycle"
+                  detail={data?.loop?.lastCycle
+                    ? `${data.loop.lastCycle.scanned} scanned · ${data.loop.lastCycle.noTrade ?? 0} no trade`
+                    : 'awaiting cycle'}
+                />
                 <DecisionTape items={data?.decisionTape || []} />
               </Panel>
 
@@ -254,6 +280,10 @@ export const OperationsView: React.FC = () => {
                   <StatusRow label="Markets scanned / cycle" value={String(data?.ingestion?.scannedMarketsLastCycle ?? '—')} />
                   <StatusRow label="Evidence active" value={String(data?.ingestion?.evidenceActive ?? '—')} />
                   <StatusRow label="Evidence expired" value={String(data?.ingestion?.evidenceExpired ?? '—')} />
+                  <StatusRow
+                    label="Evidence contradictions / cycle"
+                    value={String((data?.decisionTape || []).reduce((sum, item) => sum + (item.evidenceContradictionCount || 0), 0))}
+                  />
                   <StatusRow label="Cycle errors" value={String(data?.ingestion?.lastCycleErrors ?? '—')} danger={(data?.ingestion?.lastCycleErrors || 0) > 0} />
                   <StatusRow label="15m / 1h / 4h freshness" value="Not persisted yet" muted />
                 </div>
@@ -266,6 +296,7 @@ export const OperationsView: React.FC = () => {
                   <StatusRow label="Last cycle" value={formatTime(data?.loop?.lastCycle?.finishedAt)} />
                   <StatusRow label="Cycle age" value={formatAge(data?.loop?.ageMs)} danger={Boolean(data?.loop?.stale)} />
                   <StatusRow label="Duration" value={data?.loop?.lastCycle ? `${number.format(data.loop.lastCycle.durationMs / 1000)}s` : '—'} />
+                  <StatusRow label="NO TRADE / cycle" value={String(data?.loop?.lastCycle?.noTrade ?? '—')} />
                   <StatusRow label="Checkpoint" value={formatTime(data?.checkpoint?.savedAt)} />
                   <StatusRow label="Persistence" value={data?.checkpoint?.backend || '—'} />
                 </div>
@@ -377,19 +408,51 @@ const DecisionTape = ({ items }: { items: DecisionTapeItem[] }) => (
   <div className="divide-y divide-white/[0.05]">
     {items.map((item, index) => {
       const decision = String(item.decision || 'UNKNOWN').toUpperCase();
-      const tone = decision.includes('ENTER') || decision.includes('BUY')
+      const tone = decision === 'ENTER'
+        ? 'text-[#78B39F] border-[#78B39F]/20 bg-[#78B39F]/[0.035]'
+        : decision === 'EXIT'
+          ? 'text-[#D47A7A] border-[#D47A7A]/20 bg-[#D47A7A]/[0.035]'
+          : decision === 'NO_TRADE'
+            ? 'text-[#C7A96B] border-[#C7A96B]/20 bg-[#C7A96B]/[0.035]'
+            : 'text-[#A8B1B9] border-white/[0.08] bg-white/[0.025]';
+      const risk = String(item.riskDisposition || 'NOT_EVALUATED').toUpperCase();
+      const riskTone = risk === 'APPROVE'
         ? 'text-[#78B39F]'
-        : decision.includes('EXIT') || decision.includes('SELL')
+        : risk === 'REJECT'
           ? 'text-[#D47A7A]'
-          : 'text-[#A8B1B9]';
+          : 'text-[#66717B]';
+      const forecast = item.forecast?.available
+        ? `${item.forecast.direction} ${item.forecast.probabilityBullish == null ? '—' : `${Math.round(item.forecast.probabilityBullish * 100)}%↑`}`
+        : 'FORECAST —';
+
       return (
-        <div key={`${item.market}-${index}`} className="grid grid-cols-[62px_minmax(0,1fr)_80px_54px] items-center gap-2 px-4 py-3 md:grid-cols-[78px_110px_minmax(0,1fr)_90px_80px]">
-          <span className="font-mono text-[7px] tabular-nums text-[#4F5963]">{formatTime(item.timestamp)}</span>
-          <span className="font-mono text-[9px] text-[#C9D0D6]">{item.market}</span>
-          <span className={`hidden font-mono text-[8px] uppercase tracking-[0.12em] md:block ${tone}`}>{decision}</span>
-          <span className={`truncate font-mono text-[7px] uppercase tracking-[0.11em] md:hidden ${tone}`}>{decision}</span>
-          <span className="text-right font-mono text-[8px] tabular-nums text-[#89939D]">{item.oracleTradeScore == null ? '—' : number.format(item.oracleTradeScore)}</span>
-          <span className="text-right font-mono text-[7px] tabular-nums text-[#56616C]">E {number.format(item.eventScore)}</span>
+        <div key={`${item.market}-${index}`} className="px-4 py-3.5">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[7px] tabular-nums text-[#4F5963]">{formatTime(item.timestamp)}</span>
+                <span className="font-mono text-[9px] text-[#C9D0D6]">{item.market}</span>
+                <span className={`border px-1.5 py-1 font-mono text-[6px] uppercase tracking-[0.1em] ${tone}`}>{decision}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[6px] uppercase tracking-[0.09em] text-[#59636D]">
+                <span>{item.regime || 'REGIME —'}</span>
+                <span>{item.strategyDisposition || 'ROUTE —'}</span>
+                <span className={riskTone}>RISK {risk}</span>
+                <span>CONF {formatPct(item.confidence)}</span>
+                <span>{forecast}</span>
+                <span>EVID {item.evidenceActiveCount ?? 0}</span>
+                {(item.evidenceContradictionCount || 0) > 0 && <span className="text-[#C7A96B]">CONTRA {item.evidenceContradictionCount}</span>}
+              </div>
+              <div className="mt-2 text-[9px] leading-relaxed text-[#7D8791]">
+                {item.primaryReason || 'Legacy checkpoint: detailed reason unavailable.'}
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="font-mono text-[10px] tabular-nums text-[#AEB7BF]">{item.oracleTradeScore == null ? '—' : number.format(item.oracleTradeScore)}</div>
+              <div className="mt-1 font-mono text-[6px] uppercase tracking-[0.08em] text-[#4F5963]">Oracle score</div>
+              <div className="mt-2 font-mono text-[6px] tabular-nums text-[#56616C]">E {item.eventScore == null ? '—' : number.format(item.eventScore)}</div>
+            </div>
+          </div>
         </div>
       );
     })}

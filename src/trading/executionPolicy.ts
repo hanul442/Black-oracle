@@ -21,7 +21,14 @@ export interface ExecutionPolicyInput {
   feedConnected?: boolean;
   ledgerInSync?: boolean;
   duplicateOrderDetected?: boolean;
+  newEntryAllowed?: boolean;
 }
+
+const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDisposition' | 'riskReasons'>): ExecutionDecision => ({
+  ...decision,
+  riskDisposition: 'NOT_EVALUATED',
+  riskReasons: [],
+});
 
 export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDecision => {
   const { liquidity, multiTimeframe, oneHour, portfolio, position } = input;
@@ -29,7 +36,7 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
 
   if (position) {
     if (position.stopLossPrice && currentPrice <= position.stopLossPrice) {
-      return {
+      return withoutRiskEvaluation({
         action: 'EXIT',
         side: 'SELL',
         notional: currentPrice * position.quantity,
@@ -38,10 +45,10 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
         stopLossPrice: position.stopLossPrice,
         takeProfitPrice: position.takeProfitPrice,
         reasons: ['Protective stop-loss was reached.'],
-      };
+      });
     }
     if (position.takeProfitPrice && currentPrice >= position.takeProfitPrice) {
-      return {
+      return withoutRiskEvaluation({
         action: 'EXIT',
         side: 'SELL',
         notional: currentPrice * position.quantity,
@@ -50,10 +57,10 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
         stopLossPrice: position.stopLossPrice,
         takeProfitPrice: position.takeProfitPrice,
         reasons: ['Protective take-profit was reached.'],
-      };
+      });
     }
     if (multiTimeframe.action === 'SELL' || multiTimeframe.directionalScore <= -20) {
-      return {
+      return withoutRiskEvaluation({
         action: 'EXIT',
         side: 'SELL',
         notional: currentPrice * position.quantity,
@@ -62,10 +69,10 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
         stopLossPrice: position.stopLossPrice,
         takeProfitPrice: position.takeProfitPrice,
         reasons: ['Multi-timeframe direction reversed against the existing long spot position.'],
-      };
+      });
     }
 
-    return {
+    return withoutRiskEvaluation({
       action: 'HOLD',
       side: null,
       notional: 0,
@@ -74,23 +81,11 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
       stopLossPrice: position.stopLossPrice,
       takeProfitPrice: position.takeProfitPrice,
       reasons: ['Existing position remains inside its protective levels and no exit signal is active.'],
-    };
+    });
   }
 
-  if (!liquidity.eligible) {
-    return {
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: 0,
-      stopLossPrice: null,
-      takeProfitPrice: null,
-      reasons: ['Liquidity gate rejected this market.', ...liquidity.reasons],
-    };
-  }
-
-  if (multiTimeframe.action !== 'BUY' || multiTimeframe.confidence < 0.62) {
+  if (input.newEntryAllowed === false) {
+    const reason = 'Paper portfolio open-position limit rejected a new entry.';
     return {
       action: 'HOLD',
       side: null,
@@ -99,8 +94,36 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
       confidence: multiTimeframe.confidence,
       stopLossPrice: null,
       takeProfitPrice: null,
-      reasons: ['A new spot entry requires BUY consensus with at least 62% confidence.'],
+      riskDisposition: 'REJECT',
+      riskReasons: [reason],
+      reasons: [reason],
     };
+  }
+
+  if (!liquidity.eligible) {
+    return withoutRiskEvaluation({
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: 0,
+      stopLossPrice: null,
+      takeProfitPrice: null,
+      reasons: ['Liquidity gate rejected this market.', ...liquidity.reasons],
+    });
+  }
+
+  if (multiTimeframe.action !== 'BUY' || multiTimeframe.confidence < 0.62) {
+    return withoutRiskEvaluation({
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: multiTimeframe.confidence,
+      stopLossPrice: null,
+      takeProfitPrice: null,
+      reasons: ['A new spot entry requires BUY consensus with at least 62% confidence.'],
+    });
   }
 
   const conviction = clamp((multiTimeframe.directionalScore - 20) / 50, 0.35, 1);
@@ -127,6 +150,8 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
       confidence: multiTimeframe.confidence,
       stopLossPrice: null,
       takeProfitPrice: null,
+      riskDisposition: 'REJECT',
+      riskReasons: risk.reasons.slice(),
       reasons: ['Deterministic risk gate rejected the candidate.', ...risk.reasons],
     };
   }
@@ -143,6 +168,8 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     confidence: multiTimeframe.confidence,
     stopLossPrice,
     takeProfitPrice,
+    riskDisposition: 'APPROVE',
+    riskReasons: risk.reasons.slice(),
     reasons: [
       'Liquidity, multi-timeframe consensus, confidence, and deterministic risk gates all passed.',
       `Initial stop uses ${Math.round(stopDistancePct * 10_000)} bps; take-profit is set at 2R.`,
