@@ -18,5 +18,6 @@ export * from './regime';
 export * from './risk';
 export * from './signalFusion';
 export * from './snapshot';
+export * from './strategyGenome';
 export * from './trendMomentum';
 export * from './types';
