@@ -39,10 +39,12 @@ export default async function handler(request: any, response: any) {
   let saveRuntimeCheckpoint: any;
 
   try {
+    // Vercel preserves these dynamic imports in the deployed ESM function bundle.
+    // Explicit .js extensions are required by the Node ESM loader at runtime.
     const [paperLoopModule, leaseModule, runtimeStateModule] = await Promise.all([
-      import('../server/trading/paperLoop'),
-      import('../server/trading/runtimeLease'),
-      import('../server/trading/runtimeState'),
+      import('../server/trading/paperLoop.js'),
+      import('../server/trading/runtimeLease.js'),
+      import('../server/trading/runtimeState.js'),
     ]);
 
     paperLoopController = paperLoopModule.paperLoopController;
