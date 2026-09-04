@@ -16,30 +16,21 @@ import {
   PredictionOutcome,
   Report,
 } from "./types";
-import {
-  initialSources,
-  initialSignals,
-  initialQuestions,
-  initialHypotheses,
-  initialEvidence,
-  initialScenarios,
-  initialPredictions,
-  initialReports,
-} from "./initialData";
 import { initializeApp } from "firebase/app";
 import {
   initializeFirestore,
   collection,
   onSnapshot,
-  doc,
-  setDoc,
-  getDocs,
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
-export const db = initializeFirestore(app, { experimentalForceLongPolling: true }, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(
+  app,
+  { experimentalForceLongPolling: true },
+  firebaseConfig.firestoreDatabaseId,
+);
 export const auth = getAuth(app);
 
 interface AppState {
@@ -84,7 +75,10 @@ interface AppState {
   deleteCascade: (type: string, id: string, feedback?: string) => Promise<void>;
   clearAllData: (onProgress?: (progress: number) => void) => Promise<void>;
   clearSpecificData: (types: string[]) => Promise<void>;
-  deleteSpecificItems: (items: {type: string, id: string}[], onProgress?: (progress: number) => void) => Promise<void>;
+  deleteSpecificItems: (
+    items: { type: string; id: string }[],
+    onProgress?: (progress: number) => void,
+  ) => Promise<void>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -105,33 +99,28 @@ const CYCLE_STAGES: CycleStage[] = [
   "REPORT_QUEUEING",
 ];
 
-async function seedDataIfEmpty(userId: string) {
-  const getColRef = (col: string) => collection(db, "users", userId, col);
-  const getDocRef = (col: string, id: string) => doc(db, "users", userId, col, id);
+const LEGACY_DEMO_IDS = new Set([
+  "SRC-NVDA-1",
+  "SRC-TSMC-1",
+  "sig-nvda-1",
+  "sig-tsmc-1",
+  "Q-SEMI-1",
+  "HYP-SEMI-A",
+  "HYP-SEMI-B",
+  "SCEN-SEMI-1",
+  "SCEN-SEMI-2",
+  "ev-nvda-1",
+  "ev-tsmc-1",
+  "rep-semi-1",
+  "pred-semi-1",
+]);
 
-  const sourcesSnap = await getDocs(getColRef("sources"));
-  const scenariosSnap = await getDocs(getColRef("scenarios"));
-  if (sourcesSnap.empty || scenariosSnap.empty) {
-    const promises = [];
-    for (const item of initialSources)
-      promises.push(setDoc(getDocRef("sources", item.id), item));
-    for (const item of initialSignals)
-      promises.push(setDoc(getDocRef("signals", item.id), item));
-    for (const item of initialQuestions)
-      promises.push(setDoc(getDocRef("questions", item.id), item));
-    for (const item of initialHypotheses)
-      promises.push(setDoc(getDocRef("hypotheses", item.id), item));
-    for (const item of initialEvidence)
-      promises.push(setDoc(getDocRef("evidence", item.id), item));
-    for (const item of initialScenarios)
-      promises.push(setDoc(getDocRef("scenarios", item.id), item));
-    for (const item of initialPredictions)
-      promises.push(setDoc(getDocRef("predictions", item.id), item));
-    for (const item of initialReports)
-      promises.push(setDoc(getDocRef("reports", item.id), item));
-    await Promise.all(promises);
-  }
-}
+const productionVisible = <T extends { id: string }>(items: T[]) =>
+  items.filter(
+    (item) =>
+      !LEGACY_DEMO_IDS.has(item.id) &&
+      (item as T & { status?: string }).status !== "MERGED_AND_DELETED",
+  );
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -158,19 +147,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [notifications, setNotifications] = useState<any[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [workflowQuery, setWorkflowQuery] = useState<string | null>(null);
-  const [isWorkflowMinimized, setIsWorkflowMinimized] = useState<boolean>(false);
-  const [workflowStep, setWorkflowStep] = useState<number>(-1);
-  const [hypothesisThreshold, setHypothesisThreshold] = useState<number>(65.0);
-  const [reliabilityThreshold, setReliabilityThreshold] = useState<number>(40.0);
-  const [coreInterests, setCoreInterests] = useState<string>(
-    "Artificial Intelligence, Semiconductor, Global Macro",
+  const [isWorkflowMinimized, setIsWorkflowMinimized] = useState(false);
+  const [workflowStep, setWorkflowStep] = useState(-1);
+  const [hypothesisThreshold, setHypothesisThreshold] = useState(65.0);
+  const [reliabilityThreshold, setReliabilityThreshold] = useState(40.0);
+  const [coreInterests, setCoreInterests] = useState(
+    "Crypto, Digital Assets, Market Liquidity, Global Macro",
   );
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        setCurrentView((prev) => (prev === "login" ? "watchlist" : prev));
+        setCurrentView((prev) => (prev === "login" ? "operations" : prev));
       } else {
         setCurrentView("login");
       }
@@ -196,11 +185,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     fetch("/api/feeds")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setActiveFeeds(data.data);
-        }
+        if (data.success) setActiveFeeds(data.data);
       })
-      .catch(console.error);
+      .catch(() => setActiveFeeds([]));
   }, []);
 
   useEffect(() => {
@@ -214,105 +201,114 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     let unsubReports = () => {};
 
     if (user) {
-      // First immediately seed context with local data (optimistic/offline fallback)
-      setSources(initialSources);
-      setSignals(initialSignals);
-      setQuestions(initialQuestions);
-      setHypotheses(initialHypotheses);
-      setEvidence(initialEvidence);
-      setScenarios(initialScenarios);
-      setPredictions(initialPredictions);
-      setReports(initialReports);
-      setIsFirebaseLoading(false);
-
-      seedDataIfEmpty(user.uid).catch(console.error);
+      setSources([]);
+      setSignals([]);
+      setQuestions([]);
+      setHypotheses([]);
+      setEvidence([]);
+      setScenarios([]);
+      setPredictions([]);
+      setReports([]);
+      setMergedNodesCount(0);
+      setIsFirebaseLoading(true);
 
       try {
         const mergedCounts: Record<string, number> = {};
-        
         const updateMergedCount = (count: number, collectionName: string) => {
-            mergedCounts[collectionName] = count;
-            const total = Object.values(mergedCounts).reduce((a, b) => a + b, 0);
-            setMergedNodesCount(total);
+          mergedCounts[collectionName] = count;
+          setMergedNodesCount(
+            Object.values(mergedCounts).reduce((a, b) => a + b, 0),
+          );
         };
 
-        unsubSources = onSnapshot(collection(db, "users", user.uid, "sources"), (snap) => {
-          if (!snap.empty) {
-             const docs = snap.docs.map((d) => d.data() as Source);
-             updateMergedCount(docs.filter(s => s.status === 'MERGED_AND_DELETED').length, 'sources');
-             setSources(docs.filter(s => s.status !== 'MERGED_AND_DELETED'));
-          } else {
-             updateMergedCount(0, 'sources');
-             setSources([]);
-          }
-        });
-        unsubSignals = onSnapshot(collection(db, "users", user.uid, "signals"), (snap) => {
-          if (!snap.empty) {
-             const docs = snap.docs.map((d) => d.data() as Signal);
-             updateMergedCount(docs.filter(s => (s as any).status === 'MERGED_AND_DELETED').length, 'signals');
-             setSignals(docs.filter(s => (s as any).status !== 'MERGED_AND_DELETED'));
-          } else {
-             updateMergedCount(0, 'signals');
-             setSignals([]);
-          }
-        });
-        unsubQuestions = onSnapshot(collection(db, "users", user.uid, "questions"), (snap) => {
-          if (!snap.empty) {
-             const docs = snap.docs.map((d) => d.data() as Question);
-             updateMergedCount(docs.filter(s => (s as any).status === 'MERGED_AND_DELETED').length, 'questions');
-             setQuestions(docs.filter(s => (s as any).status !== 'MERGED_AND_DELETED'));
-          } else {
-             updateMergedCount(0, 'questions');
-             setQuestions([]);
-          }
-        });
-        unsubHypotheses = onSnapshot(collection(db, "users", user.uid, "hypotheses"), (snap) => {
-          if (!snap.empty) {
+        unsubSources = onSnapshot(
+          collection(db, "users", user.uid, "sources"),
+          (snap) => {
+            const docs = snap.docs.map((d) => d.data() as Source);
+            updateMergedCount(
+              docs.filter((s) => s.status === "MERGED_AND_DELETED").length,
+              "sources",
+            );
+            setSources(productionVisible(docs));
+          },
+        );
+        unsubSignals = onSnapshot(
+          collection(db, "users", user.uid, "signals"),
+          (snap) => {
+            const docs = snap.docs.map((d) => d.data() as Signal);
+            updateMergedCount(
+              docs.filter((s) => (s as any).status === "MERGED_AND_DELETED")
+                .length,
+              "signals",
+            );
+            setSignals(productionVisible(docs));
+          },
+        );
+        unsubQuestions = onSnapshot(
+          collection(db, "users", user.uid, "questions"),
+          (snap) => {
+            const docs = snap.docs.map((d) => d.data() as Question);
+            updateMergedCount(
+              docs.filter((s) => (s as any).status === "MERGED_AND_DELETED")
+                .length,
+              "questions",
+            );
+            setQuestions(productionVisible(docs));
+          },
+        );
+        unsubHypotheses = onSnapshot(
+          collection(db, "users", user.uid, "hypotheses"),
+          (snap) => {
             const docs = snap.docs.map((d) => d.data() as Hypothesis);
-            updateMergedCount(docs.filter(s => s.status === 'MERGED_AND_DELETED').length, 'hypotheses');
-            setHypotheses(docs.filter(s => s.status !== 'MERGED_AND_DELETED'));
-          } else {
-            updateMergedCount(0, 'hypotheses');
-            setHypotheses([]);
-          }
-        });
-        unsubEvidence = onSnapshot(collection(db, "users", user.uid, "evidence"), (snap) => {
-          if (!snap.empty) {
-            setEvidence(snap.docs.map((d) => d.data() as Evidence));
-          } else {
-            setEvidence([]);
-          }
-        });
-        unsubScenarios = onSnapshot(collection(db, "users", user.uid, "scenarios"), (snap) => {
-          if (!snap.empty) {
+            updateMergedCount(
+              docs.filter((s) => s.status === "MERGED_AND_DELETED").length,
+              "hypotheses",
+            );
+            setHypotheses(productionVisible(docs));
+          },
+        );
+        unsubEvidence = onSnapshot(
+          collection(db, "users", user.uid, "evidence"),
+          (snap) => {
+            setEvidence(
+              productionVisible(snap.docs.map((d) => d.data() as Evidence)),
+            );
+          },
+        );
+        unsubScenarios = onSnapshot(
+          collection(db, "users", user.uid, "scenarios"),
+          (snap) => {
             const docs = snap.docs.map((d) => d.data() as ScenarioBranch);
-            updateMergedCount(docs.filter(s => s.status === 'MERGED_AND_DELETED').length, 'scenarios');
-            setScenarios(docs.filter(s => s.status !== 'MERGED_AND_DELETED'));
-          } else {
-            updateMergedCount(0, 'scenarios');
-            setScenarios([]);
-          }
-        });
-        unsubPredictions = onSnapshot(collection(db, "users", user.uid, "predictions"), (snap) => {
-          if (!snap.empty) {
+            updateMergedCount(
+              docs.filter((s) => s.status === "MERGED_AND_DELETED").length,
+              "scenarios",
+            );
+            setScenarios(productionVisible(docs));
+          },
+        );
+        unsubPredictions = onSnapshot(
+          collection(db, "users", user.uid, "predictions"),
+          (snap) => {
             const docs = snap.docs.map((d) => d.data() as PredictionOutcome);
-            updateMergedCount(docs.filter(s => s.status === 'MERGED_AND_DELETED').length, 'predictions');
-            setPredictions(docs.filter(s => s.status !== 'MERGED_AND_DELETED'));
-          } else {
-            updateMergedCount(0, 'predictions');
-            setPredictions([]);
-          }
-        });
-        unsubReports = onSnapshot(collection(db, "users", user.uid, "reports"), (snap) => {
-          if (!snap.empty) {
-            setReports(snap.docs.map((d) => d.data() as Report));
-          } else {
-            setReports([]);
-          }
-          setIsFirebaseLoading(false);
-        });
+            updateMergedCount(
+              docs.filter((s) => s.status === "MERGED_AND_DELETED").length,
+              "predictions",
+            );
+            setPredictions(productionVisible(docs));
+          },
+        );
+        unsubReports = onSnapshot(
+          collection(db, "users", user.uid, "reports"),
+          (snap) => {
+            setReports(
+              productionVisible(snap.docs.map((d) => d.data() as Report)),
+            );
+            setIsFirebaseLoading(false);
+          },
+        );
       } catch (err) {
-        console.log("Firebase가 연결되지 않아 로컬 데이터 모드(오프라인 모드)로 실행됩니다.");
+        console.error("Firebase intelligence workspace unavailable.", err);
+        setIsFirebaseLoading(false);
       }
     } else {
       setSources([]);
@@ -323,6 +319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setScenarios([]);
       setPredictions([]);
       setReports([]);
+      setMergedNodesCount(0);
       setIsFirebaseLoading(false);
     }
 
@@ -346,14 +343,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => clearInterval(interval);
   }, [isIngestingData]);
 
-  // Removed redundant 60-second fetch-rss interval to prevent API quota overflow
-
   const deleteSource = useCallback(
     async (id: string) => {
       try {
-        await window.fetch(`/api/trends?region=kr`); // dummy request to wake up backend if needed
         const { deleteDoc, doc } = await import("firebase/firestore");
-        await deleteDoc(doc(db, "users", user!.uid, "sources", id));
+        if (!user) return;
+        await deleteDoc(doc(db, "users", user.uid, "sources", id));
         addNotification(`자료가 삭제되었습니다 (ID: ${id})`, "success");
       } catch (e: any) {
         console.error("Failed to delete source", e);
@@ -364,77 +359,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const deleteCascade = useCallback(
-    async (type: string, id: string, feedback?: string, onProgress?: (progress: number, label: string) => void) => {
+    async (
+      type: string,
+      id: string,
+      feedback?: string,
+      onProgress?: (progress: number, label: string) => void,
+    ) => {
       if (!user) return;
       try {
         if (onProgress) onProgress(10, "연관 데이터 스캔 중...");
-        const { doc, writeBatch, collection, addDoc } = await import("firebase/firestore");
+        const { doc, writeBatch, collection, addDoc } = await import(
+          "firebase/firestore"
+        );
         const batch = writeBatch(db);
-        
-        let toDeleteSources = new Set<string>();
-        let toDeleteSignals = new Set<string>();
-        let toDeleteQuestions = new Set<string>();
-        let toDeleteHypotheses = new Set<string>();
-        let toDeleteScenarios = new Set<string>();
-        
-        if (type === 'source') {
-             toDeleteSources.add(id);
-             signals.forEach(s => {
-                 if (s.sourceIds?.includes(id)) toDeleteSignals.add(s.id);
-             });
-        }
-        else if (type === 'signal') toDeleteSignals.add(id);
-        else if (type === 'question') toDeleteQuestions.add(id);
-        else if (type === 'hypothesis') toDeleteHypotheses.add(id);
-        else if (type === 'scenario' || type === 'branch') toDeleteScenarios.add(id);
+
+        const toDeleteSources = new Set<string>();
+        const toDeleteSignals = new Set<string>();
+        const toDeleteQuestions = new Set<string>();
+        const toDeleteHypotheses = new Set<string>();
+        const toDeleteScenarios = new Set<string>();
+
+        if (type === "source") {
+          toDeleteSources.add(id);
+          signals.forEach((s) => {
+            if (s.sourceIds?.includes(id)) toDeleteSignals.add(s.id);
+          });
+        } else if (type === "signal") toDeleteSignals.add(id);
+        else if (type === "question") toDeleteQuestions.add(id);
+        else if (type === "hypothesis") toDeleteHypotheses.add(id);
+        else if (type === "scenario" || type === "branch")
+          toDeleteScenarios.add(id);
 
         if (toDeleteSignals.size > 0) {
-            questions.forEach(q => {
-               if (q.signalIds?.some(sid => toDeleteSignals.has(sid))) {
-                   toDeleteQuestions.add(q.id);
-               }
-            });
+          questions.forEach((q) => {
+            if (q.signalIds?.some((sid) => toDeleteSignals.has(sid))) {
+              toDeleteQuestions.add(q.id);
+            }
+          });
         }
         if (toDeleteQuestions.size > 0) {
-            hypotheses.forEach(h => {
-               if (toDeleteQuestions.has(h.questionId)) {
-                   toDeleteHypotheses.add(h.id);
-               }
-            });
+          hypotheses.forEach((h) => {
+            if (toDeleteQuestions.has(h.questionId)) toDeleteHypotheses.add(h.id);
+          });
         }
         if (toDeleteHypotheses.size > 0) {
-            scenarios.forEach(sc => {
-               if (toDeleteHypotheses.has(sc.hypothesisId)) {
-                   toDeleteScenarios.add(sc.id);
-               }
-            });
+          scenarios.forEach((sc) => {
+            if (toDeleteHypotheses.has(sc.hypothesisId))
+              toDeleteScenarios.add(sc.id);
+          });
         }
-        
-        if (onProgress) onProgress(40, `스캔 완료. (총 ${toDeleteSources.size + toDeleteSignals.size + toDeleteQuestions.size + toDeleteHypotheses.size + toDeleteScenarios.size}개 마킹됨)`);
-        
-        toDeleteSources.forEach(did => batch.delete(doc(db, "users", user.uid, "sources", did)));
-        toDeleteSignals.forEach(did => batch.delete(doc(db, "users", user.uid, "signals", did)));
-        toDeleteQuestions.forEach(did => batch.delete(doc(db, "users", user.uid, "questions", did)));
-        toDeleteHypotheses.forEach(did => batch.delete(doc(db, "users", user.uid, "hypotheses", did)));
-        toDeleteScenarios.forEach(did => batch.delete(doc(db, "users", user.uid, "scenarios", did)));
-        
+
+        if (onProgress)
+          onProgress(
+            40,
+            `스캔 완료. (총 ${
+              toDeleteSources.size +
+              toDeleteSignals.size +
+              toDeleteQuestions.size +
+              toDeleteHypotheses.size +
+              toDeleteScenarios.size
+            }개 마킹됨)`,
+          );
+
+        toDeleteSources.forEach((did) =>
+          batch.delete(doc(db, "users", user.uid, "sources", did)),
+        );
+        toDeleteSignals.forEach((did) =>
+          batch.delete(doc(db, "users", user.uid, "signals", did)),
+        );
+        toDeleteQuestions.forEach((did) =>
+          batch.delete(doc(db, "users", user.uid, "questions", did)),
+        );
+        toDeleteHypotheses.forEach((did) =>
+          batch.delete(doc(db, "users", user.uid, "hypotheses", did)),
+        );
+        toDeleteScenarios.forEach((did) =>
+          batch.delete(doc(db, "users", user.uid, "scenarios", did)),
+        );
+
         if (onProgress) onProgress(70, "서버에 삭제 요청 중...");
         await batch.commit();
 
-        if (feedback && feedback.trim() !== "") {
-            await addDoc(collection(db, "users", user.uid, "feedbacks"), {
-                text: feedback.trim(),
-                timestamp: Date.now(),
-                deletedType: type,
-                deletedId: id
-            });
-            addNotification(`삭제 및 피드백 반영 완료되었습니다.`, "success");
+        if (feedback?.trim()) {
+          await addDoc(collection(db, "users", user.uid, "feedbacks"), {
+            text: feedback.trim(),
+            timestamp: Date.now(),
+            deletedType: type,
+            deletedId: id,
+          });
+          addNotification("삭제 및 피드백 반영 완료되었습니다.", "success");
         } else {
-            addNotification(`현재 자료와 연결된 하위 자료들이 함께 삭제되었습니다.`, "success");
+          addNotification(
+            "현재 자료와 연결된 하위 자료들이 함께 삭제되었습니다.",
+            "success",
+          );
         }
 
         if (onProgress) onProgress(100, "삭제 완료");
-        
         setSelectedEntity(null);
       } catch (e: any) {
         console.error("Failed to cascade delete", e);
@@ -442,7 +463,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         addNotification(`삭제 연쇄 실패: ${e.message}`, "error");
       }
     },
-    [user, signals, questions, hypotheses, scenarios, addNotification, setSelectedEntity],
+    [user, signals, questions, hypotheses, scenarios, addNotification],
   );
 
   const clearSpecificData = useCallback(
@@ -452,21 +473,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const { doc, writeBatch } = await import("firebase/firestore");
         const batch = writeBatch(db);
 
-        if (types.includes("sources")) {
-          sources.forEach((s) => batch.delete(doc(db, "users", user.uid, "sources", s.id)));
-        }
-        if (types.includes("signals")) {
-          signals.forEach((s) => batch.delete(doc(db, "users", user.uid, "signals", s.id)));
-        }
-        if (types.includes("questions")) {
-          questions.forEach((q) => batch.delete(doc(db, "users", user.uid, "questions", q.id)));
-        }
-        if (types.includes("hypotheses")) {
-          hypotheses.forEach((h) => batch.delete(doc(db, "users", user.uid, "hypotheses", h.id)));
-        }
-        if (types.includes("scenarios")) {
-          scenarios.forEach((s) => batch.delete(doc(db, "users", user.uid, "scenarios", s.id)));
-        }
+        if (types.includes("sources"))
+          sources.forEach((s) =>
+            batch.delete(doc(db, "users", user.uid, "sources", s.id)),
+          );
+        if (types.includes("signals"))
+          signals.forEach((s) =>
+            batch.delete(doc(db, "users", user.uid, "signals", s.id)),
+          );
+        if (types.includes("questions"))
+          questions.forEach((q) =>
+            batch.delete(doc(db, "users", user.uid, "questions", q.id)),
+          );
+        if (types.includes("hypotheses"))
+          hypotheses.forEach((h) =>
+            batch.delete(doc(db, "users", user.uid, "hypotheses", h.id)),
+          );
+        if (types.includes("scenarios"))
+          scenarios.forEach((s) =>
+            batch.delete(doc(db, "users", user.uid, "scenarios", s.id)),
+          );
 
         await batch.commit();
 
@@ -475,8 +501,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (types.includes("questions")) setQuestions([]);
         if (types.includes("hypotheses")) setHypotheses([]);
         if (types.includes("scenarios")) setScenarios([]);
-        
-        // Let snapshot listeners sync from backend if needed
       } catch (err) {
         console.error("Error clearing specific data:", err);
       }
@@ -485,79 +509,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const deleteSpecificItems = useCallback(
-    async (items: {type: string, id: string}[], onProgress?: (progress: number) => void) => {
+    async (
+      items: { type: string; id: string }[],
+      onProgress?: (progress: number) => void,
+    ) => {
       if (!user) return;
       try {
         const { doc, writeBatch } = await import("firebase/firestore");
-        
-        // Chunk processing to avoid 500 batch limit and report progress
         const chunkSize = 100;
         for (let i = 0; i < items.length; i += chunkSize) {
           const chunk = items.slice(i, i + chunkSize);
           const batch = writeBatch(db);
-          
-          chunk.forEach(({type, id}) => {
+          chunk.forEach(({ type, id }) => {
             batch.delete(doc(db, "users", user.uid, type, id));
           });
-          
           await batch.commit();
-          
-          if (onProgress) {
+          if (onProgress)
             onProgress(Math.round(((i + chunk.length) / items.length) * 100));
-          }
         }
       } catch (err) {
         console.error("Error deleting specific items:", err);
       }
     },
-    [user]
+    [user],
   );
 
-  const clearAllData = useCallback(async (onProgress?: (progress: number) => void) => {
-    if (!user) return;
-    try {
-      const { doc, writeBatch } = await import("firebase/firestore");
-      
-      const allItems: {type: string, id: string}[] = [];
-      sources.forEach(s => allItems.push({type: "sources", id: s.id}));
-      signals.forEach(s => allItems.push({type: "signals", id: s.id}));
-      questions.forEach(q => allItems.push({type: "questions", id: q.id}));
-      hypotheses.forEach(h => allItems.push({type: "hypotheses", id: h.id}));
-      scenarios.forEach(s => allItems.push({type: "scenarios", id: s.id}));
-      evidence.forEach(e => allItems.push({type: "evidence", id: e.id}));
-      predictions.forEach(p => allItems.push({type: "predictions", id: p.id}));
-      reports.forEach(r => allItems.push({type: "reports", id: r.id}));
-      
-      if (allItems.length === 0) {
+  const clearAllData = useCallback(
+    async (onProgress?: (progress: number) => void) => {
+      if (!user) return;
+      try {
+        const { doc, writeBatch } = await import("firebase/firestore");
+
+        const allItems: { type: string; id: string }[] = [];
+        sources.forEach((s) => allItems.push({ type: "sources", id: s.id }));
+        signals.forEach((s) => allItems.push({ type: "signals", id: s.id }));
+        questions.forEach((q) =>
+          allItems.push({ type: "questions", id: q.id }),
+        );
+        hypotheses.forEach((h) =>
+          allItems.push({ type: "hypotheses", id: h.id }),
+        );
+        scenarios.forEach((s) =>
+          allItems.push({ type: "scenarios", id: s.id }),
+        );
+        evidence.forEach((e) => allItems.push({ type: "evidence", id: e.id }));
+        predictions.forEach((p) =>
+          allItems.push({ type: "predictions", id: p.id }),
+        );
+        reports.forEach((r) => allItems.push({ type: "reports", id: r.id }));
+
+        if (allItems.length === 0) {
           if (onProgress) onProgress(100);
           addNotification("모든 데이터가 초기화되었습니다.", "success");
           setSelectedEntity(null);
           return;
-      }
-
-      const chunkSize = 100;
-      for (let i = 0; i < allItems.length; i += chunkSize) {
-        const chunk = allItems.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        
-        chunk.forEach(({type, id}) => {
-          batch.delete(doc(db, "users", user.uid, type, id));
-        });
-        
-        await batch.commit();
-        
-        if (onProgress) {
-          onProgress(Math.round(((i + chunk.length) / allItems.length) * 100));
         }
+
+        const chunkSize = 100;
+        for (let i = 0; i < allItems.length; i += chunkSize) {
+          const chunk = allItems.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          chunk.forEach(({ type, id }) => {
+            batch.delete(doc(db, "users", user.uid, type, id));
+          });
+          await batch.commit();
+          if (onProgress)
+            onProgress(
+              Math.round(((i + chunk.length) / allItems.length) * 100),
+            );
+        }
+
+        addNotification("모든 데이터가 초기화되었습니다.", "success");
+        setSelectedEntity(null);
+      } catch (e: any) {
+        console.error("Failed to clear data", e);
+        addNotification(`데이터 초기화 실패: ${e.message}`, "error");
       }
-      
-      addNotification("모든 데이터가 초기화되었습니다.", "success");
-      setSelectedEntity(null);
-    } catch (e: any) {
-      console.error("Failed to clear data", e);
-      addNotification(`데이터 초기화 실패: ${e.message}`, "error");
-    }
-  }, [user, sources, signals, questions, hypotheses, scenarios, evidence, predictions, reports, addNotification, setSelectedEntity]);
+    },
+    [
+      user,
+      sources,
+      signals,
+      questions,
+      hypotheses,
+      scenarios,
+      evidence,
+      predictions,
+      reports,
+      addNotification,
+    ],
+  );
 
   const value: AppState = {
     cycleStage: CYCLE_STAGES[cycleIndex],
