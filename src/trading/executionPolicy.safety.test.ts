@@ -27,6 +27,17 @@ const oneHour = {
   asOf: 1_000,
   indicators: { atrPct: 0.02 },
   regime: { regime: 'UPTREND', confidence: 0.8, trendStrength: 0.6, highVolatility: false, reasons: [] },
+  trend: { action: 'BUY', directionalScore: 70, strength: 70, confidence: 0.8, reasons: [] },
+  momentum: { action: 'BUY', directionalScore: 65, strength: 65, confidence: 0.78, reasons: [] },
+  meanReversion: {
+    action: 'WAIT',
+    state: 'NEUTRAL',
+    score: 0,
+    confidence: 0.5,
+    rawExtremeScore: 0,
+    trendPenalty: 1,
+    reasons: [],
+  },
 };
 
 const multiTimeframe = {
