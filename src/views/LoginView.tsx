@@ -18,10 +18,9 @@ import {
 import { auth, useAppContext } from '../store';
 
 const developmentAccessAllowed = () => {
+  if (!import.meta.env.DEV) return false;
   const hostname = window.location.hostname.toLowerCase();
-  return hostname === 'localhost'
-    || hostname === '127.0.0.1'
-    || (hostname.endsWith('.vercel.app') && hostname !== 'black-oracle.vercel.app');
+  return hostname === 'localhost' || hostname === '127.0.0.1';
 };
 
 export const LoginView: React.FC = () => {
@@ -89,8 +88,8 @@ export const LoginView: React.FC = () => {
         await createUserWithEmailAndPassword(auth, username, password);
         completeAccess();
       } else {
-        // Development shortcut is permitted only on local or protected Preview hosts.
-        // The stable production alias must always authenticate through Firebase.
+        // The fixed admin/oracle shortcut is local-development-only.
+        // All deployed environments, including Vercel Preview, must use Firebase auth.
         if (developmentAccessAllowed() && username === 'admin' && password === 'oracle') {
           completeAccess();
           return;
