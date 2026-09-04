@@ -1,5 +1,6 @@
 import type { EvidenceAggregate } from './evidence';
 import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
+import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
 import type {
   ExecutionDecision,
   MarketRegime,
@@ -8,7 +9,6 @@ import type {
 } from './types';
 
 export type DecisionTraceAction = 'ENTER' | 'EXIT' | 'HOLD' | 'NO_TRADE';
-export type StrategyDisposition = 'LEGACY_FUSION';
 
 export interface DecisionTrace {
   timestamp: number;
@@ -18,7 +18,8 @@ export interface DecisionTrace {
   regimeConfidence: number;
   oracleTradeScore: number;
   confidence: number;
-  strategyDisposition: StrategyDisposition;
+  strategyDisposition: StrategyRouterDecision['route'];
+  router: StrategyRouterDecision;
   riskDisposition: RiskDisposition;
   eventScore: number | null;
   forecast: EvidenceForecast;
@@ -53,6 +54,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const oneHourRegime = multiTimeframe.frames.oneHour.regime;
   const primaryReason = decision.reasons[0] ?? 'No explicit decision reason was recorded.';
   const forecast = buildEvidenceForecast(evidence);
+  const router = buildStrategyRouterDecision(multiTimeframe, forecast);
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -62,7 +64,8 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     regimeConfidence: oneHourRegime.confidence,
     oracleTradeScore: multiTimeframe.oracleTradeScore,
     confidence: decision.confidence,
-    strategyDisposition: 'LEGACY_FUSION',
+    strategyDisposition: router.route,
+    router,
     riskDisposition: decision.riskDisposition,
     eventScore: evidence.activeCount > 0 ? evidence.score : null,
     forecast,
