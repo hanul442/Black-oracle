@@ -1,6 +1,7 @@
 export * from './championChallenger';
 export * from './config';
 export * from './evidence';
+export * from './evidenceSourcePolicy';
 export * from './executionPolicy';
 export * from './experiment';
 export * from './experimentLedger';
@@ -14,6 +15,7 @@ export * from './multiTimeframe';
 export * from './paperBroker';
 export * from './paperPortfolio';
 export * from './performance';
+export * from './portfolioExposure';
 export * from './regime';
 export * from './risk';
 export * from './riskProfiles';
