@@ -23,9 +23,12 @@ import { SettingsView } from './views/SettingsView';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CheckCircle, Info, Search, XCircle } from 'lucide-react';
 
+const SPRINT_TWO_QA_HOST = 'black-oracle-git-sprint-2-mo-6e9a67-kimwriter222-7385s-projects.vercel.app';
+
 const AppContent: React.FC = () => {
   const {
     currentView,
+    setCurrentView,
     addNotification,
     notifications,
     coreInterests,
@@ -48,6 +51,12 @@ const AppContent: React.FC = () => {
     setHasSeenTutorial(true);
     localStorage.setItem('oracle_tutorial_seen', 'true');
   };
+
+  useEffect(() => {
+    const qaRequested = new URLSearchParams(window.location.search).get('qa') === 'ops';
+    const qaHost = window.location.hostname.toLowerCase() === SPRINT_TWO_QA_HOST;
+    if (qaRequested && qaHost && currentView === 'login') setCurrentView('operations');
+  }, [currentView, setCurrentView]);
 
   useEffect(() => {
     if (currentView === 'login') return;
