@@ -11,6 +11,8 @@ export interface PaperPortfolioState {
   equityCurve: Array<{ timestamp: number; equity: number }>;
 }
 
+const EQUITY_HEARTBEAT_MS = 60_000;
+
 const assertFiniteNonNegative = (value: number, label: string) => {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be finite and non-negative.`);
 };
@@ -59,11 +61,20 @@ export class PaperPortfolio {
       portfolio.positions.set(position.market, { ...position });
     }
 
-    for (const point of state.equityCurve.slice(-2_000)) {
+    const restoredCurve = state.equityCurve.slice(-2_000).map((point) => {
       if (!Number.isFinite(point.timestamp) || !Number.isFinite(point.equity) || point.equity < 0) {
         throw new Error('Restored equity curve contains an invalid point.');
       }
-      portfolio.equityCurve.push({ ...point });
+      return { ...point };
+    }).sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const point of restoredCurve) {
+      const lastPoint = portfolio.equityCurve[portfolio.equityCurve.length - 1];
+      if (lastPoint?.timestamp === point.timestamp) {
+        lastPoint.equity = point.equity;
+      } else {
+        portfolio.equityCurve.push(point);
+      }
     }
 
     return portfolio;
@@ -165,8 +176,16 @@ export class PaperPortfolio {
     const dailyPnlPct = this.dailyStartEquity > 0 ? (equity - this.dailyStartEquity) / this.dailyStartEquity : 0;
 
     const lastPoint = this.equityCurve[this.equityCurve.length - 1];
-    if (!lastPoint || lastPoint.timestamp !== timestamp || Math.abs(lastPoint.equity - equity) > 1e-9) {
-      this.equityCurve.push({ timestamp, equity });
+    const normalizedTimestamp = lastPoint ? Math.max(timestamp, lastPoint.timestamp) : timestamp;
+    const equityChanged = !lastPoint || Math.abs(lastPoint.equity - equity) > 1e-9;
+    const heartbeatDue = !lastPoint || normalizedTimestamp - lastPoint.timestamp >= EQUITY_HEARTBEAT_MS;
+
+    if (!lastPoint) {
+      this.equityCurve.push({ timestamp: normalizedTimestamp, equity });
+    } else if (normalizedTimestamp === lastPoint.timestamp) {
+      if (equityChanged) lastPoint.equity = equity;
+    } else if (equityChanged || heartbeatDue) {
+      this.equityCurve.push({ timestamp: normalizedTimestamp, equity });
       if (this.equityCurve.length > 2_000) this.equityCurve.splice(0, this.equityCurve.length - 2_000);
     }
 
