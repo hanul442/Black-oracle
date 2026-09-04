@@ -17,13 +17,9 @@ import {
 } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
 
-const QA_PREVIEW_HOST = 'black-oracle-git-integration-465b8a-kimwriter222-7385s-projects.vercel.app';
-
 const developmentAccessAllowed = () => {
   const hostname = window.location.hostname.toLowerCase();
-  return hostname === 'localhost'
-    || hostname === '127.0.0.1'
-    || hostname === QA_PREVIEW_HOST;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
 };
 
 export const LoginView: React.FC = () => {
@@ -62,7 +58,7 @@ export const LoginView: React.FC = () => {
       } else if (error.code === 'auth/popup-closed-by-user') {
         showError('구글 로그인을 취소했습니다.');
       } else if (error.code === 'auth/unauthorized-domain') {
-        showError('현재 배포 도메인은 Google 로그인 허용 목록에 없습니다. QA Preview에서는 admin / oracle을 사용해주세요.');
+        showError('현재 배포 도메인은 Google 로그인 허용 목록에 없습니다. Firebase Authentication 설정을 확인해주세요.');
       } else {
         showError(`구글 로그인 중 오류가 발생했습니다: ${error.message}`);
       }
