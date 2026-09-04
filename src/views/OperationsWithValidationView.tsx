@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
+import { PositionEvidencePanel } from '../components/PositionEvidencePanel';
 import { OperationsView } from './OperationsView';
 
 type Validation = {
@@ -97,8 +98,11 @@ export const OperationsWithValidationView: React.FC = () => {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <OperationsView />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <PositionEvidencePanel />
+        <div className="min-h-[calc(100%-1px)]">
+          <OperationsView />
+        </div>
       </div>
     </div>
   );
