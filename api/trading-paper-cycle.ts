@@ -39,19 +39,26 @@ export default async function handler(request: any, response: any) {
   let saveRuntimeCheckpoint: any;
 
   try {
-    // Vercel preserves these dynamic imports in the deployed ESM function bundle.
-    // Explicit .js extensions are required by the Node ESM loader at runtime.
-    const [paperLoopModule, leaseModule, runtimeStateModule] = await Promise.all([
-      import('../server/trading/paperLoop.js'),
-      import('../server/trading/runtimeLease.js'),
-      import('../server/trading/runtimeState.js'),
-    ]);
+    // The full Paper runtime is bundled during the build step so Vercel's Node ESM
+    // loader never has to resolve the runtime's extensionless TypeScript imports.
+    // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
+    const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
 
-    paperLoopController = paperLoopModule.paperLoopController;
-    claimTradingCycleLease = leaseModule.claimTradingCycleLease;
-    releaseTradingCycleLease = leaseModule.releaseTradingCycleLease;
-    restoreRuntimeCheckpoint = runtimeStateModule.restoreRuntimeCheckpoint;
-    saveRuntimeCheckpoint = runtimeStateModule.saveRuntimeCheckpoint;
+    paperLoopController = runtimeModule.paperLoopController;
+    claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
+    releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
+    restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
+    saveRuntimeCheckpoint = runtimeModule.saveRuntimeCheckpoint;
+
+    if (
+      !paperLoopController ||
+      typeof claimTradingCycleLease !== 'function' ||
+      typeof releaseTradingCycleLease !== 'function' ||
+      typeof restoreRuntimeCheckpoint !== 'function' ||
+      typeof saveRuntimeCheckpoint !== 'function'
+    ) {
+      throw new Error('Trading runtime bundle is missing required exports.');
+    }
   } catch (error) {
     console.error('Scheduled Paper cycle module initialization failed:', error);
     return json(response, 500, {
