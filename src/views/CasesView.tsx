@@ -192,11 +192,11 @@ export const CasesView: React.FC = () => {
           empty="No open Paper positions."
         >
           {activePositions.map((position) => {
-            const key = `active:${position.market}`;
-            const selected = selectedKey === key;
+            const itemKey = `active:${position.market}`;
+            const selected = selectedKey === itemKey;
             return (
               <MarketCard
-                key={key}
+                key={itemKey}
                 market={position.market}
                 badge={position.evidenceState}
                 score={position.oracleTradeScore}
@@ -207,7 +207,7 @@ export const CasesView: React.FC = () => {
                 evidenceCount={position.externalEvidenceActive}
                 contradictions={position.externalEvidenceContradictions}
                 selected={selected}
-                onToggle={() => setSelectedKey(selected ? null : key)}
+                onToggle={() => setSelectedKey(selected ? null : itemKey)}
               >
                 <div className="grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-4">
                   <DetailStat label="MARK" value={formatMoney(position.markPrice)} />
@@ -231,11 +231,11 @@ export const CasesView: React.FC = () => {
           empty="No non-position candidates were persisted in the latest cycle."
         >
           {systemCandidates.map((candidate) => {
-            const key = `candidate:${candidate.market}`;
-            const selected = selectedKey === key;
+            const itemKey = `candidate:${candidate.market}`;
+            const selected = selectedKey === itemKey;
             return (
               <MarketCard
-                key={key}
+                key={itemKey}
                 market={candidate.market}
                 badge={candidate.riskDisposition === 'REJECT' ? 'RISK REJECT' : candidate.decision}
                 score={candidate.oracleTradeScore}
@@ -246,7 +246,7 @@ export const CasesView: React.FC = () => {
                 evidenceCount={candidate.evidenceActiveCount || 0}
                 contradictions={candidate.evidenceContradictionCount || 0}
                 selected={selected}
-                onToggle={() => setSelectedKey(selected ? null : key)}
+                onToggle={() => setSelectedKey(selected ? null : itemKey)}
               >
                 <InspectorText label="RISK" value={candidate.riskDisposition || 'NOT_EVALUATED'} />
                 <InspectorText label="CONFIDENCE" value={formatPct(candidate.confidence)} />
@@ -283,11 +283,11 @@ export const CasesView: React.FC = () => {
         >
           {research.map((item) => {
             const latest = decisionByMarket.get(item.market);
-            const key = `research:${item.market}`;
-            const selected = selectedKey === key;
+            const itemKey = `research:${item.market}`;
+            const selected = selectedKey === itemKey;
             return (
               <MarketCard
-                key={key}
+                key={itemKey}
                 market={item.market}
                 badge="RESEARCH ONLY"
                 score={latest?.oracleTradeScore ?? null}
@@ -298,7 +298,7 @@ export const CasesView: React.FC = () => {
                 evidenceCount={latest?.evidenceActiveCount || 0}
                 contradictions={latest?.evidenceContradictionCount || 0}
                 selected={selected}
-                onToggle={() => setSelectedKey(selected ? null : key)}
+                onToggle={() => setSelectedKey(selected ? null : itemKey)}
                 trailing={(
                   <button
                     aria-label={`Remove ${item.market} from research watchlist`}
@@ -349,7 +349,8 @@ const CaseSection = ({ icon: Icon, eyebrow, title, note, empty, action, children
   );
 };
 
-const MarketCard = ({ market, badge, score, decision, regime, route, reason, evidenceCount, contradictions, selected, onToggle, trailing, children }: {
+type MarketCardProps = {
+  key?: React.Key;
   market: string;
   badge: string;
   score: number | null;
@@ -363,7 +364,9 @@ const MarketCard = ({ market, badge, score, decision, regime, route, reason, evi
   onToggle: () => void;
   trailing?: React.ReactNode;
   children: React.ReactNode;
-}) => (
+};
+
+const MarketCard = ({ market, badge, score, decision, regime, route, reason, evidenceCount, contradictions, selected, onToggle, trailing, children }: MarketCardProps) => (
   <article className="bg-[#080C11]">
     <button onClick={onToggle} className="w-full p-4 text-left transition hover:bg-white/[0.018]">
       <div className="flex items-start justify-between gap-3">
