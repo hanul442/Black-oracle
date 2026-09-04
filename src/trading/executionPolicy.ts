@@ -21,6 +21,7 @@ export interface ExecutionPolicyInput {
   feedConnected?: boolean;
   ledgerInSync?: boolean;
   duplicateOrderDetected?: boolean;
+  newEntryAllowed?: boolean;
 }
 
 const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDisposition' | 'riskReasons'>): ExecutionDecision => ({
@@ -81,6 +82,22 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
       takeProfitPrice: position.takeProfitPrice,
       reasons: ['Existing position remains inside its protective levels and no exit signal is active.'],
     });
+  }
+
+  if (input.newEntryAllowed === false) {
+    const reason = 'Paper portfolio open-position limit rejected a new entry.';
+    return {
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: multiTimeframe.confidence,
+      stopLossPrice: null,
+      takeProfitPrice: null,
+      riskDisposition: 'REJECT',
+      riskReasons: [reason],
+      reasons: [reason],
+    };
   }
 
   if (!liquidity.eligible) {
