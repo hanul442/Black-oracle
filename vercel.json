@@ -3,6 +3,9 @@
   "functions": {
     "api/trading-paper-cycle.ts": {
       "maxDuration": 60
+    },
+    "api/trading-evidence-refresh.ts": {
+      "maxDuration": 60
     }
   }
 }
