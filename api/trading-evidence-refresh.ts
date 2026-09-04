@@ -3,7 +3,7 @@ import Parser from 'rss-parser';
 const OPENAI_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const MAX_MARKETS = 6;
-const MAX_CANDIDATES = 24;
+const MAX_CANDIDATES = 36;
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -47,23 +47,32 @@ type Classification = {
   contradictionOf: string;
 };
 
+type NewsLanguage = 'EN' | 'KO';
+
 const publisherReliability = (publisher: string) => {
   const normalized = publisher.toLowerCase();
-  if (normalized.includes('reuters')) return 0.9;
+
+  // Operational priors only. Language does not change the score.
+  if (normalized.includes('reuters')) return 0.90;
   if (normalized.includes('bloomberg')) return 0.88;
   if (normalized.includes('financial times')) return 0.86;
   if (normalized.includes('wall street journal') || normalized.includes('wsj')) return 0.86;
-  if (normalized.includes('cnbc')) return 0.8;
-  if (normalized.includes('coindesk')) return 0.8;
+  if (normalized.includes('연합뉴스') || normalized.includes('yna')) return 0.84;
+  if (normalized.includes('cnbc')) return 0.80;
+  if (normalized.includes('coindesk')) return 0.80;
   if (normalized.includes('the block')) return 0.76;
+  if (normalized.includes('한국경제') || normalized.includes('hankyung')) return 0.76;
+  if (normalized.includes('매일경제') || normalized.includes('mk.co.kr')) return 0.76;
+  if (normalized.includes('서울경제') || normalized.includes('sedaily')) return 0.74;
+  if (normalized.includes('조선비즈') || normalized.includes('chosunbiz')) return 0.74;
   if (normalized.includes('decrypt')) return 0.72;
   if (normalized.includes('cointelegraph')) return 0.64;
   return 0;
 };
 
-const assetTerms = (market: string) => {
+const assetTerms = (market: string, language: NewsLanguage = 'EN') => {
   const symbol = market.replace(/^KRW-/, '').toUpperCase();
-  const names: Record<string, string[]> = {
+  const english: Record<string, string[]> = {
     BTC: ['bitcoin', 'btc'],
     ETH: ['ethereum', 'ether', 'eth'],
     XRP: ['xrp', 'ripple'],
@@ -71,14 +80,23 @@ const assetTerms = (market: string) => {
     USDT: ['tether', 'usdt'],
     TRUMP: ['official trump', 'trump token', '$trump'],
   };
-  return names[symbol] || [symbol.toLowerCase()];
+  const korean: Record<string, string[]> = {
+    BTC: ['비트코인', 'BTC'],
+    ETH: ['이더리움', '이더', 'ETH'],
+    XRP: ['XRP', '리플'],
+    SOL: ['솔라나', 'SOL'],
+    USDT: ['테더', 'USDT'],
+    TRUMP: ['트럼프 코인', 'TRUMP'],
+  };
+  return (language === 'KO' ? korean[symbol] : english[symbol]) || [symbol];
 };
 
 const matchesMarket = (text: string, market: string) => {
   const normalized = ` ${text.toLowerCase()} `;
-  return assetTerms(market).some((term) => {
-    if (term.length <= 4) return new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(text);
-    return normalized.includes(term.toLowerCase());
+  return assetTerms(market, 'EN').some((term) => {
+    const lower = term.toLowerCase();
+    if (lower.length <= 4) return new RegExp(`(^|[^a-z0-9])${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(text);
+    return normalized.includes(lower);
   });
 };
 
@@ -105,7 +123,7 @@ const collectCoinDesk = async (markets: string[], warnings: string[]) => {
     for (const market of markets) {
       const matching = (feed.items || [])
         .filter((item: any) => matchesMarket(`${item.title || ''} ${item.contentSnippet || ''}`, market))
-        .slice(0, 3);
+        .slice(0, 2);
       matching.forEach((item: any, index: number) => {
         if (!item.link || !item.title) return;
         result.push({
@@ -117,8 +135,8 @@ const collectCoinDesk = async (markets: string[], warnings: string[]) => {
           sourceUrl: String(item.link),
           publishedAt: itemTimestamp(item),
           sourceType: 'NEWS',
-          reliability: 0.8,
-          tags: ['coindesk', market.replace(/^KRW-/, '').toLowerCase()],
+          reliability: 0.80,
+          tags: ['coindesk', 'language:en', market.replace(/^KRW-/, '').toLowerCase()],
         });
       });
     }
@@ -133,7 +151,7 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
   if (!markets.includes('KRW-ETH')) return [] as Candidate[];
   try {
     const feed = await parser.parseURL('https://blog.ethereum.org/feed.xml');
-    return (feed.items || []).slice(0, 4).flatMap((item: any, index: number): Candidate[] => {
+    return (feed.items || []).slice(0, 3).flatMap((item: any, index: number): Candidate[] => {
       if (!item.link || !item.title) return [];
       return [{
         candidateId: makeCandidateId('KRW-ETH', index, 'ethereum-foundation'),
@@ -145,7 +163,7 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
         publishedAt: itemTimestamp(item),
         sourceType: 'PRIMARY',
         reliability: 0.96,
-        tags: ['official', 'ethereum', 'protocol'],
+        tags: ['official', 'ethereum', 'protocol', 'language:en'],
       }];
     });
   } catch (error) {
@@ -154,22 +172,31 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
   }
 };
 
-const collectGoogleNews = async (markets: string[], warnings: string[]) => {
+const collectGoogleNews = async (
+  markets: string[],
+  warnings: string[],
+  language: NewsLanguage,
+) => {
   const result: Candidate[] = [];
   for (const market of markets) {
     const symbol = market.replace(/^KRW-/, '');
-    const query = `${assetTerms(market).slice(0, 2).join(' OR ')} crypto when:24h`;
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+    const suffix = language === 'KO' ? '가상자산 when:24h' : 'crypto when:24h';
+    const query = `${assetTerms(market, language).slice(0, 2).join(' OR ')} ${suffix}`;
+    const locale = language === 'KO'
+      ? 'hl=ko&gl=KR&ceid=KR:ko'
+      : 'hl=en-US&gl=US&ceid=US:en';
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&${locale}`;
+
     try {
       const feed = await parser.parseURL(url);
       let accepted = 0;
       for (const item of feed.items || []) {
-        if (accepted >= 3 || !item.title || !item.link) break;
+        if (accepted >= 2 || !item.title || !item.link) break;
         const parsed = cleanTitlePublisher(String(item.title), 'Google News');
         const reliability = publisherReliability(parsed.publisher);
         if (reliability <= 0) continue;
         result.push({
-          candidateId: makeCandidateId(market, accepted, `gnews-${symbol}`),
+          candidateId: makeCandidateId(market, accepted, `gnews-${language.toLowerCase()}-${symbol}`),
           market,
           title: parsed.title,
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
@@ -178,12 +205,12 @@ const collectGoogleNews = async (markets: string[], warnings: string[]) => {
           publishedAt: itemTimestamp(item),
           sourceType: 'NEWS',
           reliability,
-          tags: ['google-news', symbol.toLowerCase()],
+          tags: ['google-news', `language:${language.toLowerCase()}`, symbol.toLowerCase()],
         });
         accepted += 1;
       }
     } catch (error) {
-      warnings.push(`Google News ${market}: ${errorMessage(error)}`);
+      warnings.push(`Google News ${language} ${market}: ${errorMessage(error)}`);
     }
   }
   return result;
@@ -249,6 +276,7 @@ const classifyCandidates = async (candidates: Candidate[], existingEvidence: any
       reasoning: { effort: 'low' },
       instructions: [
         'You classify source-backed evidence for a crypto Paper trading research system.',
+        'Candidates may be written in English or Korean. Apply identical analytical standards regardless of language.',
         'Use only the supplied headline, summary, publisher, timestamp and existing evidence. Never invent missing facts.',
         'Relevant means the supplied item could materially change the 4-48 hour thesis for that exact market.',
         'If the headline/summary is generic, promotional, ambiguous or not price-relevant, set relevant=false.',
@@ -268,7 +296,7 @@ const classifyCandidates = async (candidates: Candidate[], existingEvidence: any
           observedAt: item.observedAt,
         })),
       }),
-      max_output_tokens: 4_000,
+      max_output_tokens: 5_000,
       text: {
         format: {
           type: 'json_schema',
@@ -345,12 +373,18 @@ export default async function handler(request: any, response: any) {
       return json(response, 200, { success: true, runtimeId, markets: [], candidates: 0, accepted: 0, warnings });
     }
 
-    const [coinDesk, ethereumPrimary, googleNews] = await Promise.all([
+    const [coinDesk, ethereumPrimary, googleNewsEn, googleNewsKo] = await Promise.all([
       collectCoinDesk(markets, warnings),
       collectEthereumPrimary(markets, warnings),
-      collectGoogleNews(markets, warnings),
+      collectGoogleNews(markets, warnings, 'EN'),
+      collectGoogleNews(markets, warnings, 'KO'),
     ]);
-    const candidates = dedupeCandidates([...ethereumPrimary, ...coinDesk, ...googleNews]);
+    const candidates = dedupeCandidates([
+      ...ethereumPrimary,
+      ...coinDesk,
+      ...googleNewsEn,
+      ...googleNewsKo,
+    ]);
     const existingEvidence = runtime.tradingEvidenceStore.list(undefined, false);
     const classifications = await classifyCandidates(candidates, existingEvidence);
     const classificationById = new Map(classifications.map((item) => [item.candidateId, item]));
@@ -372,6 +406,7 @@ export default async function handler(request: any, response: any) {
         publisher: stored.publisher,
         sourceUrl: stored.sourceUrl,
         expiresAt: stored.expiresAt,
+        language: stored.tags?.find((tag: string) => tag.startsWith('language:'))?.replace('language:', '') || null,
       });
     }
 
@@ -381,6 +416,12 @@ export default async function handler(request: any, response: any) {
       runtimeId,
       markets,
       candidates: candidates.length,
+      candidateBreakdown: {
+        primary: ethereumPrimary.length,
+        coindesk: coinDesk.length,
+        english: googleNewsEn.length,
+        korean: googleNewsKo.length,
+      },
       accepted: accepted.length,
       evidence: accepted,
       warnings,
