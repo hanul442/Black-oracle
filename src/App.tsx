@@ -3,7 +3,6 @@ import { AppProvider, useAppContext } from './store';
 import { TopBar } from './components/TopBar';
 import { WorkspaceRail } from './components/WorkspaceRail';
 import { MobileNavigation } from './components/MobileNavigation';
-import { DetailBottomSheet } from './components/DetailBottomSheet';
 import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
 import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
@@ -17,7 +16,6 @@ import { CouncilView } from './views/CouncilView';
 import { LedgerView } from './views/LedgerView';
 import { ForecastOrbitView } from './views/ForecastOrbitView';
 import { WatchlistView } from './views/WatchlistView';
-import { ForecastView } from './views/ForecastView';
 import { HypothesisSummaryView } from './views/HypothesisSummaryView';
 import { SettingsView } from './views/SettingsView';
 import { AnimatePresence, motion } from 'motion/react';
@@ -113,9 +111,6 @@ const AppContent: React.FC = () => {
       case 'forecast':
         view = <ForecastOrbitView />;
         break;
-      case 'forecast-legacy':
-        view = <ForecastView />;
-        break;
       case 'council':
         view = <CouncilView />;
         break;
@@ -162,7 +157,6 @@ const AppContent: React.FC = () => {
 
         <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
           <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
-          {currentView !== 'watchlist' && !isFieldView && !isOperationsView && <DetailBottomSheet />}
 
           <AnimatePresence>
             {workflowQuery && (
