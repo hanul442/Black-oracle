@@ -72,34 +72,43 @@ export default async function handler(request: any, response: any) {
   const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeRestored = false;
+  let responseStatus = 500;
+  let responseBody: Record<string, unknown> = {
+    success: false,
+    runtimeId,
+    phase: 'startup',
+    error: 'Paper cycle did not complete.',
+  };
 
   try {
     leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
     if (!leaseAcquired) {
-      return json(response, 409, {
+      responseStatus = 409;
+      responseBody = {
         success: false,
         skipped: true,
         reason: 'Another Paper cycle currently owns the runtime lease.',
         runtimeId,
-      });
+      };
+    } else {
+      const restore = await restoreRuntimeCheckpoint(false);
+      runtimeRestored = true;
+      const cycle = await paperLoopController.runCycle();
+      const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+
+      responseStatus = 200;
+      responseBody = {
+        success: true,
+        runtimeId,
+        restore: {
+          restored: restore.restored,
+          savedAt: restore.savedAt,
+          reason: restore.reason,
+        },
+        cycle,
+        persistence: saved.persistence,
+      };
     }
-
-    const restore = await restoreRuntimeCheckpoint(false);
-    runtimeRestored = true;
-    const cycle = await paperLoopController.runCycle();
-    const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
-
-    return json(response, 200, {
-      success: true,
-      runtimeId,
-      restore: {
-        restored: restore.restored,
-        savedAt: restore.savedAt,
-        reason: restore.reason,
-      },
-      cycle,
-      persistence: saved.persistence,
-    });
   } catch (error) {
     if (runtimeRestored) {
       try {
@@ -111,19 +120,42 @@ export default async function handler(request: any, response: any) {
 
     const message = errorMessage(error);
     console.error('Scheduled Paper cycle failed:', error);
-    return json(response, 500, {
+    responseStatus = 500;
+    responseBody = {
       success: false,
       runtimeId,
       phase: runtimeRestored ? 'cycle' : 'startup',
       error: message,
-    });
-  } finally {
-    if (leaseAcquired) {
-      try {
-        await releaseTradingCycleLease(runtimeId, owner);
-      } catch (releaseError) {
-        console.error('Failed to release scheduled Paper cycle lease:', releaseError);
+    };
+  }
+
+  if (leaseAcquired) {
+    try {
+      const released = await releaseTradingCycleLease(runtimeId, owner);
+      if (!released) {
+        throw new Error('Runtime lease release returned false.');
+      }
+    } catch (releaseError) {
+      const cleanupError = errorMessage(releaseError);
+      console.error('Failed to release scheduled Paper cycle lease:', releaseError);
+
+      if (responseStatus === 200) {
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          runtimeId,
+          phase: 'cleanup',
+          cycleCompleted: true,
+          error: cleanupError,
+        };
+      } else {
+        responseBody = {
+          ...responseBody,
+          cleanupError,
+        };
       }
     }
   }
+
+  return json(response, responseStatus, responseBody);
 }
