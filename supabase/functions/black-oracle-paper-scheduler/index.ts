@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const RUNTIME_ID = "black-oracle-paper";
 const CONFIG_TABLE = "black_oracle_trading_scheduler_config";
+const PRODUCTION_TARGET = "https://black-oracle.vercel.app";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -82,6 +83,8 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: "Configured target must be an HTTPS vercel.app deployment." }, 500);
   }
 
+  const isPreviewCycle = mode.action === "cycle" && target.hostname !== "black-oracle.vercel.app";
+
   target.pathname = mode.action === "status" ? "/api/trading-status" : "/api/trading-paper-cycle";
   target.search = "";
   target.hash = "";
@@ -147,15 +150,22 @@ Deno.serve(async (req: Request) => {
   }
 
   const now = new Date().toISOString();
+  const telemetryUpdate: Record<string, unknown> = {
+    last_invoked_at: now,
+    last_http_status: downstreamStatus,
+    last_ok: downstreamOk,
+    last_error: downstreamError,
+    updated_at: now,
+  };
+
+  if (isPreviewCycle) {
+    telemetryUpdate.enabled = false;
+    telemetryUpdate.target_base_url = PRODUCTION_TARGET;
+  }
+
   const { error: updateError } = await admin
     .from(CONFIG_TABLE)
-    .update({
-      last_invoked_at: now,
-      last_http_status: downstreamStatus,
-      last_ok: downstreamOk,
-      last_error: downstreamError,
-      updated_at: now,
-    })
+    .update(telemetryUpdate)
     .eq("runtime_id", RUNTIME_ID);
 
   if (updateError) {
@@ -171,9 +181,10 @@ Deno.serve(async (req: Request) => {
     return json({
       success: false,
       downstreamStatus,
+      autoDisarmed: isPreviewCycle,
       error: downstreamError ?? "Scheduled Vercel cycle failed.",
     }, 502);
   }
 
-  return json({ success: true, downstreamStatus });
+  return json({ success: true, downstreamStatus, autoDisarmed: isPreviewCycle });
 });

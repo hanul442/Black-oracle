@@ -16,9 +16,10 @@ export default async function handler(request: any, response: any) {
       });
     }
 
-    const [{ tradingCheckpointStore }, { buildPaperPerformance }] = await Promise.all([
+    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildMonteCarloValidation }] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
+      import('../src/trading/monteCarlo.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -51,6 +52,9 @@ export default async function handler(request: any, response: any) {
       portfolio.initialEquity,
       equity,
       currentDrawdownPct,
+    );
+    const validation = buildMonteCarloValidation(
+      checkpoint.session.closedTrades.map((trade) => trade.returnPct),
     );
 
     const lastCycle = checkpoint.loop.lastCycle;
@@ -145,6 +149,7 @@ export default async function handler(request: any, response: any) {
         openPositions: portfolio.positions,
       },
       performance,
+      validation,
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,

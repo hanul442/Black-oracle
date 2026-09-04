@@ -9,7 +9,7 @@ import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
 import { CommandCenterView } from './views/CommandCenterView';
-import { OperationsView } from './views/OperationsView';
+import { OperationsWithValidationView } from './views/OperationsWithValidationView';
 import { OracleFieldView } from './views/OracleFieldView';
 import { MobileNexusView } from './views/MobileNexusView';
 import { CasesView } from './views/CasesView';
@@ -93,7 +93,7 @@ const AppContent: React.FC = () => {
         view = <CommandCenterView />;
         break;
       case 'operations':
-        view = <OperationsView />;
+        view = <OperationsWithValidationView />;
         break;
       case 'oracle-field':
       case 'oracle-feed':
