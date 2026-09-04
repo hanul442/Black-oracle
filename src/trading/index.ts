@@ -5,6 +5,7 @@ export * from './indicators';
 export * from './ledger';
 export * from './liquidity';
 export * from './meanReversion';
+export * from './monteCarlo';
 export * from './multiTimeframe';
 export * from './paperBroker';
 export * from './paperPortfolio';
