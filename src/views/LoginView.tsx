@@ -18,7 +18,6 @@ import {
 import { auth, useAppContext } from '../store';
 
 const developmentAccessAllowed = () => {
-  if (!import.meta.env.DEV) return false;
   const hostname = window.location.hostname.toLowerCase();
   return hostname === 'localhost' || hostname === '127.0.0.1';
 };
