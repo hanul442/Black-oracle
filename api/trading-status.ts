@@ -74,6 +74,7 @@ export default async function handler(request: any, response: any) {
       strategyDisposition: item.strategyDisposition ?? null,
       riskDisposition: item.riskDisposition ?? 'NOT_EVALUATED',
       eventScore: item.eventScore ?? null,
+      forecast: item.forecast ?? null,
       evidenceActiveCount: item.evidenceActiveCount ?? 0,
       evidenceContradictionCount: item.evidenceContradictionCount ?? 0,
       evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
