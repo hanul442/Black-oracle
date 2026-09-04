@@ -22,13 +22,39 @@ test('paper portfolio restore preserves cash, positions, protection and equity h
   portfolio.snapshot({ 'KRW-BTC': 105 }, 2000);
 
   const restored = PaperPortfolio.restore(portfolio.exportState());
-  const state = restored.snapshot({ 'KRW-BTC': 105 }, 3000);
+  const state = restored.snapshot({ 'KRW-BTC': 105 }, 63_000);
 
   assert.equal(state.positions.length, 1);
   assert.equal(state.positions[0].stopLossPrice, 95);
   assert.equal(state.positions[0].takeProfitPrice, 110);
   assert.ok(state.equityCurve.length >= 2);
   assert.ok(state.cash < 1_000_000);
+});
+
+test('paper equity history restores in timestamp order and deduplicates equal timestamps', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const state = portfolio.exportState();
+  state.equityCurve = [
+    { timestamp: 3_000, equity: 1_000_000 },
+    { timestamp: 1_000, equity: 1_000_000 },
+    { timestamp: 3_000, equity: 999_000 },
+  ];
+
+  const restored = PaperPortfolio.restore(state).exportState();
+  assert.deepEqual(restored.equityCurve.map((point) => point.timestamp), [1_000, 3_000]);
+  assert.equal(restored.equityCurve[1].equity, 999_000);
+});
+
+test('paper equity snapshots never move backward and suppress flat high-frequency points', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  portfolio.snapshot({}, 2_000);
+  portfolio.snapshot({}, 1_500);
+  portfolio.snapshot({}, 2_100);
+  portfolio.snapshot({}, 62_000);
+
+  const curve = portfolio.exportState().equityCurve;
+  assert.deepEqual(curve.map((point) => point.timestamp), [2_000, 62_000]);
+  assert.ok(curve.every((point, index) => index === 0 || point.timestamp >= curve[index - 1].timestamp));
 });
 
 test('trading ledger restore continues sequence numbering', () => {
