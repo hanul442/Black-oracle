@@ -16,10 +16,10 @@ export default async function handler(request: any, response: any) {
       });
     }
 
-    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildMonteCarloValidation }] = await Promise.all([
+    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildRiskProfileComparison }] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
-      import('../src/trading/monteCarlo.js'),
+      import('../src/trading/riskProfiles.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -53,9 +53,12 @@ export default async function handler(request: any, response: any) {
       equity,
       currentDrawdownPct,
     );
-    const validation = buildMonteCarloValidation(
-      checkpoint.session.closedTrades.map((trade) => trade.returnPct),
-    );
+
+    const positionReturns = checkpoint.session.closedTrades.map((trade) => trade.returnPct);
+    const riskLab = buildRiskProfileComparison(positionReturns);
+    // Backward-compatible validation field now uses the Conservative account-impact normalized profile.
+    // This fixes the prior unit mismatch where position return was treated as whole-account return.
+    const validation = riskLab[0].validation;
 
     const lastCycle = checkpoint.loop.lastCycle;
     const cycleAgeMs = lastCycle ? Math.max(0, now - lastCycle.finishedAt) : null;
@@ -195,6 +198,7 @@ export default async function handler(request: any, response: any) {
       },
       performance,
       validation,
+      riskLab,
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
