@@ -1,411 +1,454 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  ArrowUpRight,
-  BarChart3,
   BrainCircuit,
+  CheckCircle2,
   ChevronRight,
-  CircleDot,
+  Clock3,
+  Eye,
   GitCompareArrows,
-  Layers3,
+  Loader2,
+  RefreshCw,
   Scale,
   ShieldAlert,
 } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
-import { useAppContext } from '../store';
+import { collection, getDocs } from 'firebase/firestore';
+import { db, useAppContext } from '../store';
+import { persistCouncilRun } from '../lib/persistCouncilRun';
 
-type CouncilLens = {
-  id: string;
-  label: string;
-  scope: string;
-  conviction: number;
-  state: string;
-  thesis: string;
-  evidenceCount: number;
-  contradictionCount: number;
-  signalCount: number;
-  hypothesisId?: string;
-  accent: string;
+type ScenarioReview = {
+  scenarioId: string;
+  stance: 'SUPPORT' | 'CHALLENGE' | 'MIXED' | 'INSUFFICIENT';
+  probabilityEstimate: number;
+  confidence: number;
+  confidenceEffect: 'RAISE' | 'LOWER' | 'UNCHANGED';
+  feedback: string;
+  watchItems: string[];
+  invalidationSignals: string[];
+  evidenceIds: string[];
+  counterEvidenceIds: string[];
+  keyRisks: string[];
 };
 
-const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value || 0)));
-const average = (values: number[]) =>
-  values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+type LensResult = {
+  lensId: string;
+  reviews: ScenarioReview[];
+};
+
+type Ranking = {
+  scenarioId: string;
+  rank: number;
+  consensusScore: number;
+  probabilityEstimate: number;
+  confidence: number;
+  disposition: 'ADVANCE' | 'MONITOR' | 'CHALLENGE' | 'INSUFFICIENT';
+  dominantSupport: string;
+  dominantChallenge: string;
+  unresolvedUncertainty: string[];
+  preservedDissent: string[];
+};
+
+type CouncilResult = {
+  id?: string;
+  success: boolean;
+  mode: 'ADVISORY_ONLY';
+  executionAuthority: false;
+  requesterUid?: string | null;
+  model: string;
+  startedAt: number;
+  finishedAt: number;
+  scenarioIds: string[];
+  lenses: LensResult[];
+  comparison: {
+    rankings: Ranking[];
+    crossScenarioObservations: string[];
+    recommendedFocusScenarioId: string;
+    reason: string;
+  };
+  context?: {
+    hypothesisId?: string | null;
+    questionId?: string | null;
+  };
+};
+
+const LENS_LABELS: Record<string, string> = {
+  momentum_trend: 'MOMENTUM / TREND',
+  mean_reversion: 'MEAN REVERSION',
+  event_news: 'EVENT / NEWS',
+  macro_cross_asset: 'MACRO / CROSS-ASSET',
+  liquidity_execution: 'LIQUIDITY / EXECUTION',
+  risk: 'RISK',
+};
+
+const pct = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(0)}%`;
+const when = (timestamp: number | null | undefined) => timestamp
+  ? new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp))
+  : '—';
+
+const stanceTone = (stance: ScenarioReview['stance']) => {
+  if (stance === 'SUPPORT') return 'border-[#72B6A0]/25 text-[#82C0AD]';
+  if (stance === 'CHALLENGE') return 'border-[#D66565]/25 text-[#D98787]';
+  if (stance === 'MIXED') return 'border-[#C7A96B]/25 text-[#D3B778]';
+  return 'border-white/[0.08] text-[#737E88]';
+};
+
+const dispositionTone = (disposition: Ranking['disposition']) => {
+  if (disposition === 'ADVANCE') return 'text-[#72B6A0]';
+  if (disposition === 'CHALLENGE') return 'text-[#D66565]';
+  if (disposition === 'MONITOR') return 'text-[#C7A96B]';
+  return 'text-[#737E88]';
+};
 
 export const CouncilView: React.FC = () => {
-  const { signals, hypotheses, scenarios, evidence, setSelectedEntity, setCurrentView } = useAppContext() as any;
-  const [activeLensId, setActiveLensId] = useState<string | null>(null);
+  const {
+    user,
+    signals,
+    questions,
+    hypotheses,
+    scenarios,
+    evidence,
+    selectedEntity,
+    setSelectedEntity,
+  } = useAppContext() as any;
 
-  const model = useMemo(() => {
-    const signalItems = signals || [];
-    const hypothesisItems = hypotheses || [];
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeResult, setActiveResult] = useState<CouncilResult | null>(null);
+  const [history, setHistory] = useState<CouncilResult[]>([]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+
+  const caseModel = useMemo(() => {
     const scenarioItems = scenarios || [];
-    const evidenceItems = evidence || [];
+    const hypothesisItems = hypotheses || [];
+    let focusHypothesis: any = null;
 
-    const byTerms = (terms: string[]) =>
-      signalItems.filter((item: any) => {
-        const haystack = `${item.category || ''} ${item.title || ''} ${item.summary || ''}`.toLowerCase();
-        return terms.some((term) => haystack.includes(term));
-      });
+    if (selectedEntity?.type === 'hypothesis') {
+      focusHypothesis = hypothesisItems.find((item: any) => item.id === selectedEntity.id) || null;
+    } else if (selectedEntity?.type === 'scenario' || selectedEntity?.type === 'branch') {
+      const selectedScenario = scenarioItems.find((item: any) => item.id === selectedEntity.id);
+      focusHypothesis = selectedScenario
+        ? hypothesisItems.find((item: any) => item.id === selectedScenario.hypothesisId)
+        : null;
+    }
 
-    const topHypothesis = [...hypothesisItems].sort(
-      (a: any, b: any) => Number(b.confidence || 0) - Number(a.confidence || 0),
-    )[0];
-    const weakHypothesis = [...hypothesisItems].sort(
-      (a: any, b: any) => Number(a.confidence || 0) - Number(b.confidence || 0),
-    )[0];
-    const baseScenario = [...scenarioItems].sort(
-      (a: any, b: any) => Number(b.probability || 0) - Number(a.probability || 0),
-    )[0];
-    const riskScenario = [...scenarioItems].sort(
-      (a: any, b: any) =>
-        Number(b.probability || 0) * Number(b.impactScore || 50) -
-        Number(a.probability || 0) * Number(a.impactScore || 50),
-    )[0];
+    if (!focusHypothesis) {
+      focusHypothesis = hypothesisItems
+        .filter((hypothesis: any) => scenarioItems.filter((scenario: any) => scenario.hypothesisId === hypothesis.id).length >= 2)
+        .sort((a: any, b: any) => Number(b.confidence || 0) - Number(a.confidence || 0))[0] || null;
+    }
 
-    const contradicting = evidenceItems.filter((item: any) => item.evidenceType === 'contradicting');
-    const reliable = evidenceItems.filter((item: any) => Number(item.reliability || 0) >= 70);
-    const macroSignals = byTerms(['macro', 'rate', 'inflation', 'currency', 'policy', 'bank', 'bond']);
-    const marketSignals = byTerms(['market', 'stock', 'equity', 'flow', 'valuation', 'price']);
-    const techSignals = byTerms(['ai', 'tech', 'semiconductor', 'chip', 'infrastructure']);
+    const linkedScenarios = focusHypothesis
+      ? scenarioItems
+          .filter((scenario: any) => scenario.hypothesisId === focusHypothesis.id || focusHypothesis.scenarioIds?.includes(scenario.id))
+          .slice(0, 6)
+      : [];
+    const question = focusHypothesis
+      ? (questions || []).find((item: any) => item.id === focusHypothesis.questionId || item.hypothesisIds?.includes(focusHypothesis.id))
+      : null;
+    const linkedEvidence = focusHypothesis
+      ? (evidence || []).filter((item: any) => item.linkedHypothesisId === focusHypothesis.id || focusHypothesis.evidenceIds?.includes(item.id))
+      : [];
+    const linkedSignals = question
+      ? (signals || []).filter((item: any) => question.signalIds?.includes(item.id) || item.linkedQuestionIds?.includes(question.id))
+      : [];
 
-    const signalScore = (items: any[]) =>
-      clamp(average((items.length ? items : signalItems).map((item: any) => Number(item.signalStrength || 0))));
-    const evidenceScore = clamp(average(evidenceItems.map((item: any) => Number(item.reliability || 0))));
-    const scenarioScore = clamp(average(scenarioItems.map((item: any) => Number(item.probability || 0))));
+    return { focusHypothesis, linkedScenarios, question, linkedEvidence, linkedSignals };
+  }, [selectedEntity, scenarios, hypotheses, questions, evidence, signals]);
 
-    const lenses: CouncilLens[] = [
-      {
-        id: 'macro',
-        label: 'MACRO',
-        scope: 'Rates · liquidity · FX · policy',
-        conviction: clamp(signalScore(macroSignals) * 0.55 + evidenceScore * 0.45),
-        state: signalScore(macroSignals) >= 65 ? 'PRESSURE BUILDING' : 'MIXED',
-        thesis: topHypothesis?.title || 'No macro-linked hypothesis has formed yet.',
-        evidenceCount: reliable.length,
-        contradictionCount: contradicting.length,
-        signalCount: macroSignals.length,
-        hypothesisId: topHypothesis?.id,
-        accent: '#43D9E6',
-      },
-      {
-        id: 'market',
-        label: 'MARKET',
-        scope: 'Price · flow · positioning · valuation',
-        conviction: clamp(signalScore(marketSignals) * 0.6 + scenarioScore * 0.4),
-        state: signalScore(marketSignals) >= 70 ? 'MOMENTUM ACTIVE' : 'NEUTRAL',
-        thesis: baseScenario?.title || topHypothesis?.title || 'No market branch has formed yet.',
-        evidenceCount: evidenceItems.length,
-        contradictionCount: contradicting.length,
-        signalCount: marketSignals.length,
-        hypothesisId: baseScenario?.hypothesisId || topHypothesis?.id,
-        accent: '#BFC7CE',
-      },
-      {
-        id: 'technology',
-        label: 'TECHNOLOGY',
-        scope: 'AI · semiconductors · infrastructure',
-        conviction: clamp(signalScore(techSignals) * 0.65 + evidenceScore * 0.35),
-        state: signalScore(techSignals) >= 65 ? 'STRUCTURAL SIGNAL' : 'INSUFFICIENT',
-        thesis: topHypothesis?.title || 'Technology evidence remains below thesis threshold.',
-        evidenceCount: techSignals.reduce((sum: number, item: any) => sum + (item.sourceIds?.length || 0), 0),
-        contradictionCount: contradicting.length,
-        signalCount: techSignals.length,
-        hypothesisId: topHypothesis?.id,
-        accent: '#C7A96B',
-      },
-      {
-        id: 'risk',
-        label: 'RISK',
-        scope: 'Tail risk · fragility · invalidation',
-        conviction: clamp(
-          Number(riskScenario?.probability || 0) * 0.45 +
-            Number(riskScenario?.impactScore || 50) * 0.35 +
-            contradicting.length * 5,
-        ),
-        state: contradicting.length > 0 ? 'BASE CASE CHALLENGED' : 'TAILS MONITORED',
-        thesis: riskScenario?.title || weakHypothesis?.title || 'No explicit risk branch has formed yet.',
-        evidenceCount: evidenceItems.length,
-        contradictionCount: contradicting.length,
-        signalCount: signalItems.length,
-        hypothesisId: riskScenario?.hypothesisId || weakHypothesis?.id,
-        accent: '#D66565',
-      },
-      {
-        id: 'contrarian',
-        label: 'CONTRARIAN',
-        scope: 'Counter-evidence · crowded assumptions',
-        conviction: clamp((100 - Number(weakHypothesis?.confidence || 50)) * 0.45 + contradicting.length * 8 + 25),
-        state: contradicting.length >= 2 ? 'DISSENT ACTIVE' : 'LOW CONVICTION',
-        thesis: weakHypothesis?.title || 'No competing hypothesis is available to challenge.',
-        evidenceCount: contradicting.length,
-        contradictionCount: contradicting.length,
-        signalCount: 0,
-        hypothesisId: weakHypothesis?.id,
-        accent: '#929CA6',
-      },
-    ];
+  useEffect(() => {
+    if (!selectedScenarioId && caseModel.linkedScenarios.length) {
+      setSelectedScenarioId(caseModel.linkedScenarios[0].id);
+    } else if (selectedScenarioId && !caseModel.linkedScenarios.some((item: any) => item.id === selectedScenarioId)) {
+      setSelectedScenarioId(caseModel.linkedScenarios[0]?.id || null);
+    }
+  }, [caseModel.linkedScenarios, selectedScenarioId]);
 
-    const consensus = clamp(average(lenses.map((lens) => lens.conviction)));
-    const maxConviction = lenses.length ? Math.max(...lenses.map((lens) => lens.conviction)) : 0;
-    const minConviction = lenses.length ? Math.min(...lenses.map((lens) => lens.conviction)) : 0;
-    const disagreement = clamp(maxConviction - minConviction);
-    const dissent = lenses.filter((lens) => lens.id === 'risk' || lens.id === 'contrarian').filter((lens) => lens.conviction >= 55).length;
-    const disposition =
-      disagreement >= 30 || contradicting.length >= 3
-        ? 'REVIEW'
-        : consensus >= 68 && contradicting.length <= 1
-          ? 'ADVANCE'
-          : 'MONITOR';
-
-    return {
-      lenses,
-      consensus,
-      disagreement,
-      dissent,
-      disposition,
-      contradicting,
-      topHypothesis,
-      weakHypothesis,
-      baseScenario,
-      riskScenario,
-    };
-  }, [signals, hypotheses, scenarios, evidence]);
-
-  const selected = model.lenses.find((lens) => lens.id === activeLensId) || model.lenses[0];
-
-  const selectLens = (lens: CouncilLens) => {
-    setActiveLensId(lens.id);
-    if (lens.hypothesisId) setSelectedEntity({ type: 'hypothesis', id: lens.hypothesisId });
+  const loadHistory = async () => {
+    if (!user?.uid) return;
+    try {
+      const snapshot = await getDocs(collection(db, 'users', user.uid, 'councilRuns'));
+      const rows = snapshot.docs
+        .map((item) => ({ id: item.id, ...item.data() }) as CouncilResult)
+        .filter((item) => item?.comparison && Array.isArray(item?.scenarioIds))
+        .sort((a, b) => Number(b.finishedAt || 0) - Number(a.finishedAt || 0))
+        .slice(0, 12);
+      setHistory(rows);
+    } catch {
+      setHistory([]);
+    }
   };
 
+  useEffect(() => {
+    void loadHistory();
+  }, [user?.uid]);
+
+  const runCouncil = async () => {
+    if (!user || !caseModel.focusHypothesis || caseModel.linkedScenarios.length < 2 || running) return;
+    setRunning(true);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/council-scenarios', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          question: caseModel.question?.text || caseModel.focusHypothesis.title,
+          timeframe: 'case-defined',
+          signals: caseModel.linkedSignals,
+          hypotheses: [caseModel.focusHypothesis],
+          evidence: caseModel.linkedEvidence,
+          scenarios: caseModel.linkedScenarios,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) throw new Error(payload?.error || `Council failed with HTTP ${response.status}.`);
+
+      const persisted = await persistCouncilRun(user.uid, {
+        ...payload,
+        context: {
+          hypothesisId: caseModel.focusHypothesis.id,
+          questionId: caseModel.question?.id || null,
+        },
+      }) as CouncilResult;
+      setActiveResult(persisted);
+      setSelectedScenarioId(payload.comparison?.recommendedFocusScenarioId || caseModel.linkedScenarios[0]?.id || null);
+      await loadHistory();
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : 'Council run failed.');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const scenarioById = useMemo(() => new Map(caseModel.linkedScenarios.map((item: any) => [item.id, item])), [caseModel.linkedScenarios]);
+  const rankingById = useMemo(() => new Map((activeResult?.comparison?.rankings || []).map((item) => [item.scenarioId, item])), [activeResult]);
+  const selectedScenario = selectedScenarioId ? scenarioById.get(selectedScenarioId) : null;
+  const selectedRanking = selectedScenarioId ? rankingById.get(selectedScenarioId) : null;
+
+  if (!caseModel.focusHypothesis || caseModel.linkedScenarios.length < 2) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[#05070A] px-6 text-center text-[#E9EDF1]">
+        <div className="max-w-lg border border-dashed border-white/[0.08] p-8">
+          <BrainCircuit className="mx-auto h-6 w-6 text-[#59636D]" />
+          <div className="mt-4 font-mono text-[8px] uppercase tracking-[0.18em] text-[#59636D]">Council requires competing scenarios</div>
+          <p className="mt-2 text-[11px] leading-relaxed text-[#68727C]">Select a Case with at least two scenarios. Council will not fabricate missing branches just to produce a verdict.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-40 pt-6 text-[#E9EDF1] md:px-8 md:pb-28 md:pt-8">
-      <div className="mx-auto max-w-[1380px]">
-        <header className="mb-5 flex flex-col gap-5 border-b border-white/[0.06] pb-6 xl:flex-row xl:items-end xl:justify-between">
+    <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-36 pt-6 text-[#E9EDF1] md:px-8 md:pb-24 md:pt-8">
+      <div className="mx-auto max-w-[1500px]">
+        <header className="mb-4 flex flex-col gap-4 border-b border-white/[0.06] pb-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="mb-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.24em] text-[#43D9E6]">
-              <BrainCircuit className="h-3.5 w-3.5" />
-              Decision synthesis
+            <div className="mb-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.22em] text-[#43D9E6]">
+              <BrainCircuit className="h-3.5 w-3.5" /> Multi-scenario Council
             </div>
-            <h1 className="text-2xl font-medium tracking-[-0.04em] md:text-3xl">Council</h1>
-            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#77818C]">
-              One ledger, multiple analytical lenses. Council measures how much the evidence agrees, where the base case is being challenged, and whether the decision should advance or remain under review.
+            <h1 className="text-2xl font-medium tracking-[-0.035em]">Scenario stress review</h1>
+            <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#71808A]">
+              Six specialist lenses review every branch independently, then a meta-adjudicator compares the scenarios while preserving dissent and uncertainty.
             </p>
           </div>
-
-          <div className="flex items-center gap-3 border border-white/[0.07] bg-[#080C11] px-4 py-3">
-            <span className={`h-2 w-2 rounded-full ${model.disposition === 'ADVANCE' ? 'bg-[#6AA891]' : model.disposition === 'REVIEW' ? 'bg-[#D66565]' : 'bg-[#C7A96B]'}`} />
-            <div>
-              <div className="font-mono text-[6px] uppercase tracking-[0.16em] text-[#59636D]">COUNCIL DISPOSITION</div>
-              <div className="mt-1 text-sm font-medium tracking-[0.05em] text-[#D6DCE2]">{model.disposition}</div>
-            </div>
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+            <div className="border border-[#C7A96B]/20 bg-[#C7A96B]/[0.025] px-3 py-2 font-mono text-[6px] uppercase tracking-[0.11em] text-[#A88E58]">advisory only · no execution authority</div>
+            <button
+              onClick={runCouncil}
+              disabled={running}
+              className="flex h-10 items-center justify-center gap-2 border border-[#43D9E6]/25 bg-[#43D9E6]/[0.045] px-4 font-mono text-[7px] uppercase tracking-[0.14em] text-[#BCEFF3] transition hover:bg-[#43D9E6]/[0.08] disabled:opacity-50"
+            >
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrainCircuit className="h-3.5 w-3.5" />}
+              {running ? 'Council deliberating' : 'Run Council'}
+            </button>
           </div>
         </header>
 
-        <section className="mb-4 grid gap-px border border-white/[0.07] bg-white/[0.045] md:grid-cols-4">
-          <SummaryMetric label="CONSENSUS" value={`${model.consensus}`} suffix="/100" icon={Scale} />
-          <SummaryMetric label="DISAGREEMENT" value={String(model.disagreement)} suffix="pts" icon={GitCompareArrows} alert={model.disagreement >= 30} />
-          <SummaryMetric label="ACTIVE DISSENT" value={String(model.dissent)} suffix="lenses" icon={AlertTriangle} alert={model.dissent > 0} />
-          <SummaryMetric label="CONTRADICTIONS" value={String(model.contradicting.length)} suffix="items" icon={ShieldAlert} alert={model.contradicting.length > 0} />
+        {error && (
+          <div className="mb-4 flex items-start gap-2 border border-[#D66565]/20 bg-[#D66565]/[0.025] p-3 text-[9px] leading-relaxed text-[#D98787]">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+          </div>
+        )}
+
+        <section className="mb-4 border border-white/[0.07] bg-[#080C11]">
+          <PanelHeader icon={GitCompareArrows} title="Scenario set" detail={`${caseModel.linkedScenarios.length} branches`} />
+          <div className="grid gap-px bg-white/[0.04] md:grid-cols-2 xl:grid-cols-3">
+            {caseModel.linkedScenarios.map((scenario: any) => {
+              const ranking = rankingById.get(scenario.id);
+              const active = selectedScenarioId === scenario.id;
+              return (
+                <button
+                  key={scenario.id}
+                  onClick={() => {
+                    setSelectedScenarioId(scenario.id);
+                    setSelectedEntity({ type: 'scenario', id: scenario.id });
+                  }}
+                  className={`bg-[#080C11] p-4 text-left transition ${active ? 'ring-1 ring-inset ring-[#43D9E6]/30 bg-white/[0.025]' : 'hover:bg-white/[0.018]'}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="font-mono text-[7px] uppercase tracking-[0.12em] text-[#59636D]">{ranking ? `RANK ${ranking.rank}` : 'UNREVIEWED'}</div>
+                    <div className="text-lg font-light text-[#D5DCE2]">{Math.round(Number(scenario.probability || 0))}%</div>
+                  </div>
+                  <div className="mt-2 text-[12px] font-medium leading-snug text-[#C8D0D7]">{scenario.title}</div>
+                  <div className="mt-2 line-clamp-2 text-[9px] leading-relaxed text-[#64707A]">{scenario.expectedOutcome || scenario.triggerCondition || 'No outcome statement.'}</div>
+                  {ranking && (
+                    <div className="mt-3 flex flex-wrap gap-2 font-mono text-[6px] uppercase tracking-[0.09em]">
+                      <span className={dispositionTone(ranking.disposition)}>{ranking.disposition}</span>
+                      <span className="text-[#59636D]">Council P {pct(ranking.probabilityEstimate)}</span>
+                      <span className="text-[#59636D]">CONF {pct(ranking.confidence)}</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.15fr)_360px]">
-          <section className="border border-white/[0.07] bg-[#080C11]">
-            <PanelHeader eyebrow="Analytical lenses" title="Conviction map" detail={`${model.lenses.length} lenses`} />
-            <div>
-              {model.lenses.map((lens, index) => {
-                const active = selected?.id === lens.id;
-                return (
-                  <button
-                    key={lens.id}
-                    onClick={() => selectLens(lens)}
-                    className={`w-full border-b border-white/[0.05] px-4 py-4 text-left transition last:border-b-0 ${active ? 'bg-white/[0.035]' : 'hover:bg-white/[0.018]'}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border border-white/[0.08] bg-[#05070A] font-mono text-[7px]" style={{ color: lens.accent }}>
-                        {String(index + 1).padStart(2, '0')}
+        {activeResult ? (
+          <>
+            <section className="mb-4 border border-white/[0.07] bg-[#080C11]">
+              <PanelHeader icon={Scale} title="Cross-scenario ranking" detail={`${when(activeResult.finishedAt)} · ${activeResult.model}`} />
+              <div className="divide-y divide-white/[0.05]">
+                {[...(activeResult.comparison.rankings || [])].sort((a, b) => a.rank - b.rank).map((ranking) => {
+                  const scenario = scenarioById.get(ranking.scenarioId) as any;
+                  return (
+                    <button key={ranking.scenarioId} onClick={() => setSelectedScenarioId(ranking.scenarioId)} className="grid w-full gap-3 px-4 py-4 text-left transition hover:bg-white/[0.018] md:grid-cols-[48px_minmax(0,1fr)_110px_110px] md:items-center">
+                      <div className="text-2xl font-light text-[#AEB7C0]">{ranking.rank}</div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium text-[#CBD2D9]">{scenario?.title || ranking.scenarioId}</div>
+                        <div className="mt-1 line-clamp-2 text-[8px] leading-relaxed text-[#64707A]">{ranking.dominantSupport}</div>
+                        <div className="mt-1 line-clamp-1 text-[8px] leading-relaxed text-[#9B6767]">Challenge: {ranking.dominantChallenge}</div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-mono text-[8px] tracking-[0.16em]" style={{ color: active ? lens.accent : '#9AA4AE' }}>{lens.label}</span>
-                          <span className="text-sm font-light tabular-nums text-[#CBD2D9]">{lens.conviction}</span>
-                        </div>
-                        <div className="mt-1 truncate text-[9px] text-[#59636D]">{lens.scope}</div>
-                        <div className="mt-2 h-px bg-white/[0.045]">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${lens.conviction}%` }}
-                            transition={{ duration: 0.55, delay: Math.min(index * 0.05, 0.2) }}
-                            className="h-px"
-                            style={{ backgroundColor: lens.accent }}
-                          />
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[6px] uppercase tracking-[0.12em]">
-                          <span style={{ color: lens.accent }}>{lens.state}</span>
-                          <span className="text-[#4A545E]">{lens.signalCount} signals · {lens.evidenceCount} evidence</span>
-                        </div>
+                      <Metric label="CONSENSUS" value={pct(ranking.consensusScore)} />
+                      <div>
+                        <div className={`font-mono text-[8px] uppercase tracking-[0.1em] ${dispositionTone(ranking.disposition)}`}>{ranking.disposition}</div>
+                        <div className="mt-1 font-mono text-[6px] uppercase tracking-[0.08em] text-[#4F5963]">P {pct(ranking.probabilityEstimate)} · C {pct(ranking.confidence)}</div>
                       </div>
-                      <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-[#414A53]" />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="border border-white/[0.07] bg-[#080C11]">
-            <PanelHeader eyebrow="Synthesis" title="What the council is resolving" detail={model.disposition} />
-            <div className="p-4 md:p-5">
-              <div className="grid gap-3 md:grid-cols-2">
-                <SynthesisCard
-                  label="BASE THESIS"
-                  icon={CircleDot}
-                  title={model.topHypothesis?.title || 'No dominant thesis formed'}
-                  meta={model.baseScenario ? `${model.baseScenario.probability || 0}% leading scenario` : 'Scenario unresolved'}
-                  tone="#C7A96B"
-                />
-                <SynthesisCard
-                  label="PRIMARY CHALLENGE"
-                  icon={ShieldAlert}
-                  title={model.riskScenario?.title || model.weakHypothesis?.title || 'No explicit challenge formed'}
-                  meta={`${model.contradicting.length} contradicting evidence items`}
-                  tone="#D66565"
-                />
+                    </button>
+                  );
+                })}
               </div>
-
-              <div className="mt-4 border border-white/[0.055] bg-[#06090D] p-4">
-                <div className="mb-4 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-mono text-[7px] uppercase tracking-[0.17em] text-[#59636D]">Council spread</div>
-                    <div className="mt-1 text-sm text-[#BFC7CE]">Agreement is useful only when dissent remains visible.</div>
+              <div className="border-t border-white/[0.05] p-4">
+                <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">META-ADJUDICATOR</div>
+                <p className="mt-2 text-[9px] leading-relaxed text-[#7B8791]">{activeResult.comparison.reason}</p>
+                {!!activeResult.comparison.crossScenarioObservations?.length && (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {activeResult.comparison.crossScenarioObservations.map((item, index) => <Note key={`${item}-${index}`} icon={Eye} text={item} />)}
                   </div>
-                  <BarChart3 className="h-4 w-4 text-[#59636D]" />
+                )}
+              </div>
+            </section>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_340px]">
+              <section className="border border-white/[0.07] bg-[#080C11]">
+                <PanelHeader icon={BrainCircuit} title="Lens feedback" detail={selectedScenario?.title || selectedScenarioId || 'Select scenario'} />
+                <div className="grid gap-px bg-white/[0.04] md:grid-cols-2">
+                  {activeResult.lenses.map((lens) => {
+                    const review = lens.reviews.find((item) => item.scenarioId === selectedScenarioId);
+                    if (!review) return null;
+                    return (
+                      <article key={lens.lensId} className="bg-[#080C11] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono text-[7px] uppercase tracking-[0.13em] text-[#AAB3BC]">{LENS_LABELS[lens.lensId] || lens.lensId}</span>
+                          <span className={`border px-1.5 py-1 font-mono text-[6px] uppercase tracking-[0.09em] ${stanceTone(review.stance)}`}>{review.stance}</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-px bg-white/[0.04]">
+                          <Metric label="P EST." value={pct(review.probabilityEstimate)} />
+                          <Metric label="CONF." value={pct(review.confidence)} />
+                          <Metric label="EFFECT" value={review.confidenceEffect} />
+                        </div>
+                        <p className="mt-3 text-[9px] leading-relaxed text-[#7E8993]">{review.feedback}</p>
+                        <ListBlock label="WATCH" items={review.watchItems} />
+                        <ListBlock label="INVALIDATION" items={review.invalidationSignals} danger />
+                        <ListBlock label="RISKS" items={review.keyRisks} danger />
+                        <div className="mt-3 font-mono text-[6px] uppercase tracking-[0.08em] text-[#46515B]">EVID {review.evidenceIds.length} · COUNTER {review.counterEvidenceIds.length}</div>
+                      </article>
+                    );
+                  })}
                 </div>
-                <div className="space-y-3">
-                  {model.lenses.map((lens) => (
-                    <div key={lens.id} className="grid grid-cols-[80px_1fr_32px] items-center gap-3">
-                      <span className="font-mono text-[6px] uppercase tracking-[0.13em] text-[#59636D]">{lens.label}</span>
-                      <div className="relative h-1 bg-white/[0.04]">
-                        <div className="absolute left-1/2 top-[-2px] h-[5px] w-px bg-white/[0.08]" />
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${lens.conviction}%` }}
-                          className="h-1"
-                          style={{ backgroundColor: lens.accent }}
-                        />
-                      </div>
-                      <span className="text-right font-mono text-[7px] text-[#87919B]">{lens.conviction}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </section>
 
-              <div className="mt-4 grid gap-px bg-white/[0.045] sm:grid-cols-3">
-                <DecisionRule label="ADVANCE" active={model.disposition === 'ADVANCE'} text="High agreement, low contradiction" />
-                <DecisionRule label="MONITOR" active={model.disposition === 'MONITOR'} text="Evidence still forming" />
-                <DecisionRule label="REVIEW" active={model.disposition === 'REVIEW'} text="Disagreement or contradiction elevated" />
-              </div>
+              <aside className="space-y-4">
+                <section className="border border-white/[0.07] bg-[#080C11]">
+                  <PanelHeader icon={ShieldAlert} title="Selected scenario" detail={selectedRanking?.disposition || '—'} />
+                  <div className="p-4">
+                    <div className="text-[12px] font-medium leading-snug text-[#CDD4DA]">{selectedScenario?.title || 'No scenario selected'}</div>
+                    {selectedRanking && (
+                      <>
+                        <div className="mt-3 grid grid-cols-2 gap-px bg-white/[0.04]">
+                          <Metric label="COUNCIL P" value={pct(selectedRanking.probabilityEstimate)} />
+                          <Metric label="CONFIDENCE" value={pct(selectedRanking.confidence)} />
+                        </div>
+                        <ListBlock label="UNRESOLVED" items={selectedRanking.unresolvedUncertainty} />
+                        <ListBlock label="PRESERVED DISSENT" items={selectedRanking.preservedDissent} danger />
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="border border-white/[0.07] bg-[#080C11]">
+                  <PanelHeader icon={Clock3} title="Council history" detail={`${history.length} saved`} />
+                  <div className="max-h-[360px] divide-y divide-white/[0.05] overflow-y-auto">
+                    {history.map((run) => (
+                      <button key={run.id || run.startedAt} onClick={() => {
+                        setActiveResult(run);
+                        setSelectedScenarioId(run.comparison?.recommendedFocusScenarioId || run.scenarioIds?.[0] || null);
+                      }} className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-white/[0.018]">
+                        <div className="min-w-0">
+                          <div className="font-mono text-[7px] text-[#AAB3BC]">{when(run.finishedAt)}</div>
+                          <div className="mt-1 truncate font-mono text-[6px] uppercase tracking-[0.08em] text-[#4F5963]">{run.scenarioIds?.length || 0} scenarios · {run.model}</div>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#46515B]" />
+                      </button>
+                    ))}
+                    {!history.length && <div className="p-4 text-[8px] text-[#4F5963]">No saved Council runs yet.</div>}
+                  </div>
+                </section>
+              </aside>
             </div>
+          </>
+        ) : (
+          <section className="border border-dashed border-white/[0.08] px-5 py-14 text-center">
+            <RefreshCw className="mx-auto h-5 w-5 text-[#4F5963]" />
+            <div className="mt-3 font-mono text-[8px] uppercase tracking-[0.16em] text-[#59636D]">No Council run loaded</div>
+            <p className="mx-auto mt-2 max-w-xl text-[10px] leading-relaxed text-[#58636D]">Run Council manually to obtain source-constrained feedback across all current scenarios. Nothing is synthesized locally before the run completes.</p>
           </section>
-
-          <aside className="border border-white/[0.07] bg-[#080C11] xl:sticky xl:top-0 xl:self-start">
-            <PanelHeader eyebrow="Selected lens" title={selected?.label || 'Lens'} detail={selected ? `${selected.conviction}` : '—'} />
-            <AnimatePresence mode="wait">
-              {selected && (
-                <motion.div
-                  key={selected.id}
-                  initial={{ opacity: 0, y: 7 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={{ duration: 0.2 }}
-                  className="p-4"
-                >
-                  <div className="border-b border-white/[0.06] pb-4">
-                    <div className="font-mono text-[7px] uppercase tracking-[0.16em]" style={{ color: selected.accent }}>{selected.state}</div>
-                    <p className="mt-2 text-sm leading-relaxed text-[#D2D8DE]">{selected.thesis}</p>
-                    <p className="mt-2 text-[9px] text-[#59636D]">{selected.scope}</p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-px bg-white/[0.045] py-px">
-                    <SmallMetric label="CONVICTION" value={`${selected.conviction}`} />
-                    <SmallMetric label="EVIDENCE" value={`${selected.evidenceCount}`} />
-                    <SmallMetric label="COUNTER" value={`${selected.contradictionCount}`} danger={selected.contradictionCount > 0} />
-                  </div>
-
-                  <div className="mt-4 border border-white/[0.055] bg-[#06090D] p-3">
-                    <div className="flex items-center gap-2 font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">
-                      <Layers3 className="h-3 w-3" />
-                      Interpretation
-                    </div>
-                    <p className="mt-2 text-[10px] leading-relaxed text-[#8E98A1]">
-                      This lens does not create a separate answer. It reweights the same signals, evidence, and scenarios to expose where the current decision is sensitive.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      if (selected.hypothesisId) setSelectedEntity({ type: 'hypothesis', id: selected.hypothesisId });
-                      setCurrentView('watchlist');
-                    }}
-                    className="mt-4 flex w-full items-center justify-between border border-white/[0.09] px-3 py-2.5 font-mono text-[8px] uppercase tracking-[0.15em] text-[#9FA8B1] transition hover:border-[#43D9E6]/30 hover:text-[#E9EDF1]"
-                  >
-                    Inspect underlying thesis <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </aside>
-        </div>
+        )}
       </div>
     </div>
   );
 };
 
-const SummaryMetric = ({ label, value, suffix, icon: Icon, alert }: any) => (
-  <div className="bg-[#080C11] p-4 md:p-5">
-    <div className="flex items-center justify-between">
-      <span className="font-mono text-[6px] uppercase tracking-[0.16em] text-[#59636D]">{label}</span>
-      <Icon className={`h-3.5 w-3.5 ${alert ? 'text-[#D66565]' : 'text-[#59636D]'}`} />
-    </div>
-    <div className="mt-2 flex items-end gap-1.5">
-      <span className={`text-2xl font-light tabular-nums ${alert ? 'text-[#D66565]' : 'text-[#D4DAE0]'}`}>{value}</span>
-      <span className="mb-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-[#4F5963]">{suffix}</span>
-    </div>
+const PanelHeader = ({ icon: Icon, title, detail }: { icon: React.ElementType; title: string; detail: string }) => (
+  <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+    <div className="flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.14em] text-[#7C8791]"><Icon className="h-3.5 w-3.5 text-[#43D9E6]" />{title}</div>
+    <div className="max-w-[55%] truncate font-mono text-[6px] uppercase tracking-[0.09em] text-[#4F5963]">{detail}</div>
   </div>
 );
 
-const PanelHeader = ({ eyebrow, title, detail }: any) => (
-  <div className="flex items-end justify-between gap-4 border-b border-white/[0.06] px-4 py-3.5">
-    <div>
-      <div className="font-mono text-[6px] uppercase tracking-[0.18em] text-[#59636D]">{eyebrow}</div>
-      <div className="mt-1 text-sm font-medium text-[#CBD2D9]">{title}</div>
+const Metric = ({ label, value }: { label: string; value: string }) => (
+  <div className="bg-[#06090D] p-2.5">
+    <div className="font-mono text-[6px] uppercase tracking-[0.09em] text-[#4F5963]">{label}</div>
+    <div className="mt-1 font-mono text-[8px] text-[#AAB3BC]">{value}</div>
+  </div>
+);
+
+const ListBlock = ({ label, items, danger = false }: { label: string; items: string[]; danger?: boolean }) => {
+  if (!items?.length) return null;
+  return (
+    <div className="mt-3 border-t border-white/[0.05] pt-2.5">
+      <div className={`font-mono text-[6px] uppercase tracking-[0.11em] ${danger ? 'text-[#A96565]' : 'text-[#59636D]'}`}>{label}</div>
+      <div className="mt-1.5 space-y-1">
+        {items.slice(0, 4).map((item, index) => <div key={`${item}-${index}`} className="text-[8px] leading-relaxed text-[#68747E]">• {item}</div>)}
+      </div>
     </div>
-    <span className="font-mono text-[7px] uppercase tracking-[0.13em] text-[#4F5963]">{detail}</span>
-  </div>
-);
+  );
+};
 
-const SynthesisCard = ({ label, icon: Icon, title, meta, tone }: any) => (
-  <div className="border border-white/[0.055] bg-[#06090D] p-4">
-    <div className="flex items-center gap-2 font-mono text-[6px] uppercase tracking-[0.15em]" style={{ color: tone }}>
-      <Icon className="h-3 w-3" />
-      {label}
-    </div>
-    <div className="mt-3 text-sm leading-relaxed text-[#C8CFD5]">{title}</div>
-    <div className="mt-2 text-[9px] text-[#59636D]">{meta}</div>
-  </div>
-);
-
-const DecisionRule = ({ label, active, text }: any) => (
-  <div className={`p-3 ${active ? 'bg-white/[0.055]' : 'bg-[#06090D]'}`}>
-    <div className={`font-mono text-[7px] uppercase tracking-[0.15em] ${active ? 'text-[#C7A96B]' : 'text-[#4F5963]'}`}>{label}</div>
-    <p className="mt-1.5 text-[9px] leading-relaxed text-[#68727C]">{text}</p>
-  </div>
-);
-
-const SmallMetric = ({ label, value, danger }: any) => (
-  <div className="bg-[#06090D] px-2 py-3 text-center">
-    <div className="font-mono text-[6px] uppercase tracking-[0.12em] text-[#4F5963]">{label}</div>
-    <div className={`mt-1 text-sm font-light tabular-nums ${danger ? 'text-[#D66565]' : 'text-[#C8CFD5]'}`}>{value}</div>
+const Note = ({ icon: Icon, text }: { icon: React.ElementType; text: string }) => (
+  <div className="flex items-start gap-2 border border-white/[0.05] bg-[#06090D] p-3 text-[8px] leading-relaxed text-[#68747E]">
+    <Icon className="mt-0.5 h-3 w-3 shrink-0 text-[#59636D]" /> {text}
   </div>
 );
