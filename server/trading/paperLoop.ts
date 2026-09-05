@@ -1,4 +1,6 @@
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
+import { buildDeterministicGovernancePackage } from '../../src/trading/governanceCore';
+import { buildFinalDecision } from '../../src/trading/intelligencePipeline';
 import type { MarketPriceSnapshot } from '../../src/trading/marketHistory';
 import { buildTradeCaseRecord } from '../../src/trading/tradeCase';
 import type { LiquiditySnapshot } from '../../src/trading/types';
@@ -70,6 +72,10 @@ const cloneCycle = (cycle: PaperLoopCycleResult): PaperLoopCycleResult => ({
     evidenceIds: item.evidenceIds.slice(),
     reasons: item.reasons.slice(),
     riskReasons: item.riskReasons.slice(),
+    governance: item.governance ? {
+      ...item.governance,
+      reasons: item.governance.reasons.slice(),
+    } : undefined,
     router: {
       ...item.router,
       reasons: item.router.reasons.slice(),
@@ -173,6 +179,13 @@ export class PaperLoopController {
       cycleHistory: this.cycleHistory.map(cloneCycle),
       marketHistory: cloneHistory(this.marketHistory),
       session: paperTradingSession.state(),
+      governance: {
+        mode: 'ENFORCE' as const,
+        policy: 'STRICT_CONSENSUS' as const,
+        engine: 'DETERMINISTIC_COUNCIL_CORE_V1' as const,
+        entryRule: 'New ENTER requires source-backed Evidence + deterministic Scenario/Council support + deterministic Risk approval.',
+        protectiveExitAuthority: true,
+      },
     };
   }
 
@@ -240,6 +253,26 @@ export class PaperLoopController {
             evidence.activeCount > 0 ? evidence.score : undefined,
             liquidity,
             newEntryAllowed,
+            (context) => {
+              const intelligence = buildDeterministicGovernancePackage({
+                market,
+                evidence,
+                multiTimeframe: context.multiTimeframe,
+                liquidity: context.liquidity,
+                scope: context.hasOpenPositionBefore ? 'HELD' : 'CANDIDATE',
+                now: Date.now(),
+              });
+              const finalDecision = buildFinalDecision({
+                market,
+                executionDecision: context.executionDecision,
+                hasOpenPositionBefore: context.hasOpenPositionBefore,
+                intelligence,
+                mode: 'ENFORCE',
+                policy: 'STRICT_CONSENSUS',
+                now: intelligence.generatedAt,
+              });
+              return { intelligence, finalDecision };
+            },
           );
           const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
           const trace = buildDecisionTrace({
@@ -249,6 +282,12 @@ export class PaperLoopController {
             multiTimeframe: step.multiTimeframe,
             evidence,
             hasOpenPositionAfterStep,
+            governance: step.governance ? {
+              finalDecision: step.governance.finalDecision,
+              intelligencePackageId: step.governance.intelligence.id,
+              scenarioSetId: step.governance.intelligence.scenarios.id,
+              councilRunId: step.governance.intelligence.council.id,
+            } : null,
           });
 
           if (trace.action === 'ENTER' && step.fill) {
@@ -262,6 +301,15 @@ export class PaperLoopController {
             tradeCaseStore.closeMarket(market, step.fill?.timestamp ?? trace.timestamp, trace);
           } else if (alreadyOpen || hasOpenPositionAfterStep) {
             tradeCaseStore.appendDecision(market, trace);
+          }
+
+          if (step.governance && (trace.action === 'ENTER' || alreadyOpen || hasOpenPositionAfterStep)) {
+            tradeCaseStore.linkIntelligence(market, {
+              intelligencePackageId: step.governance.intelligence.id,
+              councilRunId: step.governance.intelligence.council.id,
+              finalDecisionId: trace.governance?.finalDecisionId ?? null,
+              note: `Governance ${step.governance.finalDecision.policy}/${step.governance.finalDecision.intelligenceDisposition}; scenario ${step.governance.finalDecision.recommendedScenarioId ?? 'none'}.`,
+            });
           }
 
           result.scanned += 1;
