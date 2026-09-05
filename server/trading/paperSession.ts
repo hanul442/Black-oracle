@@ -1,10 +1,12 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
+import type { GovernedTradingIntelligencePackage } from '../../src/trading/governanceCore';
+import type { FinalDecision } from '../../src/trading/intelligencePipeline';
 import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
-import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
+import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
 
@@ -22,6 +24,40 @@ export interface PaperTradingSessionCheckpoint {
   ledger: TradingLedgerEvent[];
   processedOrderIds: string[];
 }
+
+export interface PaperGovernanceContext {
+  market: string;
+  liquidity: LiquiditySnapshot;
+  multiTimeframe: MultiTimeframeSnapshot;
+  executionDecision: ExecutionDecision;
+  hasOpenPositionBefore: boolean;
+}
+
+export interface PaperGovernanceEvaluation {
+  intelligence: GovernedTradingIntelligencePackage;
+  finalDecision: FinalDecision;
+}
+
+export type PaperGovernanceEvaluator = (
+  context: PaperGovernanceContext,
+) => PaperGovernanceEvaluation | Promise<PaperGovernanceEvaluation>;
+
+const governanceVetoDecision = (
+  baseDecision: ExecutionDecision,
+  reasons: string[],
+): ExecutionDecision => ({
+  action: 'HOLD',
+  side: null,
+  notional: 0,
+  quantity: 0,
+  confidence: baseDecision.confidence,
+  stopLossPrice: null,
+  takeProfitPrice: null,
+  // Preserve risk truth: deterministic Risk approved the candidate; Governance vetoed it later.
+  riskDisposition: baseDecision.riskDisposition,
+  riskReasons: baseDecision.riskReasons.slice(),
+  reasons: [...baseDecision.reasons, ...reasons],
+});
 
 export class PaperTradingSession {
   private portfolio: PaperPortfolio;
@@ -121,6 +157,7 @@ export class PaperTradingSession {
     eventScore?: number,
     precomputedLiquidity?: LiquiditySnapshot,
     newEntryAllowed = true,
+    governanceEvaluator?: PaperGovernanceEvaluator,
   ) {
     const normalized = market.toUpperCase();
     const [liquidity, multiTimeframe] = await Promise.all([
@@ -131,7 +168,7 @@ export class PaperTradingSession {
 
     const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
     const position = this.portfolio.getPosition(normalized);
-    const decision = buildExecutionDecision({
+    const baseDecision = buildExecutionDecision({
       liquidity,
       multiTimeframe,
       oneHour: multiTimeframe.frames.oneHour,
@@ -140,6 +177,32 @@ export class PaperTradingSession {
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
       newEntryAllowed,
     });
+
+    let governance: PaperGovernanceEvaluation | null = null;
+    let governanceError: string | null = null;
+    if (governanceEvaluator) {
+      try {
+        governance = await governanceEvaluator({
+          market: normalized,
+          liquidity,
+          multiTimeframe,
+          executionDecision: baseDecision,
+          hasOpenPositionBefore: Boolean(position),
+        });
+      } catch (error) {
+        governanceError = error instanceof Error ? error.message : 'Unknown governance evaluation error.';
+      }
+    }
+
+    let decision = baseDecision;
+    if (baseDecision.action === 'ENTER') {
+      if (governanceError) {
+        decision = governanceVetoDecision(baseDecision, [`Governance evaluation failed closed before entry: ${governanceError}`]);
+      } else if (governance?.finalDecision.action !== 'ENTER') {
+        decision = governanceVetoDecision(baseDecision, governance?.finalDecision.reasons ?? ['Governance evaluation was unavailable; new entry failed closed.']);
+      }
+    }
+    // EXIT/HOLD retain deterministic authority even if Governance is unavailable.
 
     this.ledger.append('MARKET_SNAPSHOT', {
       market: normalized,
@@ -150,11 +213,19 @@ export class PaperTradingSession {
     });
     this.ledger.append('SIGNAL', {
       market: normalized,
+      baseAction: baseDecision.action,
       action: decision.action,
       side: decision.side,
       directionalScore: multiTimeframe.directionalScore,
       oracleTradeScore: multiTimeframe.oracleTradeScore,
       confidence: decision.confidence,
+      governanceMode: governance?.finalDecision.mode ?? (governanceEvaluator ? 'ENFORCE' : null),
+      governancePolicy: governance?.finalDecision.policy ?? null,
+      intelligenceDisposition: governance?.finalDecision.intelligenceDisposition ?? null,
+      intelligencePackageId: governance?.intelligence.id ?? null,
+      scenarioSetId: governance?.intelligence.scenarios.id ?? null,
+      councilRunId: governance?.intelligence.council.id ?? null,
+      governanceError,
     });
 
     let fill: PaperFill | null = null;
@@ -238,7 +309,10 @@ export class PaperTradingSession {
       liquidity,
       multiTimeframe,
       eventScore: eventScore ?? null,
+      baseDecision,
       decision,
+      governance,
+      governanceError,
       fill,
       closedTrade,
       portfolio: after,
