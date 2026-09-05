@@ -7,6 +7,9 @@
     "api/council-debate.ts": {
       "maxDuration": 60
     },
+    "api/council-scenarios.ts": {
+      "maxDuration": 60
+    },
     "api/trading-paper-cycle.ts": {
       "maxDuration": 60
     },
