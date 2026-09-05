@@ -103,8 +103,26 @@ export default async function handler(request: any, response: any) {
       const markPrice = Number(markPriceByMarket.get(position.market) ?? position.entryPrice);
       const marketValue = markPrice * position.quantity;
       const costBasis = position.averageCost * position.quantity;
-      const externalEvidenceActive = decision?.evidenceActiveCount ?? 0;
-      const externalEvidenceContradictions = decision?.evidenceContradictionCount ?? 0;
+      const evidenceItems = activeEvidence
+        .filter((item) => item.market === position.market)
+        .sort((a, b) => b.observedAt - a.observedAt || b.reliability - a.reliability)
+        .slice(0, 8)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          direction: item.direction,
+          strength: item.strength,
+          reliability: item.reliability,
+          sourceType: item.sourceType,
+          publisher: item.publisher ?? item.source ?? 'Unknown source',
+          sourceUrl: item.sourceUrl ?? null,
+          summary: item.summary ?? null,
+          observedAt: item.observedAt,
+          expiresAt: item.expiresAt,
+          contradictionOf: item.contradictionOf ?? null,
+        }));
+      const externalEvidenceActive = evidenceItems.length;
+      const externalEvidenceContradictions = evidenceItems.filter((item) => Boolean(item.contradictionOf)).length;
       const evidenceState = stale
         ? 'STALE'
         : externalEvidenceContradictions > 0
@@ -135,7 +153,9 @@ export default async function handler(request: any, response: any) {
         riskDisposition: decision?.riskDisposition ?? 'NOT_EVALUATED',
         externalEvidenceActive,
         externalEvidenceContradictions,
-        evidenceIds: decision?.evidenceIds ?? [],
+        evidenceIds: evidenceItems.map((item) => item.id),
+        decisionEvidenceIds: decision?.evidenceIds ?? [],
+        evidenceItems,
         forecast: decision?.forecast ?? null,
         primaryReason: decision?.primaryReason ?? 'No persisted decision explanation is available for this position.',
       };
