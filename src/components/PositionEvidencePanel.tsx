@@ -5,10 +5,27 @@ import {
   ChevronUp,
   CircleDot,
   Crosshair,
+  ExternalLink,
+  FileSearch,
   Radar,
   ShieldCheck,
   Target,
 } from 'lucide-react';
+
+type EvidenceItem = {
+  id: string;
+  title: string;
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  strength: number;
+  reliability: number;
+  sourceType: string;
+  publisher: string;
+  sourceUrl: string | null;
+  summary: string | null;
+  observedAt: number;
+  expiresAt: number;
+  contradictionOf: string | null;
+};
 
 type PositionEvidence = {
   market: string;
@@ -33,6 +50,8 @@ type PositionEvidence = {
   externalEvidenceActive: number;
   externalEvidenceContradictions: number;
   evidenceIds: string[];
+  decisionEvidenceIds: string[];
+  evidenceItems: EvidenceItem[];
   forecast: null | {
     available: boolean;
     direction: string;
@@ -68,6 +87,12 @@ const stateTone = (state: PositionEvidence['evidenceState']) => {
   if (state === 'CONTESTED') return 'border-[#D66565]/25 bg-[#D66565]/[0.035] text-[#D98787]';
   if (state === 'STALE') return 'border-[#D66565]/25 bg-[#D66565]/[0.035] text-[#D98787]';
   return 'border-[#C7A96B]/25 bg-[#C7A96B]/[0.035] text-[#D3B778]';
+};
+
+const directionTone = (direction: EvidenceItem['direction']) => {
+  if (direction === 'BULLISH') return 'text-[#72B6A0]';
+  if (direction === 'BEARISH') return 'text-[#D66565]';
+  return 'text-[#AAB3BC]';
 };
 
 export const PositionEvidencePanel: React.FC = () => {
@@ -112,7 +137,7 @@ export const PositionEvidencePanel: React.FC = () => {
               <Crosshair className="h-3.5 w-3.5" /> Position evidence
             </div>
             <div className="mt-1 text-[11px] text-[#77818C]">
-              What the Paper engine currently owns, why it still owns it, and whether external evidence actually supports the position.
+              What the Paper engine currently owns, why it still owns it, and which source-backed evidence is actually attached now.
             </div>
           </div>
           <div className="flex flex-wrap gap-2 font-mono text-[6px] uppercase tracking-[0.11em] text-[#59636D]">
@@ -191,6 +216,60 @@ export const PositionEvidencePanel: React.FC = () => {
                             ? `${item.forecast.direction} · bullish ${pct(item.forecast.probabilityBullish)} · bearish ${pct(item.forecast.probabilityBearish)} · confidence ${pct(item.forecast.confidence)}.`
                             : 'Forecast unavailable because no active structured external evidence is attached. This is intentionally shown as unavailable rather than inferred from technical signals.'}
                         </div>
+                        <div className="mt-2 font-mono text-[6px] uppercase tracking-[0.12em] text-[#46515B]">
+                          current evidence {item.evidenceIds.length} · referenced by last decision {item.decisionEvidenceIds.length}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 border border-white/[0.055] bg-[#05080C]">
+                        <div className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-3 py-2.5">
+                          <div className="flex items-center gap-2 font-mono text-[6px] uppercase tracking-[0.15em] text-[#59636D]">
+                            <FileSearch className="h-3 w-3" /> Source-backed evidence
+                          </div>
+                          <div className="font-mono text-[6px] uppercase tracking-[0.1em] text-[#46515B]">fresh only · max 8</div>
+                        </div>
+                        {item.evidenceItems.length ? (
+                          <div className="divide-y divide-white/[0.05]">
+                            {item.evidenceItems.map((evidence) => (
+                              <div key={evidence.id} className="p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2 font-mono text-[6px] uppercase tracking-[0.1em] text-[#59636D]">
+                                      <span className={directionTone(evidence.direction)}>{evidence.direction}</span>
+                                      <span>{evidence.publisher}</span>
+                                      <span>{evidence.sourceType}</span>
+                                      {evidence.contradictionOf && <span className="text-[#D66565]">CONTRADICTION</span>}
+                                    </div>
+                                    <div className="mt-1.5 text-[10px] leading-snug text-[#C3CBD2]">{evidence.title}</div>
+                                    {evidence.summary && (
+                                      <div className="mt-1.5 line-clamp-3 text-[8px] leading-relaxed text-[#69747E]">{evidence.summary}</div>
+                                    )}
+                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[6px] uppercase tracking-[0.08em] text-[#4F5963]">
+                                      <span>strength {Math.round(evidence.strength)}/100</span>
+                                      <span>reliability {pct(evidence.reliability)}</span>
+                                      <span>observed {time(evidence.observedAt)}</span>
+                                      <span>expires {time(evidence.expiresAt)}</span>
+                                    </div>
+                                  </div>
+                                  {evidence.sourceUrl ? (
+                                    <a
+                                      href={evidence.sourceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex shrink-0 items-center gap-1 border border-white/[0.08] px-2 py-1.5 font-mono text-[6px] uppercase tracking-[0.09em] text-[#82909B] transition hover:border-[#43D9E6]/25 hover:text-[#43D9E6]"
+                                    >
+                                      SOURCE <ExternalLink className="h-2.5 w-2.5" />
+                                    </a>
+                                  ) : (
+                                    <span className="shrink-0 border border-white/[0.05] px-2 py-1.5 font-mono text-[6px] uppercase tracking-[0.09em] text-[#3F4851]">NO URL</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="px-3 py-4 text-[8px] leading-relaxed text-[#4F5963]">No fresh source-backed evidence is stored for this market. Nothing is synthesized to fill the gap.</div>
+                        )}
                       </div>
                     </div>
                   )}
