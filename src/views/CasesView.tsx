@@ -277,7 +277,7 @@ export const CasesView: React.FC = () => {
             <div>
               <div className="font-mono text-[7px] uppercase tracking-[0.22em] text-[#43D9E6]">Position supervision</div>
               <h1 className="mt-2 text-[28px] font-medium tracking-[-0.04em] md:text-[34px]">Positions</h1>
-              <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D]">Live holdings, system candidates and research watchlist share one inspection model. Forecast and Council are no longer separate destinations; they are provenance layers inside each market dossier.</p>
+              <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D]">Live holdings, system candidates and research watchlist share one inspection model. Forecast and Council are provenance layers inside each market dossier rather than separate primary destinations.</p>
             </div>
             <div className="flex flex-wrap gap-3 font-mono text-[6px] uppercase tracking-[0.12em] text-[#59636D]"><span>{activePositions.length} open</span><span>{candidates.length} candidates</span><span>{research.length} research</span><span>{closedCases.length} closed</span><span className={status?.status === 'OK' ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{status?.status || 'WAITING'}</span></div>
           </div>
@@ -329,7 +329,17 @@ export const CasesView: React.FC = () => {
   );
 };
 
-const ListRow = ({ active, market, label, detail, score, warning, onClick }: { active: boolean; market: string; label: string; detail: string; score: number | null | undefined; warning?: boolean; onClick: () => void }) => <button onClick={onClick} className={`flex w-full items-center gap-3 p-3 text-left transition ${active ? 'bg-white/[0.025]' : 'hover:bg-white/[0.012]'}`}><div className={`h-2 w-2 shrink-0 rounded-full ${warning ? 'bg-[#C7A96B]' : 'bg-[#72B6A0]'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-[8px] text-[#AEB7BF]">{market}</span><span className="font-mono text-[6px] uppercase text-[#66717B]">{label}</span></div><div className="mt-1 truncate text-[8px] text-[#505B65]">{detail}</div></div><div className="font-mono text-[8px] text-[#74808A]">{score ?? '—'}</div><ChevronRight className="h-3 w-3 text-[#3F4851]" /></button>;
+type ListRowProps = {
+  active: boolean;
+  market: string;
+  label: string;
+  detail: string;
+  score: number | null | undefined;
+  warning?: boolean;
+  onClick: () => void;
+};
+
+const ListRow: React.FC<ListRowProps> = ({ active, market, label, detail, score, warning, onClick }) => <button onClick={onClick} className={`flex w-full items-center gap-3 p-3 text-left transition ${active ? 'bg-white/[0.025]' : 'hover:bg-white/[0.012]'}`}><div className={`h-2 w-2 shrink-0 rounded-full ${warning ? 'bg-[#C7A96B]' : 'bg-[#72B6A0]'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-[8px] text-[#AEB7BF]">{market}</span><span className="font-mono text-[6px] uppercase text-[#66717B]">{label}</span></div><div className="mt-1 truncate text-[8px] text-[#505B65]">{detail}</div></div><div className="font-mono text-[8px] text-[#74808A]">{score ?? '—'}</div><ChevronRight className="h-3 w-3 text-[#3F4851]" /></button>;
 
 const OverviewTab = ({ position, trace, tradeCase, segment }: { position: PositionEvidence | null; trace: Trace | null; tradeCase: TradeCase | null; segment: Segment }) => <div className="space-y-3"><div className="grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-4"><Stat label="MARK" value={price(position?.markPrice)} /><Stat label="ENTRY" value={price(position?.entryPrice ?? tradeCase?.entry.fillPrice)} /><Stat label="UNREALIZED" value={cash(position?.unrealizedPnl)} warning={(position?.unrealizedPnl || 0) < 0} /><Stat label="AUDIT" value={trace?.auditCompleteness ? `${trace.auditCompleteness.score}% ${trace.auditCompleteness.grade}` : '—'} warning={(trace?.auditCompleteness?.score ?? 100) < 70} /></div><InfoGrid rows={[
   ['SCOPE', segment],
