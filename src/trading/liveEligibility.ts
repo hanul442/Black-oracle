@@ -13,11 +13,11 @@ export interface LiveEligibilityInput {
   walkForwardVerdict: HistoricalValidationVerdict;
   monteCarloVerdict: 'PASS' | 'WATCH' | 'REJECT' | 'INSUFFICIENT_DATA';
   maxDrawdownPct: number;
-  dailyRiskBreaches: number;
-  riskBypasses: number;
-  staleOrDuplicateExecutionViolations: number;
-  fatalRuntimeIncidents: number;
-  unresolvedCriticalIncidents: number;
+  dailyRiskBreaches: number | null;
+  riskBypasses: number | null;
+  staleOrDuplicateExecutionViolations: number | null;
+  fatalRuntimeIncidents: number | null;
+  unresolvedCriticalIncidents: number | null;
   regimeRobustnessPass: boolean;
   costStressPass: boolean;
   humanApproval: boolean;
@@ -41,6 +41,13 @@ export interface LiveEligibilityResult {
 }
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+const countGate = (id: string, value: number | null, required: string): LiveEligibilityGate => ({
+  id,
+  passed: value === 0,
+  actual: value == null ? 'UNAVAILABLE' : String(value),
+  required,
+  blocking: true,
+});
 
 export const assessLiveEligibility = (input: LiveEligibilityInput): LiveEligibilityResult => {
   const gates: LiveEligibilityGate[] = [
@@ -54,11 +61,11 @@ export const assessLiveEligibility = (input: LiveEligibilityInput): LiveEligibil
     { id: 'WALK_FORWARD', passed: input.walkForwardVerdict === 'PASS', actual: input.walkForwardVerdict, required: 'PASS', blocking: true },
     { id: 'MONTE_CARLO', passed: input.monteCarloVerdict === 'PASS' || input.monteCarloVerdict === 'WATCH', actual: input.monteCarloVerdict, required: 'PASS or WATCH; never REJECT/INSUFFICIENT', blocking: true },
     { id: 'MAX_DRAWDOWN', passed: input.maxDrawdownPct <= 0.05, actual: percent(input.maxDrawdownPct), required: '<= 5%', blocking: true },
-    { id: 'DAILY_RISK_BREACH', passed: input.dailyRiskBreaches === 0, actual: String(input.dailyRiskBreaches), required: '= 0', blocking: true },
-    { id: 'RISK_BYPASS', passed: input.riskBypasses === 0, actual: String(input.riskBypasses), required: '= 0', blocking: true },
-    { id: 'EXECUTION_INTEGRITY', passed: input.staleOrDuplicateExecutionViolations === 0, actual: String(input.staleOrDuplicateExecutionViolations), required: '= 0', blocking: true },
-    { id: 'RUNTIME_FATAL', passed: input.fatalRuntimeIncidents === 0, actual: String(input.fatalRuntimeIncidents), required: '= 0', blocking: true },
-    { id: 'CRITICAL_INCIDENTS', passed: input.unresolvedCriticalIncidents === 0, actual: String(input.unresolvedCriticalIncidents), required: '= 0', blocking: true },
+    countGate('DAILY_RISK_BREACH', input.dailyRiskBreaches, '= 0 with persisted incident evidence'),
+    countGate('RISK_BYPASS', input.riskBypasses, '= 0 with persisted incident evidence'),
+    countGate('EXECUTION_INTEGRITY', input.staleOrDuplicateExecutionViolations, '= 0 with persisted integrity evidence'),
+    countGate('RUNTIME_FATAL', input.fatalRuntimeIncidents, '= 0 with persisted incident evidence'),
+    countGate('CRITICAL_INCIDENTS', input.unresolvedCriticalIncidents, '= 0 with persisted acknowledgement lifecycle'),
     { id: 'REGIME_ROBUSTNESS', passed: input.regimeRobustnessPass, actual: input.regimeRobustnessPass ? 'PASS' : 'FAIL', required: 'PASS', blocking: true },
     { id: 'COST_STRESS', passed: input.costStressPass, actual: input.costStressPass ? 'PASS' : 'FAIL', required: 'PASS', blocking: true },
   ];
@@ -75,7 +82,7 @@ export const assessLiveEligibility = (input: LiveEligibilityInput): LiveEligibil
     gates,
     blockers,
     reasons: blockers.length
-      ? [`${blockers.length} promotion gate(s) remain blocked.`, 'Continue PAPER; no live execution authority is granted.']
+      ? [`${blockers.length} promotion gate(s) remain blocked.`, 'Unavailable integrity evidence is a blocker, not an assumed zero.', 'Continue PAPER; no live execution authority is granted.']
       : input.humanApproval
         ? ['All quantitative gates passed and explicit human approval is recorded.', 'This result authorizes only the 300,000 KRW candidate stage; it does not activate an exchange connector.']
         : ['All quantitative PAPER gates passed.', 'Explicit human approval is still required before the 300,000 KRW stage can be considered approved.'],
