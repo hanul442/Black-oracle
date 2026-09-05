@@ -1,3 +1,4 @@
+import { probePaperDeploymentPreflight } from '../server/trading/deploymentPreflight.js';
 import { buildEvidenceRefreshReadiness } from '../server/trading/evidenceReadiness.js';
 import {
   EVIDENCE_REFRESH_TIMEOUT_MS,
@@ -14,12 +15,15 @@ export default async function handler(request: any, response: any) {
 
   response.setHeader('Cache-Control', 'no-store, max-age=0');
 
-  const evidenceRefresh = buildEvidenceRefreshReadiness(process.env as Record<string, string | undefined>);
+  const env = process.env as Record<string, string | undefined>;
+  const evidenceRefresh = buildEvidenceRefreshReadiness(env);
+  const deploymentPreflight = await probePaperDeploymentPreflight(env);
 
   return response.status(200).json({
     success: true,
     mode: 'PAPER',
     evidenceRefresh,
+    deploymentPreflight,
     scheduler: {
       expectedOrder: ['EVIDENCE_REFRESH', 'PAPER_CYCLE'],
       protectiveExitAuthority: true,
