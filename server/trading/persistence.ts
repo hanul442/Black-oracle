@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TradingEvidence } from '../../src/trading/evidence';
+import type { TradeCaseRecord } from '../../src/trading/tradeCase';
 import type { PaperLoopCheckpoint } from './paperLoop';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
 
@@ -11,6 +12,7 @@ export interface TradingRuntimeCheckpoint {
   session: PaperTradingSessionCheckpoint;
   evidence: TradingEvidence[];
   loop: PaperLoopCheckpoint;
+  tradeCases?: TradeCaseRecord[];
 }
 
 export type PersistenceBackend = 'json' | 'supabase';
@@ -46,6 +48,9 @@ export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => 
   if (typeof checkpoint.reason !== 'string') throw new Error('Trading checkpoint reason is invalid.');
   if (!checkpoint.session || !checkpoint.loop || !Array.isArray(checkpoint.evidence)) {
     throw new Error('Trading checkpoint payload is incomplete.');
+  }
+  if (checkpoint.tradeCases !== undefined && !Array.isArray(checkpoint.tradeCases)) {
+    throw new Error('Trading checkpoint tradeCases must be an array when present.');
   }
   return checkpoint as TradingRuntimeCheckpoint;
 };
