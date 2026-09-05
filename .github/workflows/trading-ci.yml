@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   validate-trading-core:
@@ -53,3 +55,123 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  preview-deployment-qa:
+    name: preview-deployment-qa
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'sprint/5-evidence-governed-validation-closure'
+    needs: validate-trading-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Discover current Vercel Preview
+        id: preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_DATE="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}" --jq '.commit.committer.date')"
+          HEAD_EPOCH="$(date -d "$HEAD_DATE" +%s)"
+          PREVIEW_URL=""
+
+          for attempt in $(seq 1 20); do
+            COMMENT="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --jq '[.[] | select(.user.login == "vercel[bot]")] | last | {body, updated_at}')"
+            BODY="$(printf '%s' "$COMMENT" | jq -r '.body // ""')"
+            UPDATED_AT="$(printf '%s' "$COMMENT" | jq -r '.updated_at // ""')"
+            if [[ -n "$UPDATED_AT" ]]; then
+              UPDATED_EPOCH="$(date -d "$UPDATED_AT" +%s)"
+            else
+              UPDATED_EPOCH=0
+            fi
+            PREVIEW_URL="$(printf '%s' "$BODY" | grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' | head -n 1 || true)"
+
+            if [[ -n "$PREVIEW_URL" && "$UPDATED_EPOCH" -ge "$HEAD_EPOCH" ]]; then
+              break
+            fi
+            PREVIEW_URL=""
+            sleep 10
+          done
+
+          if [[ -z "$PREVIEW_URL" ]]; then
+            echo 'No Vercel Preview URL updated for the current PR head was found.' >&2
+            exit 1
+          fi
+
+          case "$PREVIEW_URL" in
+            https://*.vercel.app) ;;
+            *) echo 'Discovered Preview URL is not a trusted HTTPS vercel.app deployment.' >&2; exit 1 ;;
+          esac
+
+          echo "preview_url=$PREVIEW_URL" >> "$GITHUB_OUTPUT"
+          echo "Preview host: ${PREVIEW_URL#https://}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright for deployed QA
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run deployed Preview QA
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          BLACK_ORACLE_QA_EMAIL: ${{ secrets.BLACK_ORACLE_QA_EMAIL }}
+          BLACK_ORACLE_QA_PASSWORD: ${{ secrets.BLACK_ORACLE_QA_PASSWORD }}
+        run: node scripts/previewQa.mjs
+
+      - name: Summarize Preview QA
+        if: always()
+        shell: bash
+        run: |
+          if [[ ! -f artifacts/preview-qa/result.json ]]; then
+            echo '### Preview QA: HARNESS FAILED' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No result artifact was created.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          STATUS="$(jq -r '.overall' artifacts/preview-qa/result.json)"
+          GATE="$(jq -r '.releaseGateClosed' artifacts/preview-qa/result.json)"
+          REVISION="$(jq -r '.revision.verified' artifacts/preview-qa/result.json)"
+          PREVIEW_READY="$(jq -r '.readiness.previewReady' artifacts/preview-qa/result.json)"
+          PROD_READY="$(jq -r '.readiness.productionRolloutReady' artifacts/preview-qa/result.json)"
+          DESKTOP="$(jq -r '.desktop.operatorWorkspace' artifacts/preview-qa/result.json)"
+          MOBILE="$(jq -r '.mobile.operatorWorkspace' artifacts/preview-qa/result.json)"
+
+          {
+            echo "### Preview QA: $STATUS"
+            echo "- Current revision verified: $REVISION"
+            echo "- Preview preflight ready: $PREVIEW_READY"
+            echo "- Production PAPER preflight ready: $PROD_READY"
+            echo "- Desktop operator workspace: $DESKTOP"
+            echo "- Mobile operator workspace: $MOBILE"
+            echo "- Release gate closed: $GATE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$GATE" != "true" ]]; then
+            echo '::warning::Preview QA did not close the full device/operator release gate. See uploaded artifact.'
+            exit 1
+          fi
+
+      - name: Upload Preview QA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: black-oracle-preview-qa-${{ github.event.pull_request.head.sha }}
+          path: artifacts/preview-qa
+          if-no-files-found: warn
+          retention-days: 14
