@@ -1,4 +1,5 @@
 import { tradingEvidenceStore } from './evidenceStore';
+import { runtimeIntegrityStore } from './integrityStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingCheckpointStore } from './persistence';
@@ -17,15 +18,20 @@ let restoreSummary: {
   resumedLoop: false,
 };
 
-export const buildRuntimeCheckpoint = (reason = 'manual') => ({
-  schemaVersion: 1 as const,
-  savedAt: Date.now(),
-  reason,
-  session: paperTradingSession.checkpoint(),
-  evidence: tradingEvidenceStore.list(undefined, true),
-  loop: paperLoopController.checkpoint(),
-  tradeCases: tradeCaseStore.list(),
-});
+export const buildRuntimeCheckpoint = (reason = 'manual') => {
+  runtimeIntegrityStore.ensureStarted();
+  return {
+    schemaVersion: 1 as const,
+    savedAt: Date.now(),
+    reason,
+    session: paperTradingSession.checkpoint(),
+    evidence: tradingEvidenceStore.list(undefined, true),
+    loop: paperLoopController.checkpoint(),
+    tradeCases: tradeCaseStore.list(),
+    // Optional schema-v1 extension: old checkpoints remain readable and begin observability only after upgrade.
+    integrity: runtimeIntegrityStore.snapshot(),
+  };
+};
 
 export const saveRuntimeCheckpoint = async (reason = 'manual') => {
   const checkpoint = buildRuntimeCheckpoint(reason);
@@ -36,6 +42,8 @@ export const saveRuntimeCheckpoint = async (reason = 'manual') => {
 export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   const checkpoint = await tradingCheckpointStore.load();
   if (!checkpoint) {
+    runtimeIntegrityStore.restore(null);
+    runtimeIntegrityStore.ensureStarted();
     restoreSummary = {
       restored: false,
       savedAt: null,
@@ -49,6 +57,8 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   tradingEvidenceStore.replaceAll(checkpoint.evidence);
   tradeCaseStore.replaceAll(checkpoint.tradeCases ?? []);
   paperLoopController.restore(checkpoint.loop, resumeLoop);
+  runtimeIntegrityStore.restore((checkpoint as any).integrity ?? null);
+  runtimeIntegrityStore.ensureStarted();
 
   restoreSummary = {
     restored: true,
@@ -83,4 +93,5 @@ export const runtimePersistenceStatus = () => ({
   ...tradingCheckpointStore.status(),
   autosaveRunning: autosaveTimer !== null,
   restore: runtimeRestoreSummary(),
+  integrity: runtimeIntegrityStore.summary(),
 });
