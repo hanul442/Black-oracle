@@ -13,7 +13,7 @@ import {
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
-  TerminalSquare,
+  SquareTerminal,
   TrendingDown,
   TrendingUp,
   WalletCards,
@@ -152,6 +152,8 @@ type TradingStatus = {
   }>;
 };
 
+type DecisionTapeItem = NonNullable<TradingStatus['decisionTape']>[number];
+
 const EVENT_FILTERS: EventKind[] = ['ALL', 'CYCLE', 'DECISION', 'RISK', 'EVIDENCE', 'TRADE', 'SYSTEM'];
 const SEVERITY_FILTERS: Array<{ id: 'all' | Severity; label: string }> = [
   { id: 'all', label: 'ALL' },
@@ -181,10 +183,10 @@ const age = (value: number | null | undefined) => {
   return `${compact.format(value / 3_600_000)}h`;
 };
 
-const severityForDecision = (item: TradingStatus['decisionTape'] extends Array<infer T> ? T : never): Severity => {
-  if (item?.riskDisposition === 'REJECT') return 'warning';
-  if ((item?.evidenceContradictionCount || 0) > 0) return 'warning';
-  if (item?.decision === 'ENTER' || item?.decision === 'EXIT') return 'normal';
+const severityForDecision = (item: DecisionTapeItem): Severity => {
+  if (item.riskDisposition === 'REJECT') return 'warning';
+  if ((item.evidenceContradictionCount || 0) > 0) return 'warning';
+  if (item.decision === 'ENTER' || item.decision === 'EXIT') return 'normal';
   return 'info';
 };
 
@@ -235,7 +237,7 @@ const buildEvents = (data: TradingStatus | null): MonitorEvent[] => {
       id: `decision-${item.market}-${item.timestamp}`,
       timestamp: item.timestamp,
       kind: 'DECISION',
-      severity: severityForDecision(item as never),
+      severity: severityForDecision(item),
       market: item.market,
       label: item.decision || 'DECISION',
       summary: item.primaryReason || 'No persisted primary decision reason.',
@@ -352,7 +354,7 @@ const iconForEvent = (event: MonitorEvent) => {
   if (event.kind === 'EVIDENCE') return Database;
   if (event.kind === 'TRADE') return event.summary.includes('+') ? TrendingUp : TrendingDown;
   if (event.kind === 'CYCLE') return Activity;
-  if (event.kind === 'SYSTEM') return TerminalSquare;
+  if (event.kind === 'SYSTEM') return SquareTerminal;
   return CircleDot;
 };
 
@@ -428,7 +430,7 @@ export const MonitorView: React.FC = () => {
           <div className="flex flex-col gap-3 border-b border-white/[0.055] px-3 py-3 md:px-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <div className={`flex h-9 w-9 shrink-0 items-center justify-center border ${statusHealthy ? 'border-[#72B6A0]/25 text-[#72B6A0]' : 'border-[#C7A96B]/25 text-[#C7A96B]'}`}>
-                <TerminalSquare className="h-4 w-4" />
+                <SquareTerminal className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -593,7 +595,7 @@ export const MonitorView: React.FC = () => {
 
               {!filtered.length && (
                 <div className="px-5 py-16 text-center">
-                  <TerminalSquare className="mx-auto h-5 w-5 text-[#39434C]" />
+                  <SquareTerminal className="mx-auto h-5 w-5 text-[#39434C]" />
                   <div className="mt-3 font-mono text-[7px] uppercase tracking-[0.16em] text-[#59636D]">No matching monitor events</div>
                   <div className="mt-1 text-[9px] text-[#404A53]">Change filters or wait for the next Paper checkpoint.</div>
                 </div>
