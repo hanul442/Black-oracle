@@ -22,6 +22,10 @@ export default async function handler(request: any, response: any) {
   return response.status(200).json({
     success: true,
     mode: 'PAPER',
+    deployment: {
+      gitCommitSha: env.VERCEL_GIT_COMMIT_SHA?.trim() || null,
+      environment: env.VERCEL_ENV?.trim() || null,
+    },
     evidenceRefresh,
     deploymentPreflight,
     scheduler: {
