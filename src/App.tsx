@@ -7,8 +7,8 @@ import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
 import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { LoginView } from './views/LoginView';
-import { CommandCenterView } from './views/CommandCenterView';
-import { OperationsWithValidationView } from './views/OperationsWithValidationView';
+import { MonitorView } from './views/MonitorView';
+import { LabView } from './views/LabView';
 import { OracleFieldView } from './views/OracleFieldView';
 import { MobileNexusView } from './views/MobileNexusView';
 import { CasesView } from './views/CasesView';
@@ -31,9 +31,6 @@ const AppContent: React.FC = () => {
     setWorkflowQuery,
     isWorkflowMinimized,
     setIsWorkflowMinimized,
-    scenarios,
-    hypotheses,
-    signals,
     user,
   } = useAppContext() as any;
 
@@ -62,7 +59,7 @@ const AppContent: React.FC = () => {
         const data = await response.json();
         if (data.success && (data.count > 0 || data.mergedCount > 0)) {
           addNotification(
-            `Oracle Field updated: ${data.count || 0} new evidence items, ${data.mergedCount || 0} merged nodes.`,
+            `Evidence collection updated: ${data.count || 0} new items, ${data.mergedCount || 0} merged nodes.`,
             'success',
           );
         }
@@ -78,8 +75,7 @@ const AppContent: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [currentView, addNotification, coreInterests, user?.uid]);
 
-  const isFieldView = currentView === 'oracle-field' || currentView === 'oracle-feed';
-  const isOperationsView = currentView === 'operations';
+  const showAskOracle = currentView === 'forecast' || currentView === 'council';
 
   const renderView = () => {
     let view: React.ReactNode;
@@ -88,10 +84,11 @@ const AppContent: React.FC = () => {
         view = <LoginView />;
         break;
       case 'command':
-        view = <CommandCenterView />;
-        break;
       case 'operations':
-        view = <OperationsWithValidationView />;
+        view = <MonitorView />;
+        break;
+      case 'lab':
+        view = <LabView />;
         break;
       case 'oracle-field':
       case 'oracle-feed':
@@ -124,7 +121,7 @@ const AppContent: React.FC = () => {
         view = <SettingsView />;
         break;
       default:
-        view = <CommandCenterView />;
+        view = <MonitorView />;
     }
 
     return (
@@ -209,7 +206,7 @@ const AppContent: React.FC = () => {
             </AnimatePresence>
           </div>
 
-          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && !isOperationsView && (
+          {showAskOracle && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -244,9 +241,9 @@ const AppContent: React.FC = () => {
           )}
         </main>
 
-        <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[7px] uppercase tracking-[0.12em] text-[#46515B] lg:flex">
-          <span>{signals?.length || 0} signals · {hypotheses?.length || 0} hypotheses · {scenarios?.length || 0} scenarios</span>
-          <span className="text-[#6CB3A0]">● field monitor active</span>
+        <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[6px] uppercase tracking-[0.12em] text-[#46515B] lg:flex">
+          <span>operator-first · persisted state · explicit unavailable data</span>
+          <span className="text-[#6CB3A0]">● supervision shell active</span>
         </footer>
       </div>
 
