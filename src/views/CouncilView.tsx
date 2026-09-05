@@ -212,8 +212,8 @@ export const CouncilView: React.FC = () => {
           hypothesisId: caseModel.focusHypothesis.id,
           questionId: caseModel.question?.id || null,
         },
-      }) as CouncilResult;
-      setActiveResult(persisted);
+      });
+      setActiveResult(persisted as CouncilResult);
       setSelectedScenarioId(payload.comparison?.recommendedFocusScenarioId || caseModel.linkedScenarios[0]?.id || null);
       await loadHistory();
     } catch (runError) {
@@ -335,7 +335,11 @@ export const CouncilView: React.FC = () => {
                 <p className="mt-2 text-[9px] leading-relaxed text-[#7B8791]">{activeResult.comparison.reason}</p>
                 {!!activeResult.comparison.crossScenarioObservations?.length && (
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    {activeResult.comparison.crossScenarioObservations.map((item, index) => <Note key={`${item}-${index}`} icon={Eye} text={item} />)}
+                    {activeResult.comparison.crossScenarioObservations.map((item, index) => (
+                      <div key={`${item}-${index}`}>
+                        <Note icon={Eye} text={item} />
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
