@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Database, LogOut, Radar, Settings } from 'lucide-react';
+import React from 'react';
+import { LogOut, Radar, Settings } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
 
 const viewLabel: Record<string, string> = {
-  command: 'Command',
-  operations: 'Operations',
-  cases: 'Cases',
-  watchlist: 'Deep Case',
-  forecast: 'Forecasts',
-  council: 'Council',
-  'hypothesis-summary': 'Council',
-  ledger: 'Ledger',
-  'oracle-field': 'Raw Field',
-  'oracle-feed': 'Raw Field',
+  command: 'Monitor',
+  operations: 'Monitor',
+  cases: 'Positions',
+  watchlist: 'Position Detail',
+  ledger: 'Audit',
+  'hypothesis-summary': 'Audit Detail',
+  lab: 'Lab',
+  forecast: 'Scenario Detail',
+  council: 'Council Detail',
+  'oracle-field': 'Advanced Intelligence',
+  'oracle-feed': 'Advanced Intelligence',
   settings: 'Settings',
 };
 
@@ -25,11 +25,8 @@ export const TopBar: React.FC = () => {
     isIngestingData,
     setIsIngestingData,
     addNotification,
-    activeFeeds,
     coreInterests,
   } = useAppContext() as any;
-
-  const [showFeeds, setShowFeeds] = useState(false);
 
   const handleFetchData = async () => {
     setIsIngestingData(true);
@@ -41,12 +38,12 @@ export const TopBar: React.FC = () => {
       });
       const data = await response.json();
       if (data.success) {
-        addNotification(`Field synchronized across ${data.sourcesAnalyzed || 0} sources.`, 'success');
+        addNotification(`Evidence collection synchronized across ${data.sourcesAnalyzed || 0} sources.`, 'success');
       } else {
-        addNotification(data.error || 'Field synchronization failed.', 'error');
+        addNotification(data.error || 'Evidence synchronization failed.', 'error');
       }
     } catch {
-      addNotification('Field synchronization failed.', 'error');
+      addNotification('Evidence synchronization failed.', 'error');
     } finally {
       setIsIngestingData(false);
     }
@@ -55,7 +52,7 @@ export const TopBar: React.FC = () => {
   return (
     <header className="relative z-[70] flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#06090D]/96 px-2 backdrop-blur-xl sm:px-3 md:px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <button onClick={() => setCurrentView('command')} className="flex min-h-[44px] shrink-0 touch-manipulation items-center gap-2 lg:hidden">
+        <button onClick={() => setCurrentView('operations')} className="flex min-h-[44px] shrink-0 touch-manipulation items-center gap-2 lg:hidden">
           <span className="relative flex h-5 w-5 items-center justify-center">
             <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/25" />
             <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6]" />
@@ -64,9 +61,9 @@ export const TopBar: React.FC = () => {
         </button>
 
         <div className="hidden items-center gap-2 lg:flex">
-          <span className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#3F4952]">Workspace</span>
+          <span className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#3F4952]">Operator</span>
           <span className="text-[#2C343B]">/</span>
-          <span className="text-[11px] text-[#9DA7B0]">{viewLabel[currentView] || 'Command'}</span>
+          <span className="text-[11px] text-[#9DA7B0]">{viewLabel[currentView] || 'Monitor'}</span>
         </div>
       </div>
 
@@ -75,47 +72,15 @@ export const TopBar: React.FC = () => {
           onClick={handleFetchData}
           disabled={isIngestingData}
           className="flex h-11 min-w-11 touch-manipulation items-center justify-center gap-2 border border-white/[0.07] bg-white/[0.015] px-2.5 font-mono text-[7px] uppercase tracking-[0.15em] text-[#747F89] transition hover:border-[#43D9E6]/20 hover:text-[#BEC7CE] disabled:opacity-40 sm:h-8 sm:min-w-0"
-          aria-label="Synchronize field"
+          aria-label="Synchronize evidence"
         >
           <Radar className={`h-3.5 w-3.5 sm:h-3 sm:w-3 ${isIngestingData ? 'animate-spin text-[#43D9E6]' : ''}`} />
-          <span className="hidden sm:inline">{isIngestingData ? 'Syncing' : 'Sync'}</span>
+          <span className="hidden sm:inline">{isIngestingData ? 'Syncing' : 'Sync evidence'}</span>
         </button>
-
-        <div className="relative hidden sm:block">
-          <button
-            onClick={() => setShowFeeds((value) => !value)}
-            className="flex h-8 items-center gap-2 border border-white/[0.07] bg-white/[0.015] px-2.5 font-mono text-[7px] uppercase tracking-[0.15em] text-[#747F89] transition hover:text-[#BEC7CE]"
-          >
-            <Database className="h-3 w-3" />
-            {activeFeeds?.length || 0}
-          </button>
-
-          <AnimatePresence>
-            {showFeeds && (
-              <motion.div
-                initial={{ opacity: 0, y: 7 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 7 }}
-                className="absolute right-0 top-10 w-[300px] border border-white/[0.08] bg-[#090D12]/98 p-2 shadow-2xl backdrop-blur-2xl"
-              >
-                <div className="border-b border-white/[0.06] px-2 py-2 font-mono text-[7px] uppercase tracking-[0.2em] text-[#59636D]">Source connections</div>
-                <div className="max-h-[300px] overflow-y-auto">
-                  {(activeFeeds || []).map((feed: any) => (
-                    <div key={feed.name} className="border-b border-white/[0.04] px-2 py-2.5 last:border-0">
-                      <div className="text-[11px] text-[#C9D0D6]">{feed.name}</div>
-                      <div className="mt-1 truncate font-mono text-[7px] text-[#4E5862]">{feed.type}</div>
-                    </div>
-                  ))}
-                  {!activeFeeds?.length && <div className="px-2 py-5 text-[10px] text-[#4E5862]">No active source metadata.</div>}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
 
         <button
           onClick={() => setCurrentView('settings')}
-          className={`flex h-11 w-11 touch-manipulation items-center justify-center border transition sm:h-8 sm:w-8 lg:hidden ${
+          className={`flex h-11 w-11 touch-manipulation items-center justify-center border transition sm:h-8 sm:w-8 ${
             currentView === 'settings'
               ? 'border-[#43D9E6]/25 text-[#43D9E6]'
               : 'border-white/[0.07] text-[#606B75] hover:text-[#C7CED4]'
