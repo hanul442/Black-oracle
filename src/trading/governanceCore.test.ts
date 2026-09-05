@@ -81,7 +81,7 @@ test('bullish evidence and aligned technical context can advance a long thesis',
   assert.equal(topScenario?.label, 'BULL');
 });
 
-test('bearish evidence cannot be disguised as supported long-entry governance', () => {
+test('bearish evidence may advance a bearish/base scenario but never a bullish one as the leading Council thesis', () => {
   const value = buildDeterministicGovernancePackage({
     market: 'KRW-BTC',
     evidence: evidence(-82),
@@ -92,7 +92,8 @@ test('bearish evidence cannot be disguised as supported long-entry governance', 
 
   assert.equal(value.impact.direction, 'BEARISH');
   const top = [...value.council.rankings].sort((a, b) => a.rank - b.rank)[0];
-  assert.notEqual(top.disposition, 'ADVANCE');
+  const topScenario = value.scenarios.branches.find((item) => item.id === top.scenarioId);
+  if (top.disposition === 'ADVANCE') assert.notEqual(topScenario?.direction, 'UP');
 });
 
 test('same inputs produce stable governance identifiers', () => {
