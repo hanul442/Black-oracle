@@ -32,6 +32,7 @@ export interface PaperLoopCheckpoint {
   cycleCount: number;
   lastCycle: PaperLoopCycleResult | null;
   marketHistory?: MarketPriceSnapshot[];
+  cycleHistory?: PaperLoopCycleResult[];
 }
 
 const DEFAULT_CONFIG: PaperLoopConfig = {
@@ -41,6 +42,7 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
 };
 
 const MAX_MARKET_HISTORY_POINTS = 384;
+const MAX_CYCLE_HISTORY = 96;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const validateConfig = (config: PaperLoopConfig) => {
@@ -60,6 +62,26 @@ const cloneHistory = (history: MarketPriceSnapshot[]) => history.map((snapshot) 
   prices: snapshot.prices.map(([market, price]) => [market, price] as [string, number]),
 }));
 
+const cloneCycle = (cycle: PaperLoopCycleResult): PaperLoopCycleResult => ({
+  ...cycle,
+  errors: cycle.errors.map((item) => ({ ...item })),
+  markets: cycle.markets.map((item) => ({
+    ...item,
+    evidenceIds: item.evidenceIds.slice(),
+    reasons: item.reasons.slice(),
+    riskReasons: item.riskReasons.slice(),
+    router: {
+      ...item.router,
+      reasons: item.router.reasons.slice(),
+    },
+    forecast: {
+      ...item.forecast,
+      evidenceIds: item.forecast.evidenceIds.slice(),
+      reasons: item.forecast.reasons.slice(),
+    },
+  })),
+});
+
 const normalizeHistory = (history: unknown): MarketPriceSnapshot[] => {
   if (!Array.isArray(history)) return [];
   return history.flatMap((candidate: any) => {
@@ -76,6 +98,29 @@ const normalizeHistory = (history: unknown): MarketPriceSnapshot[] => {
   }).sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_MARKET_HISTORY_POINTS);
 };
 
+const normalizeCycleHistory = (
+  history: unknown,
+  fallback: PaperLoopCycleResult | null,
+): PaperLoopCycleResult[] => {
+  const source = Array.isArray(history) ? history : fallback ? [fallback] : [];
+  return source
+    .filter((candidate: any) => Number.isFinite(candidate?.startedAt) && Number.isFinite(candidate?.finishedAt))
+    .map((candidate: any) => cloneCycle({
+      ...candidate,
+      startedAt: Number(candidate.startedAt),
+      finishedAt: Number(candidate.finishedAt),
+      scanned: Number.isInteger(candidate.scanned) ? candidate.scanned : 0,
+      entered: Number.isInteger(candidate.entered) ? candidate.entered : 0,
+      exited: Number.isInteger(candidate.exited) ? candidate.exited : 0,
+      held: Number.isInteger(candidate.held) ? candidate.held : 0,
+      noTrade: Number.isInteger(candidate.noTrade) ? candidate.noTrade : 0,
+      errors: Array.isArray(candidate.errors) ? candidate.errors : [],
+      markets: Array.isArray(candidate.markets) ? candidate.markets : [],
+    } as PaperLoopCycleResult))
+    .sort((a, b) => a.finishedAt - b.finishedAt)
+    .slice(-MAX_CYCLE_HISTORY);
+};
+
 export class PaperLoopController {
   private timer: NodeJS.Timeout | null = null;
   private cycleInProgress = false;
@@ -83,6 +128,7 @@ export class PaperLoopController {
   private lastCycle: PaperLoopCycleResult | null = null;
   private cycleCount = 0;
   private marketHistory: MarketPriceSnapshot[] = [];
+  private cycleHistory: PaperLoopCycleResult[] = [];
 
   checkpoint(): PaperLoopCheckpoint {
     return {
@@ -90,17 +136,9 @@ export class PaperLoopController {
       running: this.timer !== null,
       config: { ...this.config },
       cycleCount: this.cycleCount,
-      lastCycle: this.lastCycle ? {
-        ...this.lastCycle,
-        errors: this.lastCycle.errors.map((item) => ({ ...item })),
-        markets: this.lastCycle.markets.map((item) => ({
-          ...item,
-          evidenceIds: item.evidenceIds.slice(),
-          reasons: item.reasons.slice(),
-          riskReasons: item.riskReasons.slice(),
-        })),
-      } : null,
+      lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null,
       marketHistory: cloneHistory(this.marketHistory),
+      cycleHistory: this.cycleHistory.map(cloneCycle),
     };
   }
 
@@ -110,18 +148,17 @@ export class PaperLoopController {
     this.stop();
     this.config = { ...checkpoint.config };
     this.cycleCount = Number.isInteger(checkpoint.cycleCount) && checkpoint.cycleCount >= 0 ? checkpoint.cycleCount : 0;
-    this.lastCycle = checkpoint.lastCycle ? {
+    this.lastCycle = checkpoint.lastCycle ? cloneCycle({
       ...checkpoint.lastCycle,
       noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0,
-      errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
-      markets: checkpoint.lastCycle.markets.map((item) => ({
-        ...item,
-        evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.slice() : [],
-        reasons: Array.isArray(item.reasons) ? item.reasons.slice() : [],
-        riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons.slice() : [],
-      })),
-    } : null;
+      errors: Array.isArray(checkpoint.lastCycle.errors) ? checkpoint.lastCycle.errors : [],
+      markets: Array.isArray(checkpoint.lastCycle.markets) ? checkpoint.lastCycle.markets : [],
+    }) : null;
     this.marketHistory = normalizeHistory(checkpoint.marketHistory);
+    this.cycleHistory = normalizeCycleHistory(checkpoint.cycleHistory, this.lastCycle);
+    if (!this.lastCycle && this.cycleHistory.length) {
+      this.lastCycle = cloneCycle(this.cycleHistory[this.cycleHistory.length - 1]);
+    }
     if (checkpoint.running && resume) this.start(this.config);
     return this.status();
   }
@@ -132,7 +169,8 @@ export class PaperLoopController {
       cycleInProgress: this.cycleInProgress,
       config: { ...this.config },
       cycleCount: this.cycleCount,
-      lastCycle: this.lastCycle,
+      lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null,
+      cycleHistory: this.cycleHistory.map(cloneCycle),
       marketHistory: cloneHistory(this.marketHistory),
       session: paperTradingSession.state(),
     };
@@ -246,7 +284,11 @@ export class PaperLoopController {
       }
 
       result.finishedAt = Date.now();
-      this.lastCycle = result;
+      this.lastCycle = cloneCycle(result);
+      this.cycleHistory.push(cloneCycle(result));
+      if (this.cycleHistory.length > MAX_CYCLE_HISTORY) {
+        this.cycleHistory.splice(0, this.cycleHistory.length - MAX_CYCLE_HISTORY);
+      }
       if (cycleMarkPrices.length) {
         this.marketHistory.push({
           timestamp: result.finishedAt,
