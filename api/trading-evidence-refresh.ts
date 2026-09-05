@@ -4,6 +4,7 @@ const OPENAI_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const MAX_MARKETS = 6;
 const MAX_CANDIDATES = 36;
+export const FSC_PRESS_RELEASE_RSS = 'https://www.fsc.go.kr/about/fsc_bbs_rss/?fid=0111';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -100,6 +101,23 @@ const matchesMarket = (text: string, market: string) => {
   });
 };
 
+const KOREAN_CRYPTO_REGULATORY_TERMS = [
+  '가상자산',
+  '디지털자산',
+  '암호자산',
+  '가상화폐',
+  '코인거래소',
+  '가상자산사업자',
+  'virtual asset',
+  'digital asset',
+  'crypto asset',
+];
+
+export const isBroadKoreanCryptoRegulatory = (text: string) => {
+  const normalized = text.toLowerCase();
+  return KOREAN_CRYPTO_REGULATORY_TERMS.some((term) => normalized.includes(term.toLowerCase()));
+};
+
 const cleanTitlePublisher = (title: string, fallback: string) => {
   const parts = title.split(' - ');
   if (parts.length < 2) return { title: title.trim(), publisher: fallback };
@@ -168,6 +186,39 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
     });
   } catch (error) {
     warnings.push(`Ethereum Foundation RSS: ${errorMessage(error)}`);
+    return [];
+  }
+};
+
+const collectFscPrimary = async (markets: string[], warnings: string[]) => {
+  try {
+    const feed = await parser.parseURL(FSC_PRESS_RELEASE_RSS);
+    const relevant = (feed.items || [])
+      .filter((item: any) => item?.title && item?.link)
+      .filter((item: any) => isBroadKoreanCryptoRegulatory(`${item.title || ''} ${item.contentSnippet || ''} ${item.content || ''}`))
+      .slice(0, 3);
+
+    const result: Candidate[] = [];
+    for (const market of markets) {
+      for (const item of relevant) {
+        const publishedAt = itemTimestamp(item);
+        result.push({
+          candidateId: makeCandidateId(market, publishedAt, 'fsc-korea'),
+          market,
+          title: String(item.title).trim(),
+          summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
+          publisher: '금융위원회',
+          sourceUrl: String(item.link),
+          publishedAt,
+          sourceType: 'PRIMARY',
+          reliability: 0.94,
+          tags: ['official', 'fsc-korea', 'regulation', 'language:ko', market.replace(/^KRW-/, '').toLowerCase()],
+        });
+      }
+    }
+    return result;
+  } catch (error) {
+    warnings.push(`금융위원회 RSS: ${errorMessage(error)}`);
     return [];
   }
 };
@@ -373,14 +424,16 @@ export default async function handler(request: any, response: any) {
       return json(response, 200, { success: true, runtimeId, markets: [], candidates: 0, accepted: 0, warnings });
     }
 
-    const [coinDesk, ethereumPrimary, googleNewsEn, googleNewsKo] = await Promise.all([
+    const [coinDesk, ethereumPrimary, fscPrimary, googleNewsEn, googleNewsKo] = await Promise.all([
       collectCoinDesk(markets, warnings),
       collectEthereumPrimary(markets, warnings),
+      collectFscPrimary(markets, warnings),
       collectGoogleNews(markets, warnings, 'EN'),
       collectGoogleNews(markets, warnings, 'KO'),
     ]);
     const candidates = dedupeCandidates([
       ...ethereumPrimary,
+      ...fscPrimary,
       ...coinDesk,
       ...googleNewsEn,
       ...googleNewsKo,
@@ -417,7 +470,9 @@ export default async function handler(request: any, response: any) {
       markets,
       candidates: candidates.length,
       candidateBreakdown: {
-        primary: ethereumPrimary.length,
+        primary: ethereumPrimary.length + fscPrimary.length,
+        ethereumPrimary: ethereumPrimary.length,
+        fscPrimary: fscPrimary.length,
         coindesk: coinDesk.length,
         english: googleNewsEn.length,
         korean: googleNewsKo.length,
