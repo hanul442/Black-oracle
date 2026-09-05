@@ -21,6 +21,19 @@ type LabStatus = {
     folds: Array<{ fold: number; samples: number; favorableRate: number | null; meanDirectionalReturn: number | null; verdict: Verdict }>;
     reasons: string[];
   };
+  integrity?: {
+    startedAt: number | null;
+    coverageDays: number;
+    requiredCoverageDays: number;
+    coverageComplete: boolean;
+    totalIncidents: number;
+    dailyRiskBreaches: number | null;
+    riskBypasses: number | null;
+    executionIntegrityViolations: number | null;
+    fatalRuntimeIncidents: number | null;
+    unresolvedCriticalIncidents: number | null;
+    reasons: string[];
+  };
   liveEligibility?: {
     state: string;
     eligibleForLiveExecution: false;
@@ -37,6 +50,8 @@ type LabStatus = {
     legacyUnlinkedEntries: number;
     regimeRobustnessPass: boolean;
     costStressPass: boolean;
+    integrityCoverageDays?: number;
+    integrityCoverageComplete?: boolean;
   };
   governance?: { mode: string; policy: string; engine: string; protectiveExitAuthority: boolean; entryRule: string };
 };
@@ -64,6 +79,9 @@ export const LabView: React.FC = () => {
 
   useEffect(() => { void load(); }, [load]);
 
+  const integrityDays = status?.integrity?.coverageDays ?? 0;
+  const integrityRequired = status?.integrity?.requiredCoverageDays ?? 14;
+
   return (
     <div className="h-full overflow-y-auto bg-[#05070A] pb-28 text-[#E9EDF1] md:pb-20">
       <div className="mx-auto max-w-[1520px] px-4 pt-5 md:px-6 xl:px-8">
@@ -71,7 +89,7 @@ export const LabView: React.FC = () => {
           <div>
             <div className="mb-2 flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.22em] text-[#C7A96B]"><FlaskConical className="h-3.5 w-3.5" /> Validation & experiment workspace</div>
             <h1 className="text-[28px] font-medium tracking-[-0.04em] md:text-[34px]">Lab</h1>
-            <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D] md:text-xs">Historical no-lookahead evidence, walk-forward folds, Monte Carlo, portfolio risk and promotion governance are inspected here. Lab output never has exchange order authority.</p>
+            <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D] md:text-xs">Historical no-lookahead evidence, walk-forward folds, Monte Carlo, portfolio risk, integrity observability and promotion governance are inspected here. Lab output never has exchange order authority.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 border border-[#72B6A0]/20 bg-[#72B6A0]/[0.025] px-3 py-2 font-mono text-[6px] uppercase tracking-[0.12em] text-[#7DB6A4]"><ShieldCheck className="h-3 w-3" /> Human approval required</div>
@@ -83,14 +101,16 @@ export const LabView: React.FC = () => {
 
         <section className="mb-4 border border-white/[0.065] bg-[#070A0E]">
           <div className="flex flex-col gap-2 border-b border-white/[0.055] px-4 py-3 md:flex-row md:items-center md:justify-between">
-            <div><div className="font-mono text-[7px] uppercase tracking-[0.16em] text-[#89949E]">Promotion control plane</div><div className="mt-1 text-[9px] text-[#56616B]">PAPER → evidence-governed validation → human-approved 300K candidate stage</div></div>
+            <div><div className="font-mono text-[7px] uppercase tracking-[0.16em] text-[#89949E]">Promotion control plane</div><div className="mt-1 text-[9px] text-[#56616B]">PAPER → evidence-governed validation → integrity-covered observation → human-approved 300K candidate stage</div></div>
             <span className={`font-mono text-[8px] uppercase ${status?.liveEligibility?.state === 'SMALL_LIVE_CANDIDATE' || status?.liveEligibility?.state === 'APPROVED_STAGE_300K' ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}`}>{status?.liveEligibility?.state || 'UNAVAILABLE'}</span>
           </div>
-          <div className="grid grid-cols-2 gap-px bg-white/[0.04] md:grid-cols-4 xl:grid-cols-8">
+          <div className="grid grid-cols-2 gap-px bg-white/[0.04] md:grid-cols-5 xl:grid-cols-10">
             <Metric label="BLIND" value={status?.historicalValidation?.verdict || '—'} tone={verdictTone(status?.historicalValidation?.verdict)} />
             <Metric label="WF" value={status?.walkForwardValidation?.verdict || '—'} tone={verdictTone(status?.walkForwardValidation?.verdict)} />
             <Metric label="SAMPLES" value={String(status?.historicalValidation?.sampleCount ?? 0)} />
-            <Metric label="DAYS" value={status?.historicalValidation ? status.historicalValidation.observationDays.toFixed(1) : '—'} />
+            <Metric label="PAPER DAYS" value={status?.historicalValidation ? status.historicalValidation.observationDays.toFixed(1) : '—'} />
+            <Metric label="INTEGRITY" value={`${integrityDays.toFixed(1)}/${integrityRequired}d`} warning={!status?.integrity?.coverageComplete} />
+            <Metric label="INCIDENTS" value={String(status?.integrity?.totalIncidents ?? 0)} warning={(status?.integrity?.totalIncidents ?? 0) > 0} />
             <Metric label="EVIDENCE" value={pct(status?.promotionAudit?.evidenceCoverage)} warning={(status?.promotionAudit?.evidenceCoverage ?? 0) < 0.95} />
             <Metric label="AUDIT" value={pct(status?.promotionAudit?.auditAverage)} warning={(status?.promotionAudit?.auditAverage ?? 0) < 0.9} />
             <Metric label="WEAK EXEC" value={String(status?.promotionAudit?.weakExecutions ?? 0)} warning={(status?.promotionAudit?.weakExecutions ?? 0) > 0} />
@@ -109,11 +129,13 @@ export const LabView: React.FC = () => {
               </div>
             </div>
             <div className="bg-[#070A0E] p-4">
-              <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">STRICT GOVERNANCE</div>
+              <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">STRICT GOVERNANCE & INTEGRITY</div>
               <div className="mt-3 space-y-2 text-[9px] leading-relaxed text-[#68737D]">
                 <p><span className="font-mono text-[7px] text-[#C7A96B]">{status?.governance?.policy || 'STRICT_CONSENSUS'}</span> · {status?.governance?.entryRule || 'Evidence + Scenario/Council + Risk required before new entry.'}</p>
                 <p>Protective exit authority: <span className={status?.governance?.protectiveExitAuthority ? 'text-[#72B6A0]' : 'text-[#D66565]'}>{status?.governance?.protectiveExitAuthority ? 'PRESERVED' : 'UNKNOWN'}</span>.</p>
-                <p>Strategy Factory Alpha can generate, reject, incubate and rank Challengers, but there is no automatic Champion or live deployment state.</p>
+                <p>Integrity coverage: <span className={status?.integrity?.coverageComplete ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{integrityDays.toFixed(2)} / {integrityRequired} days</span>. A zero incident count is not promotion evidence until this full window is observed.</p>
+                {status?.integrity?.unresolvedCriticalIncidents != null && <p>Unresolved critical incidents: <span className={status.integrity.unresolvedCriticalIncidents === 0 ? 'text-[#72B6A0]' : 'text-[#D66565]'}>{status.integrity.unresolvedCriticalIncidents}</span>.</p>}
+                {(status?.integrity?.reasons || []).map((reason) => <p key={reason}>• {reason}</p>)}
                 {(status?.liveEligibility?.reasons || []).map((reason) => <p key={reason}>• {reason}</p>)}
               </div>
             </div>
@@ -130,7 +152,7 @@ export const LabView: React.FC = () => {
           <div className="mt-3 grid gap-px bg-white/[0.04] sm:grid-cols-3">
             <LabBoundary title="FACTORY ALPHA" detail="Seeded Genome mutation is bounded by hard risk limits; failed Blind/WF/MC/Evidence/Audit/Cost gates are rejected before tournament." />
             <LabBoundary title="CHALLENGER" detail="Tournament winners can become Challengers only. No candidate can create a Champion or order authority automatically." />
-            <LabBoundary title="PROMOTION" detail="Live eligibility stays blocked on unavailable incident/integrity evidence and still requires explicit human approval." />
+            <LabBoundary title="PROMOTION" detail="Integrity must be observed for the full promotion window, historical incidents remain counted after resolution, and explicit human approval is still required." />
           </div>
         </section>
       </div>
