@@ -26,7 +26,7 @@ test('HOLD does not require execution or outcome linkage', () => {
   assert.equal(result.dimensions.find((item) => item.id === 'OUTCOME')?.state, 'NOT_APPLICABLE');
 });
 
-test('ENTER is penalized when evidence, scenario, council and execution links are missing', () => {
+test('ENTER is weak when evidence, scenario, council and execution links are missing', () => {
   const result = assessAuditCompleteness({
     action: 'ENTER',
     timestamp: 1,
@@ -45,7 +45,8 @@ test('ENTER is penalized when evidence, scenario, council and execution links ar
     primaryReason: 'Technical trigger fired.',
   });
 
-  assert.equal(result.grade, 'PARTIAL');
+  assert.equal(result.score, 43);
+  assert.equal(result.grade, 'WEAK');
   assert.deepEqual(result.missing.sort(), ['COUNCIL', 'EVIDENCE', 'EXECUTION_TRACE', 'FORECAST_SCENARIO'].sort());
 });
 
