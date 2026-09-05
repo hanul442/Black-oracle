@@ -45,6 +45,9 @@ jobs:
       - name: Serverless Evidence-refresh bundle smoke
         run: npx esbuild api/trading-evidence-refresh.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-evidence-refresh.mjs
 
+      - name: Serverless Trading-readiness bundle smoke
+        run: npx esbuild api/trading-readiness.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-readiness.mjs
+
       - name: Supabase scheduler Edge bundle smoke
         run: npx esbuild supabase/functions/black-oracle-paper-scheduler/index.ts --bundle --platform=neutral --format=esm --target=es2022 '--external:jsr:*' '--external:npm:*' --outfile=/tmp/black-oracle-paper-scheduler.mjs
 
