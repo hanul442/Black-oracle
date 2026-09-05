@@ -12,6 +12,14 @@ export type SchedulerPipelineOutcome = {
   telemetryError: string | null;
 };
 
+// Supabase hosted Edge Functions currently have a 150s request/wall-clock ceiling on the
+// Free plan. Keep downstream work materially below that ceiling so telemetry/cleanup retain
+// headroom even when both sequential stages run near their timeout.
+export const EVIDENCE_REFRESH_TIMEOUT_MS = 52_000;
+export const PAPER_CYCLE_TIMEOUT_MS = 58_000;
+export const SCHEDULER_DOWNSTREAM_BUDGET_MS = EVIDENCE_REFRESH_TIMEOUT_MS + PAPER_CYCLE_TIMEOUT_MS;
+export const MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS = 115_000;
+
 export const isEvidenceRefreshHttpSuccess = (status: number | null, responseOk: boolean) =>
   responseOk && status !== null && status >= 200 && status < 300;
 
