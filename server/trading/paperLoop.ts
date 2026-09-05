@@ -1,3 +1,4 @@
+import { buildBlindValidationSamples, type BlindValidationSample } from '../../src/trading/blindValidation';
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import { buildDeterministicGovernancePackage } from '../../src/trading/governanceCore';
 import { buildFinalDecision } from '../../src/trading/intelligencePipeline';
@@ -5,6 +6,7 @@ import type { MarketPriceSnapshot } from '../../src/trading/marketHistory';
 import { assessPortfolioCorrelationRisk } from '../../src/trading/portfolioCorrelationRisk';
 import { buildTradeCaseRecord } from '../../src/trading/tradeCase';
 import type { LiquiditySnapshot } from '../../src/trading/types';
+import { mergeValidationSamples } from '../../src/trading/validationLedger';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
 import { tradeCaseStore } from './tradeCaseStore';
@@ -18,12 +20,14 @@ export interface PaperLoopCycleResult {
 }
 export interface PaperLoopCheckpoint {
   schemaVersion: 1; running: boolean; config: PaperLoopConfig; cycleCount: number; lastCycle: PaperLoopCycleResult | null;
-  marketHistory?: MarketPriceSnapshot[]; cycleHistory?: PaperLoopCycleResult[];
+  marketHistory?: MarketPriceSnapshot[]; cycleHistory?: PaperLoopCycleResult[]; validationSamples?: BlindValidationSample[];
 }
 
 const DEFAULT_CONFIG: PaperLoopConfig = { intervalMs: 15 * 60 * 1000, maxMarkets: 6, maxOpenPositions: 4 };
 const MAX_MARKET_HISTORY_POINTS = 384;
 const MAX_CYCLE_HISTORY = 96;
+const MAX_VALIDATION_SAMPLES = 10_000;
+const VALIDATION_HORIZON_MS = 4 * 60 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const validateConfig = (config: PaperLoopConfig) => {
   if (!Number.isInteger(config.intervalMs) || config.intervalMs < 5 * 60 * 1000) throw new Error('Paper loop intervalMs must be at least 300000 (5 minutes).');
@@ -31,6 +35,7 @@ const validateConfig = (config: PaperLoopConfig) => {
   if (!Number.isInteger(config.maxOpenPositions) || config.maxOpenPositions < 1 || config.maxOpenPositions > 8) throw new Error('Paper loop maxOpenPositions must be an integer between 1 and 8.');
 };
 const cloneHistory = (history: MarketPriceSnapshot[]) => history.map((snapshot) => ({ timestamp: snapshot.timestamp, prices: snapshot.prices.map(([market, price]) => [market, price] as [string, number]) }));
+const cloneValidationSample = (sample: BlindValidationSample): BlindValidationSample => ({ ...sample });
 const cloneCycle = (cycle: PaperLoopCycleResult): PaperLoopCycleResult => ({
   ...cycle,
   errors: cycle.errors.map((item) => ({ ...item })),
@@ -55,6 +60,29 @@ const normalizeHistory = (history: unknown): MarketPriceSnapshot[] => {
     return prices.length ? [{ timestamp: candidate.timestamp, prices }] : [];
   }).sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_MARKET_HISTORY_POINTS);
 };
+const normalizeValidationSamples = (samples: unknown): BlindValidationSample[] => {
+  if (!Array.isArray(samples)) return [];
+  return mergeValidationSamples([], samples.flatMap((candidate: any) => {
+    const market = String(candidate?.market ?? '').toUpperCase();
+    const action = String(candidate?.action ?? '').toUpperCase();
+    if (!/^KRW-[A-Z0-9]+$/.test(market) || !['ENTER', 'EXIT', 'HOLD'].includes(action)) return [];
+    const numeric = ['decisionTimestamp', 'anchorTimestamp', 'targetTimestamp', 'anchorPrice', 'targetPrice', 'rawReturn', 'directionalReturn'];
+    if (numeric.some((field) => !Number.isFinite(candidate?.[field]))) return [];
+    return [{
+      market,
+      decisionTimestamp: Number(candidate.decisionTimestamp),
+      anchorTimestamp: Number(candidate.anchorTimestamp),
+      targetTimestamp: Number(candidate.targetTimestamp),
+      action: action as BlindValidationSample['action'],
+      regime: String(candidate.regime ?? 'UNKNOWN'),
+      anchorPrice: Number(candidate.anchorPrice),
+      targetPrice: Number(candidate.targetPrice),
+      rawReturn: Number(candidate.rawReturn),
+      directionalReturn: Number(candidate.directionalReturn),
+      favorable: Boolean(candidate.favorable),
+    }];
+  }), MAX_VALIDATION_SAMPLES);
+};
 const normalizeCycleHistory = (history: unknown, fallback: PaperLoopCycleResult | null): PaperLoopCycleResult[] => {
   const source = Array.isArray(history) ? history : fallback ? [fallback] : [];
   return source.filter((candidate: any) => Number.isFinite(candidate?.startedAt) && Number.isFinite(candidate?.finishedAt)).map((candidate: any) => cloneCycle({
@@ -73,25 +101,40 @@ export class PaperLoopController {
   private cycleCount = 0;
   private marketHistory: MarketPriceSnapshot[] = [];
   private cycleHistory: PaperLoopCycleResult[] = [];
+  private validationSamples: BlindValidationSample[] = [];
 
-  checkpoint(): PaperLoopCheckpoint { return { schemaVersion: 1, running: this.timer !== null, config: { ...this.config }, cycleCount: this.cycleCount, lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, marketHistory: cloneHistory(this.marketHistory), cycleHistory: this.cycleHistory.map(cloneCycle) }; }
+  checkpoint(): PaperLoopCheckpoint {
+    return {
+      schemaVersion: 1, running: this.timer !== null, config: { ...this.config }, cycleCount: this.cycleCount,
+      lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, marketHistory: cloneHistory(this.marketHistory),
+      cycleHistory: this.cycleHistory.map(cloneCycle), validationSamples: this.validationSamples.map(cloneValidationSample),
+    };
+  }
   restore(checkpoint: PaperLoopCheckpoint, resume = false) {
     if (!checkpoint || checkpoint.schemaVersion !== 1) throw new Error('Unsupported Paper loop checkpoint schema.'); validateConfig(checkpoint.config); this.stop(); this.config = { ...checkpoint.config };
     this.cycleCount = Number.isInteger(checkpoint.cycleCount) && checkpoint.cycleCount >= 0 ? checkpoint.cycleCount : 0;
     this.lastCycle = checkpoint.lastCycle ? cloneCycle({ ...checkpoint.lastCycle, noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0, errors: Array.isArray(checkpoint.lastCycle.errors) ? checkpoint.lastCycle.errors : [], markets: Array.isArray(checkpoint.lastCycle.markets) ? checkpoint.lastCycle.markets : [] }) : null;
     this.marketHistory = normalizeHistory(checkpoint.marketHistory); this.cycleHistory = normalizeCycleHistory(checkpoint.cycleHistory, this.lastCycle);
+    this.validationSamples = normalizeValidationSamples(checkpoint.validationSamples);
     if (!this.lastCycle && this.cycleHistory.length) this.lastCycle = cloneCycle(this.cycleHistory[this.cycleHistory.length - 1]);
     if (checkpoint.running && resume) this.start(this.config); return this.status();
   }
   status() {
     return {
       running: this.timer !== null, cycleInProgress: this.cycleInProgress, config: { ...this.config }, cycleCount: this.cycleCount,
-      lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, cycleHistory: this.cycleHistory.map(cloneCycle), marketHistory: cloneHistory(this.marketHistory), session: paperTradingSession.state(),
+      lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, cycleHistory: this.cycleHistory.map(cloneCycle), marketHistory: cloneHistory(this.marketHistory),
+      validationSamples: this.validationSamples.map(cloneValidationSample), session: paperTradingSession.state(),
       governance: {
         mode: 'ENFORCE' as const, policy: 'STRICT_CONSENSUS' as const, engine: 'DETERMINISTIC_COUNCIL_CORE_V1' as const,
         entryRule: 'New ENTER requires source-backed Evidence + deterministic Scenario/Council support + deterministic Risk approval.',
         correlationPolicy: 'New concurrent crypto exposure fails closed when aligned correlation history is insufficient; >1 existing market above 0.82 correlation rejects the candidate.',
         protectiveExitAuthority: true,
+      },
+      validationRetention: {
+        horizonMs: VALIDATION_HORIZON_MS,
+        retainedSamples: this.validationSamples.length,
+        maxSamples: MAX_VALIDATION_SAMPLES,
+        noLookahead: true as const,
       },
     };
   }
@@ -162,6 +205,9 @@ export class PaperLoopController {
         this.marketHistory.push({ timestamp: result.finishedAt, prices: cycleMarkPrices.slice().sort((a, b) => a[0].localeCompare(b[0])) });
         if (this.marketHistory.length > MAX_MARKET_HISTORY_POINTS) this.marketHistory.splice(0, this.marketHistory.length - MAX_MARKET_HISTORY_POINTS);
       }
+      const recentDecisions = this.cycleHistory.flatMap((cycle) => cycle.markets);
+      const newlyEvaluable = buildBlindValidationSamples(recentDecisions, this.marketHistory, VALIDATION_HORIZON_MS);
+      this.validationSamples = mergeValidationSamples(this.validationSamples, newlyEvaluable, MAX_VALIDATION_SAMPLES);
       this.cycleCount += 1; return result;
     } finally { this.cycleInProgress = false; }
   }
