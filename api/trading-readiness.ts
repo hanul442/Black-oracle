@@ -1,4 +1,10 @@
 import { buildEvidenceRefreshReadiness } from '../server/trading/evidenceReadiness.js';
+import {
+  EVIDENCE_REFRESH_TIMEOUT_MS,
+  MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS,
+  PAPER_CYCLE_TIMEOUT_MS,
+  SCHEDULER_DOWNSTREAM_BUDGET_MS,
+} from '../supabase/functions/_shared/paperSchedulerPolicy.js';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'GET') {
@@ -18,6 +24,10 @@ export default async function handler(request: any, response: any) {
       expectedOrder: ['EVIDENCE_REFRESH', 'PAPER_CYCLE'],
       protectiveExitAuthority: true,
       deploymentAuthority: false,
+      evidenceTimeoutMs: EVIDENCE_REFRESH_TIMEOUT_MS,
+      paperCycleTimeoutMs: PAPER_CYCLE_TIMEOUT_MS,
+      downstreamBudgetMs: SCHEDULER_DOWNSTREAM_BUDGET_MS,
+      internalBudgetCeilingMs: MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS,
     },
     secretValuesExposed: false,
   });
