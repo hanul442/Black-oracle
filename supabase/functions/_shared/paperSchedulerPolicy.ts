@@ -13,9 +13,10 @@ export type SchedulerPipelineOutcome = {
 };
 
 // Supabase hosted Edge Functions currently have a 150s request/wall-clock ceiling on the
-// Free plan. Keep downstream work materially below that ceiling so telemetry/cleanup retain
-// headroom even when both sequential stages run near their timeout.
-export const EVIDENCE_REFRESH_TIMEOUT_MS = 52_000;
+// Free plan. Evidence refresh itself can spend up to ~8s collecting feeds and 45s classifying,
+// so its outer timeout must be larger than that internal budget while the combined sequential
+// pipeline still leaves material headroom for telemetry/cleanup.
+export const EVIDENCE_REFRESH_TIMEOUT_MS = 56_000;
 export const PAPER_CYCLE_TIMEOUT_MS = 58_000;
 export const SCHEDULER_DOWNSTREAM_BUDGET_MS = EVIDENCE_REFRESH_TIMEOUT_MS + PAPER_CYCLE_TIMEOUT_MS;
 export const MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS = 115_000;
