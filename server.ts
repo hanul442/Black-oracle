@@ -33,6 +33,9 @@ const generateWithRetry = async (options: any, maxRetries = 2) => {
 async function startServer() {
   const app = express();
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+  const production = process.env.NODE_ENV === 'production';
+  const devHost = process.env.DEV_HOST?.trim() || '127.0.0.1';
+  const listenHost = production ? '0.0.0.0' : devHost;
   app.use(express.json({ limit: '1mb' }));
 
   // Trading routes are Paper-only. They do not use Firebase research storage.
@@ -96,17 +99,20 @@ async function startServer() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!production) {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
+    if (!['127.0.0.1', 'localhost', '::1'].includes(devHost)) {
+      console.warn('Black Oracle development server is explicitly exposed beyond loopback via DEV_HOST. Keep this limited to trusted networks and update Vite before wider exposure.');
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*all', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Black Oracle server listening on http://0.0.0.0:${port}`);
+  app.listen(port, listenHost, () => {
+    console.log(`Black Oracle server listening on http://${listenHost}:${port}`);
   });
 }
 
