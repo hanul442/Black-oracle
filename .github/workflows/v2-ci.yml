@@ -29,6 +29,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit evidence
+        # Evidence-only until the existing advisory set is triaged. Do not convert unknown historical
+        # advisories into a false clean bill of health or block unrelated PAPER validation work.
+        run: npm audit --audit-level=critical || true
+
       - name: Typecheck
         run: npm run lint
 
