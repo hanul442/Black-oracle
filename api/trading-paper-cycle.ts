@@ -33,6 +33,7 @@ export default async function handler(request: any, response: any) {
   }
 
   let paperLoopController: any;
+  let runtimeIntegrityStore: any;
   let claimTradingCycleLease: any;
   let releaseTradingCycleLease: any;
   let restoreRuntimeCheckpoint: any;
@@ -45,6 +46,7 @@ export default async function handler(request: any, response: any) {
     const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
 
     paperLoopController = runtimeModule.paperLoopController;
+    runtimeIntegrityStore = runtimeModule.runtimeIntegrityStore;
     claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
     releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
     restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
@@ -52,6 +54,7 @@ export default async function handler(request: any, response: any) {
 
     if (
       !paperLoopController ||
+      !runtimeIntegrityStore ||
       typeof claimTradingCycleLease !== 'function' ||
       typeof releaseTradingCycleLease !== 'function' ||
       typeof restoreRuntimeCheckpoint !== 'function' ||
@@ -94,6 +97,8 @@ export default async function handler(request: any, response: any) {
       const restore = await restoreRuntimeCheckpoint(false);
       runtimeRestored = true;
       const cycle = await paperLoopController.runCycle();
+      const cycleNumber = Number(paperLoopController.status?.().cycleCount ?? 0);
+      const integrity = runtimeIntegrityStore.inspectCycle(cycle, cycleNumber);
       const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
 
       responseStatus = 200;
@@ -106,12 +111,28 @@ export default async function handler(request: any, response: any) {
           reason: restore.reason,
         },
         cycle,
+        integrity: {
+          startedAt: integrity.startedAt,
+          coverageDays: integrity.coverageDays,
+          coverageComplete: integrity.coverageComplete,
+          totalIncidents: integrity.totalIncidents,
+          unresolvedCriticalIncidents: integrity.unresolvedCriticalIncidents,
+        },
         persistence: saved.persistence,
       };
     }
   } catch (error) {
     if (runtimeRestored) {
       try {
+        const timestamp = Date.now();
+        runtimeIntegrityStore.openIncident({
+          kind: 'RUNTIME_FATAL',
+          severity: 'CRITICAL',
+          dedupeKey: `scheduled-runtime-fatal:${timestamp}`,
+          message: errorMessage(error),
+          timestamp,
+          actor: 'SCHEDULER',
+        });
         await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
@@ -138,6 +159,23 @@ export default async function handler(request: any, response: any) {
     } catch (releaseError) {
       const cleanupError = errorMessage(releaseError);
       console.error('Failed to release scheduled Paper cycle lease:', releaseError);
+
+      if (runtimeRestored) {
+        try {
+          const timestamp = Date.now();
+          runtimeIntegrityStore.openIncident({
+            kind: 'RUNTIME_FATAL',
+            severity: 'CRITICAL',
+            dedupeKey: `scheduled-cleanup-fatal:${timestamp}`,
+            message: cleanupError,
+            timestamp,
+            actor: 'SCHEDULER',
+          });
+          await saveRuntimeCheckpoint('scheduled-paper-cycle-cleanup-error');
+        } catch (checkpointError) {
+          console.error('Failed to checkpoint scheduled cleanup incident:', checkpointError);
+        }
+      }
 
       if (responseStatus === 200) {
         responseStatus = 500;
