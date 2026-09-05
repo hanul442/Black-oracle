@@ -12,6 +12,7 @@ export interface ValidationLedgerSummary {
 }
 
 const key = (sample: BlindValidationSample) => `${sample.market}|${sample.decisionTimestamp}|${sample.action}|${sample.targetTimestamp}`;
+const eligibleForPromotionLedger = (sample: BlindValidationSample) => sample.action === 'ENTER' || sample.action === 'EXIT';
 
 export const mergeValidationSamples = (
   existing: BlindValidationSample[],
@@ -20,7 +21,7 @@ export const mergeValidationSamples = (
 ): BlindValidationSample[] => {
   const map = new Map<string, BlindValidationSample>();
   for (const sample of [...(existing ?? []), ...(incoming ?? [])]) {
-    if (!sample?.market || !Number.isFinite(sample.decisionTimestamp) || !Number.isFinite(sample.targetTimestamp)) continue;
+    if (!sample?.market || !eligibleForPromotionLedger(sample) || !Number.isFinite(sample.decisionTimestamp) || !Number.isFinite(sample.targetTimestamp)) continue;
     map.set(key(sample), { ...sample });
   }
   return Array.from(map.values())
@@ -39,7 +40,7 @@ export const summarizeValidationSamples = (
   samples: BlindValidationSample[],
   options: { minSamples?: number; minObservationDays?: number } = {},
 ): ValidationLedgerSummary => {
-  const ordered = (samples ?? []).slice().sort((a, b) => a.decisionTimestamp - b.decisionTimestamp);
+  const ordered = (samples ?? []).filter(eligibleForPromotionLedger).slice().sort((a, b) => a.decisionTimestamp - b.decisionTimestamp);
   const minSamples = Math.max(5, Math.trunc(options.minSamples ?? 60));
   const minObservationDays = Math.max(1, options.minObservationDays ?? 14);
   const observationDays = ordered.length > 1 ? (ordered[ordered.length - 1].decisionTimestamp - ordered[0].decisionTimestamp) / 86_400_000 : 0;
@@ -62,7 +63,10 @@ export const summarizeValidationSamples = (
     else if ((favorableRate ?? 0) >= 0.48 || (meanDirectionalReturn ?? 0) > 0) verdict = 'WATCH';
     else verdict = 'REJECT';
   }
-  const reasons = [`${ordered.length}/${minSamples} compact no-lookahead sample(s) retained across ${observationDays.toFixed(2)}/${minObservationDays} required day(s).`];
+  const reasons = [
+    `${ordered.length}/${minSamples} compact no-lookahead ENTER/EXIT sample(s) retained across ${observationDays.toFixed(2)}/${minObservationDays} required day(s).`,
+    'Repeated HOLD/NO_TRADE observations are excluded from live-promotion statistics to prevent inactivity from dominating the sample.',
+  ];
   const weakRegimes = byRegime.filter((item) => item.samples >= 5 && item.meanDirectionalReturn < 0).map((item) => item.regime);
   if (weakRegimes.length) reasons.push(`Negative directional expectancy remains in regime(s): ${weakRegimes.join(', ')}.`);
   return { verdict, sampleCount: ordered.length, observationDays, favorableRate, meanDirectionalReturn, medianDirectionalReturn, byRegime, reasons };
