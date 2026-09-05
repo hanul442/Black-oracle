@@ -21,6 +21,7 @@ export default async function handler(request: any, response: any) {
       { summarizeValidationSamples },
       { assessAuditCompleteness },
       { assessLiveEligibility },
+      { summarizeIntegrityLedger },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
@@ -31,6 +32,7 @@ export default async function handler(request: any, response: any) {
       import('../src/trading/validationLedger.js'),
       import('../src/trading/auditCompleteness.js'),
       import('../src/trading/liveEligibility.js'),
+      import('../src/trading/integrityLedger.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -104,21 +106,49 @@ export default async function handler(request: any, response: any) {
         .sort((a, b) => b.observedAt - a.observedAt || b.reliability - a.reliability)
         .slice(0, 8)
         .map((item) => ({
-          id: item.id, title: item.title, direction: item.direction, strength: item.strength, reliability: item.reliability, sourceType: item.sourceType,
-          publisher: item.publisher ?? item.source ?? 'Unknown source', sourceUrl: item.sourceUrl ?? null, summary: item.summary ?? null,
-          observedAt: item.observedAt, expiresAt: item.expiresAt, contradictionOf: item.contradictionOf ?? null,
+          id: item.id,
+          title: item.title,
+          direction: item.direction,
+          strength: item.strength,
+          reliability: item.reliability,
+          sourceType: item.sourceType,
+          publisher: item.publisher ?? item.source ?? 'Unknown source',
+          sourceUrl: item.sourceUrl ?? null,
+          summary: item.summary ?? null,
+          observedAt: item.observedAt,
+          expiresAt: item.expiresAt,
+          contradictionOf: item.contradictionOf ?? null,
         }));
       const externalEvidenceActive = evidenceItems.length;
       const externalEvidenceContradictions = evidenceItems.filter((item) => Boolean(item.contradictionOf)).length;
       const evidenceState = stale ? 'STALE' : externalEvidenceContradictions > 0 ? 'CONTESTED' : externalEvidenceActive > 0 ? 'EVIDENCE_SUPPORTED' : 'TECHNICAL_ONLY';
       return {
-        market: position.market, openedAt: position.openedAt, quantity: position.quantity, entryPrice: position.entryPrice, averageCost: position.averageCost,
-        markPrice, marketValue, unrealizedPnl: marketValue - costBasis, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
-        evidenceState, lastDecisionAt: decision?.timestamp ?? null, decision: decision?.decision ?? null, regime: decision?.regime ?? null,
-        regimeConfidence: decision?.regimeConfidence ?? null, router: decision?.strategyDisposition ?? null, confidence: decision?.confidence ?? null,
-        oracleTradeScore: decision?.oracleTradeScore ?? null, riskDisposition: decision?.riskDisposition ?? 'NOT_EVALUATED', externalEvidenceActive,
-        externalEvidenceContradictions, evidenceIds: evidenceItems.map((item) => item.id), decisionEvidenceIds: decision?.evidenceIds ?? [], evidenceItems,
-        forecast: decision?.forecast ?? null, governance: decision?.governance ?? null,
+        market: position.market,
+        openedAt: position.openedAt,
+        quantity: position.quantity,
+        entryPrice: position.entryPrice,
+        averageCost: position.averageCost,
+        markPrice,
+        marketValue,
+        unrealizedPnl: marketValue - costBasis,
+        stopLossPrice: position.stopLossPrice,
+        takeProfitPrice: position.takeProfitPrice,
+        evidenceState,
+        lastDecisionAt: decision?.timestamp ?? null,
+        decision: decision?.decision ?? null,
+        regime: decision?.regime ?? null,
+        regimeConfidence: decision?.regimeConfidence ?? null,
+        router: decision?.strategyDisposition ?? null,
+        confidence: decision?.confidence ?? null,
+        oracleTradeScore: decision?.oracleTradeScore ?? null,
+        riskDisposition: decision?.riskDisposition ?? 'NOT_EVALUATED',
+        externalEvidenceActive,
+        externalEvidenceContradictions,
+        evidenceIds: evidenceItems.map((item) => item.id),
+        decisionEvidenceIds: decision?.evidenceIds ?? [],
+        evidenceItems,
+        forecast: decision?.forecast ?? null,
+        governance: decision?.governance ?? null,
         primaryReason: decision?.primaryReason ?? 'No persisted decision explanation is available for this position.',
       };
     });
@@ -129,7 +159,12 @@ export default async function handler(request: any, response: any) {
     const exposureLab = riskLab.map((item) => ({
       profileId: item.profile.id,
       profileLabel: item.profile.label,
-      assessment: assessPortfolioExposure(equity, exposurePositions, { grossExposureCapPct: item.profile.grossExposureCapPct, cryptoClusterExposureCapPct: item.profile.cryptoClusterExposureCapPct }, correlationSeries),
+      assessment: assessPortfolioExposure(
+        equity,
+        exposurePositions,
+        { grossExposureCapPct: item.profile.grossExposureCapPct, cryptoClusterExposureCapPct: item.profile.cryptoClusterExposureCapPct },
+        correlationSeries,
+      ),
     }));
 
     const tradeCases = Array.isArray(checkpoint.tradeCases) ? checkpoint.tradeCases : [];
@@ -165,16 +200,28 @@ export default async function handler(request: any, response: any) {
       if (item.status === 'CLOSED' && item.latestDecision?.action === 'EXIT') {
         const trace = item.latestDecision;
         const exitAudit = assessAuditCompleteness({
-          action: trace.action, timestamp: trace.timestamp, market: trace.market, regime: trace.regime, oracleTradeScore: trace.oracleTradeScore,
-          confidence: trace.confidence, strategyDisposition: trace.strategyDisposition, riskDisposition: trace.riskDisposition,
-          evidenceActiveCount: trace.evidenceActiveCount, evidenceIds: trace.evidenceIds, forecastAvailable: Boolean(trace.forecast?.available),
+          action: trace.action,
+          timestamp: trace.timestamp,
+          market: trace.market,
+          regime: trace.regime,
+          oracleTradeScore: trace.oracleTradeScore,
+          confidence: trace.confidence,
+          strategyDisposition: trace.strategyDisposition,
+          riskDisposition: trace.riskDisposition,
+          evidenceActiveCount: trace.evidenceActiveCount,
+          evidenceIds: trace.evidenceIds,
+          forecastAvailable: Boolean(trace.forecast?.available),
           scenarioLinked: Boolean(trace.governance?.scenarioSetId || item.scenarioSetId || item.governanceSnapshot?.scenarioSetId),
           councilLinked: Boolean(trace.governance?.councilRunId || item.councilRunId || item.governanceSnapshot?.councilRunId),
-          executionLinked: Boolean(item.closedAt), outcomeLinked: Boolean(item.closedAt), primaryReason: trace.primaryReason, reasons: trace.reasons,
+          executionLinked: Boolean(item.closedAt),
+          outcomeLinked: Boolean(item.closedAt),
+          primaryReason: trace.primaryReason,
+          reasons: trace.reasons,
         });
         executionAuditScores.push(exitAudit.score);
       }
     }
+
     const actualExecutionEvents = actualEntryExecutions + checkpoint.session.closedTrades.length;
     const legacyUnlinkedExecutionEvents = Math.max(0, actualExecutionEvents - executionAuditScores.length);
     const auditScoreSum = executionAuditScores.reduce((sum, score) => sum + score, 0);
@@ -188,6 +235,9 @@ export default async function handler(request: any, response: any) {
     const regimeRobustnessPass = historicalValidation.verdict === 'PASS' && robustRegimes.length >= 2 && robustRegimes.every((item) => item.meanDirectionalReturn > 0);
     const costStressPass = validation.verdict === 'PASS';
 
+    // Integrity zeroes are accepted only after the append-only ledger itself covers the full 14-day PAPER gate window.
+    const integrity = summarizeIntegrityLedger((checkpoint as any).integrity ?? null, now, 14);
+
     const liveEligibility = assessLiveEligibility({
       paperObservationDays: historicalValidation.observationDays,
       closedTrades: checkpoint.session.closedTrades.length,
@@ -199,21 +249,30 @@ export default async function handler(request: any, response: any) {
       walkForwardVerdict: walkForwardValidation.verdict,
       monteCarloVerdict: validation.verdict,
       maxDrawdownPct: performance.maxDrawdownPct,
-      // These long-horizon integrity facts are intentionally unavailable until the append-only Operator Event/Incident store is activated.
-      dailyRiskBreaches: null,
-      riskBypasses: null,
-      staleOrDuplicateExecutionViolations: null,
-      fatalRuntimeIncidents: null,
-      unresolvedCriticalIncidents: null,
+      dailyRiskBreaches: integrity.dailyRiskBreaches,
+      riskBypasses: integrity.riskBypasses,
+      staleOrDuplicateExecutionViolations: integrity.executionIntegrityViolations,
+      fatalRuntimeIncidents: integrity.fatalRuntimeIncidents,
+      unresolvedCriticalIncidents: integrity.unresolvedCriticalIncidents,
       regimeRobustnessPass,
       costStressPass,
       humanApproval: false,
     });
 
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
-      id: trade.id, market: trade.market, openedAt: trade.openedAt, closedAt: trade.closedAt, entryPrice: trade.entryPrice, exitPrice: trade.exitPrice,
-      netPnl: trade.netPnl, returnPct: trade.returnPct, fees: trade.fees, exitReason: trade.exitReason, strategyVersion: trade.strategyVersion,
-      entryOracleTradeScore: trade.entryOracleTradeScore, exitOracleTradeScore: trade.exitOracleTradeScore,
+      id: trade.id,
+      market: trade.market,
+      openedAt: trade.openedAt,
+      closedAt: trade.closedAt,
+      entryPrice: trade.entryPrice,
+      exitPrice: trade.exitPrice,
+      netPnl: trade.netPnl,
+      returnPct: trade.returnPct,
+      fees: trade.fees,
+      exitReason: trade.exitReason,
+      strategyVersion: trade.strategyVersion,
+      entryOracleTradeScore: trade.entryOracleTradeScore,
+      exitOracleTradeScore: trade.exitOracleTradeScore,
     }));
     const lastClosedTrade = checkpoint.session.closedTrades.length ? checkpoint.session.closedTrades[checkpoint.session.closedTrades.length - 1] : null;
 
@@ -224,24 +283,56 @@ export default async function handler(request: any, response: any) {
       now,
       mode: 'PAPER',
       strategyVersion: lastClosedTrade?.strategyVersion ?? null,
-      checkpoint: { savedAt: checkpoint.savedAt, reason: checkpoint.reason, runtimeId: process.env.TRADING_RUNTIME_ID || 'black-oracle-paper', backend: 'supabase' },
+      checkpoint: {
+        savedAt: checkpoint.savedAt,
+        reason: checkpoint.reason,
+        runtimeId: process.env.TRADING_RUNTIME_ID || 'black-oracle-paper',
+        backend: 'supabase',
+      },
       loop: {
-        cycleCount: checkpoint.loop.cycleCount, intervalMs: checkpoint.loop.config.intervalMs, maxMarkets: checkpoint.loop.config.maxMarkets,
-        maxOpenPositions: checkpoint.loop.config.maxOpenPositions, marketHistoryPoints: checkpoint.loop.marketHistory?.length ?? 0,
+        cycleCount: checkpoint.loop.cycleCount,
+        intervalMs: checkpoint.loop.config.intervalMs,
+        maxMarkets: checkpoint.loop.config.maxMarkets,
+        maxOpenPositions: checkpoint.loop.config.maxOpenPositions,
+        marketHistoryPoints: checkpoint.loop.marketHistory?.length ?? 0,
         validationSamples: validationSamples.length,
-        lastCycle: lastCycle ? { startedAt: lastCycle.startedAt, finishedAt: lastCycle.finishedAt, durationMs: Math.max(0, lastCycle.finishedAt - lastCycle.startedAt), scanned: lastCycle.scanned, entered: lastCycle.entered, exited: lastCycle.exited, held: lastCycle.held, noTrade: lastCycle.noTrade ?? 0, errors: lastCycle.errors } : null,
-        ageMs: cycleAgeMs, stale,
+        lastCycle: lastCycle ? {
+          startedAt: lastCycle.startedAt,
+          finishedAt: lastCycle.finishedAt,
+          durationMs: Math.max(0, lastCycle.finishedAt - lastCycle.startedAt),
+          scanned: lastCycle.scanned,
+          entered: lastCycle.entered,
+          exited: lastCycle.exited,
+          held: lastCycle.held,
+          noTrade: lastCycle.noTrade ?? 0,
+          errors: lastCycle.errors,
+        } : null,
+        ageMs: cycleAgeMs,
+        stale,
       },
       governance: {
-        mode: 'ENFORCE', policy: 'STRICT_CONSENSUS', engine: 'DETERMINISTIC_COUNCIL_CORE_V1', protectiveExitAuthority: true,
+        mode: 'ENFORCE',
+        policy: 'STRICT_CONSENSUS',
+        engine: 'DETERMINISTIC_COUNCIL_CORE_V1',
+        protectiveExitAuthority: true,
         entryRule: 'Fresh structured Evidence + persisted Scenario/Council support + deterministic Risk approval are required for a new Paper ENTER.',
       },
-      portfolio: { initialEquity: portfolio.initialEquity, equity, cash: portfolio.cash, realizedPnl: portfolio.realizedPnl, feesPaid: portfolio.feesPaid, dailyPnlPct, currentDrawdownPct, openPositions: portfolio.positions },
+      portfolio: {
+        initialEquity: portfolio.initialEquity,
+        equity,
+        cash: portfolio.cash,
+        realizedPnl: portfolio.realizedPnl,
+        feesPaid: portfolio.feesPaid,
+        dailyPnlPct,
+        currentDrawdownPct,
+        openPositions: portfolio.positions,
+      },
       performance,
       validation,
       riskLab,
       historicalValidation,
       walkForwardValidation,
+      integrity,
       liveEligibility,
       promotionAudit: {
         actualEntryExecutions,
@@ -254,10 +345,23 @@ export default async function handler(request: any, response: any) {
         legacyUnlinkedExecutionEvents,
         regimeRobustnessPass,
         costStressPass,
+        integrityCoverageDays: integrity.coverageDays,
+        integrityCoverageComplete: integrity.coverageComplete,
       },
       exposureLab,
-      correlation: { alignedReturnObservations: correlationObservationCount, markets: correlationSeries.map((item) => item.market), available: correlationObservationCount >= 10 },
-      ingestion: { markedMarkets: checkpoint.session.markPrices.length, evidenceTotal: checkpoint.evidence.length, evidenceActive: activeEvidence.length, evidenceExpired: expiredEvidence, scannedMarketsLastCycle: lastCycle?.scanned ?? 0, lastCycleErrors: cycleErrors },
+      correlation: {
+        alignedReturnObservations: correlationObservationCount,
+        markets: correlationSeries.map((item) => item.market),
+        available: correlationObservationCount >= 10,
+      },
+      ingestion: {
+        markedMarkets: checkpoint.session.markPrices.length,
+        evidenceTotal: checkpoint.evidence.length,
+        evidenceActive: activeEvidence.length,
+        evidenceExpired: expiredEvidence,
+        scannedMarketsLastCycle: lastCycle?.scanned ?? 0,
+        lastCycleErrors: cycleErrors,
+      },
       positionEvidence,
       equityCurve: portfolio.equityCurve.slice(-120),
       decisionTape,
