@@ -1,7 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/search-oracle.ts": {
+      "maxDuration": 60
+    },
+    "api/council-debate.ts": {
+      "maxDuration": 60
+    },
+    "api/council-scenarios.ts": {
+      "maxDuration": 60
+    },
     "api/trading-paper-cycle.ts": {
+      "maxDuration": 60
+    },
+    "api/trading-evidence-refresh.ts": {
       "maxDuration": 60
     }
   }

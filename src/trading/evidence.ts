@@ -9,7 +9,11 @@ export interface TradingEvidence {
   strength: number;
   reliability: number;
   sourceType: EvidenceSourceType;
+  /** Legacy compact source label. Prefer publisher + sourceUrl for new evidence. */
   source?: string;
+  publisher?: string;
+  sourceUrl?: string;
+  summary?: string;
   observedAt: number;
   expiresAt: number;
   contradictionOf?: string;
@@ -49,6 +53,14 @@ export const validateTradingEvidence = (evidence: TradingEvidence) => {
   }
   if (!Number.isFinite(evidence.observedAt) || !Number.isFinite(evidence.expiresAt) || evidence.expiresAt <= evidence.observedAt) {
     throw new Error('Evidence expiry must be later than observedAt.');
+  }
+  if (evidence.sourceUrl) {
+    try {
+      const url = new URL(evidence.sourceUrl);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('invalid protocol');
+    } catch {
+      throw new Error('Evidence sourceUrl must be an absolute HTTP(S) URL.');
+    }
   }
 };
 
@@ -128,7 +140,14 @@ export class TradingEvidenceStore {
   private readonly items = new Map<string, TradingEvidence>();
 
   upsert(evidence: TradingEvidence) {
-    const normalized = { ...evidence, market: evidence.market.toUpperCase(), tags: evidence.tags?.slice() };
+    const normalized = {
+      ...evidence,
+      market: evidence.market.toUpperCase(),
+      publisher: evidence.publisher?.trim() || undefined,
+      sourceUrl: evidence.sourceUrl?.trim() || undefined,
+      summary: evidence.summary?.trim() || undefined,
+      tags: evidence.tags?.slice(),
+    };
     validateTradingEvidence(normalized);
     if (normalized.contradictionOf && normalized.contradictionOf === normalized.id) {
       throw new Error('Evidence cannot contradict itself.');

@@ -2,6 +2,7 @@ import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingCheckpointStore } from './persistence';
+import { tradeCaseStore } from './tradeCaseStore';
 
 let autosaveTimer: NodeJS.Timeout | null = null;
 let restoreSummary: {
@@ -23,6 +24,7 @@ export const buildRuntimeCheckpoint = (reason = 'manual') => ({
   session: paperTradingSession.checkpoint(),
   evidence: tradingEvidenceStore.list(undefined, true),
   loop: paperLoopController.checkpoint(),
+  tradeCases: tradeCaseStore.list(),
 });
 
 export const saveRuntimeCheckpoint = async (reason = 'manual') => {
@@ -45,6 +47,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
 
   paperTradingSession.restore(checkpoint.session);
   tradingEvidenceStore.replaceAll(checkpoint.evidence);
+  tradeCaseStore.replaceAll(checkpoint.tradeCases ?? []);
   paperLoopController.restore(checkpoint.loop, resumeLoop);
 
   restoreSummary = {

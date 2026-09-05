@@ -1,7 +1,10 @@
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
+import type { MarketPriceSnapshot } from '../../src/trading/marketHistory';
+import { buildTradeCaseRecord } from '../../src/trading/tradeCase';
 import type { LiquiditySnapshot } from '../../src/trading/types';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
+import { tradeCaseStore } from './tradeCaseStore';
 import { buildKrwLiquidityUniverse, getMarketLiquidity } from './universe';
 
 export interface PaperLoopConfig {
@@ -28,6 +31,7 @@ export interface PaperLoopCheckpoint {
   config: PaperLoopConfig;
   cycleCount: number;
   lastCycle: PaperLoopCycleResult | null;
+  marketHistory?: MarketPriceSnapshot[];
 }
 
 const DEFAULT_CONFIG: PaperLoopConfig = {
@@ -36,6 +40,7 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
   maxOpenPositions: 4,
 };
 
+const MAX_MARKET_HISTORY_POINTS = 384;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const validateConfig = (config: PaperLoopConfig) => {
@@ -50,12 +55,34 @@ const validateConfig = (config: PaperLoopConfig) => {
   }
 };
 
+const cloneHistory = (history: MarketPriceSnapshot[]) => history.map((snapshot) => ({
+  timestamp: snapshot.timestamp,
+  prices: snapshot.prices.map(([market, price]) => [market, price] as [string, number]),
+}));
+
+const normalizeHistory = (history: unknown): MarketPriceSnapshot[] => {
+  if (!Array.isArray(history)) return [];
+  return history.flatMap((candidate: any) => {
+    if (!Number.isFinite(candidate?.timestamp) || candidate.timestamp <= 0 || !Array.isArray(candidate?.prices)) return [];
+    const prices = candidate.prices.flatMap((entry: any): Array<[string, number]> => {
+      if (!Array.isArray(entry) || entry.length !== 2) return [];
+      const market = String(entry[0] ?? '').toUpperCase();
+      const price = Number(entry[1]);
+      if (!/^KRW-[A-Z0-9]+$/.test(market) || !Number.isFinite(price) || price <= 0) return [];
+      return [[market, price]];
+    });
+    if (!prices.length) return [];
+    return [{ timestamp: candidate.timestamp, prices }];
+  }).sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_MARKET_HISTORY_POINTS);
+};
+
 export class PaperLoopController {
   private timer: NodeJS.Timeout | null = null;
   private cycleInProgress = false;
   private config: PaperLoopConfig = { ...DEFAULT_CONFIG };
   private lastCycle: PaperLoopCycleResult | null = null;
   private cycleCount = 0;
+  private marketHistory: MarketPriceSnapshot[] = [];
 
   checkpoint(): PaperLoopCheckpoint {
     return {
@@ -73,6 +100,7 @@ export class PaperLoopController {
           riskReasons: item.riskReasons.slice(),
         })),
       } : null,
+      marketHistory: cloneHistory(this.marketHistory),
     };
   }
 
@@ -93,6 +121,7 @@ export class PaperLoopController {
         riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons.slice() : [],
       })),
     } : null;
+    this.marketHistory = normalizeHistory(checkpoint.marketHistory);
     if (checkpoint.running && resume) this.start(this.config);
     return this.status();
   }
@@ -104,6 +133,7 @@ export class PaperLoopController {
       config: { ...this.config },
       cycleCount: this.cycleCount,
       lastCycle: this.lastCycle,
+      marketHistory: cloneHistory(this.marketHistory),
       session: paperTradingSession.state(),
     };
   }
@@ -147,6 +177,7 @@ export class PaperLoopController {
       errors: [],
       markets: [],
     };
+    const cycleMarkPrices: Array<[string, number]> = [];
 
     try {
       const universe = await buildKrwLiquidityUniverse(Math.max(this.config.maxMarkets, 8), 30);
@@ -182,12 +213,28 @@ export class PaperLoopController {
             hasOpenPositionAfterStep,
           });
 
+          if (trace.action === 'ENTER' && step.fill) {
+            tradeCaseStore.recordEntry(buildTradeCaseRecord({
+              market,
+              fill: step.fill,
+              trace,
+              multiTimeframe: step.multiTimeframe,
+            }));
+          } else if (trace.action === 'EXIT') {
+            tradeCaseStore.closeMarket(market, step.fill?.timestamp ?? trace.timestamp, trace);
+          } else if (alreadyOpen || hasOpenPositionAfterStep) {
+            tradeCaseStore.appendDecision(market, trace);
+          }
+
           result.scanned += 1;
           if (trace.action === 'ENTER') result.entered += 1;
           else if (trace.action === 'EXIT') result.exited += 1;
           else if (trace.action === 'HOLD') result.held += 1;
           else result.noTrade += 1;
           result.markets.push({ ...trace, decision: trace.action });
+          if (Number.isFinite(step.liquidity.tradePrice) && step.liquidity.tradePrice > 0) {
+            cycleMarkPrices.push([market, step.liquidity.tradePrice]);
+          }
         } catch (error) {
           result.errors.push({
             market,
@@ -200,6 +247,15 @@ export class PaperLoopController {
 
       result.finishedAt = Date.now();
       this.lastCycle = result;
+      if (cycleMarkPrices.length) {
+        this.marketHistory.push({
+          timestamp: result.finishedAt,
+          prices: cycleMarkPrices.slice().sort((a, b) => a[0].localeCompare(b[0])),
+        });
+        if (this.marketHistory.length > MAX_MARKET_HISTORY_POINTS) {
+          this.marketHistory.splice(0, this.marketHistory.length - MAX_MARKET_HISTORY_POINTS);
+        }
+      }
       this.cycleCount += 1;
       return result;
     } finally {

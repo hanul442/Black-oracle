@@ -16,10 +16,18 @@ export default async function handler(request: any, response: any) {
       });
     }
 
-    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildMonteCarloValidation }] = await Promise.all([
+    const [
+      { tradingCheckpointStore },
+      { buildPaperPerformance },
+      { buildRiskProfileComparison },
+      { assessPortfolioExposure },
+      { buildAlignedMarketReturnSeries },
+    ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
-      import('../src/trading/monteCarlo.js'),
+      import('../src/trading/riskProfiles.js'),
+      import('../src/trading/portfolioExposure.js'),
+      import('../src/trading/marketHistory.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -53,9 +61,10 @@ export default async function handler(request: any, response: any) {
       equity,
       currentDrawdownPct,
     );
-    const validation = buildMonteCarloValidation(
-      checkpoint.session.closedTrades.map((trade) => trade.returnPct),
-    );
+
+    const positionReturns = checkpoint.session.closedTrades.map((trade) => trade.returnPct);
+    const riskLab = buildRiskProfileComparison(positionReturns);
+    const validation = riskLab[0].validation;
 
     const lastCycle = checkpoint.loop.lastCycle;
     const cycleAgeMs = lastCycle ? Math.max(0, now - lastCycle.finishedAt) : null;
@@ -85,6 +94,97 @@ export default async function handler(request: any, response: any) {
       primaryReason: item.primaryReason ?? null,
       reasons: Array.isArray(item.reasons) ? item.reasons : [],
       riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
+    }));
+
+    const decisionByMarket = new Map(decisionTape.map((item) => [item.market, item]));
+    const markPriceByMarket = new Map(checkpoint.session.markPrices ?? []);
+    const positionEvidence = portfolio.positions.map((position) => {
+      const decision = decisionByMarket.get(position.market);
+      const markPrice = Number(markPriceByMarket.get(position.market) ?? position.entryPrice);
+      const marketValue = markPrice * position.quantity;
+      const costBasis = position.averageCost * position.quantity;
+      const evidenceItems = activeEvidence
+        .filter((item) => item.market === position.market)
+        .sort((a, b) => b.observedAt - a.observedAt || b.reliability - a.reliability)
+        .slice(0, 8)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          direction: item.direction,
+          strength: item.strength,
+          reliability: item.reliability,
+          sourceType: item.sourceType,
+          publisher: item.publisher ?? item.source ?? 'Unknown source',
+          sourceUrl: item.sourceUrl ?? null,
+          summary: item.summary ?? null,
+          observedAt: item.observedAt,
+          expiresAt: item.expiresAt,
+          contradictionOf: item.contradictionOf ?? null,
+        }));
+      const externalEvidenceActive = evidenceItems.length;
+      const externalEvidenceContradictions = evidenceItems.filter((item) => Boolean(item.contradictionOf)).length;
+      const evidenceState = stale
+        ? 'STALE'
+        : externalEvidenceContradictions > 0
+          ? 'CONTESTED'
+          : externalEvidenceActive > 0
+            ? 'EVIDENCE_SUPPORTED'
+            : 'TECHNICAL_ONLY';
+
+      return {
+        market: position.market,
+        openedAt: position.openedAt,
+        quantity: position.quantity,
+        entryPrice: position.entryPrice,
+        averageCost: position.averageCost,
+        markPrice,
+        marketValue,
+        unrealizedPnl: marketValue - costBasis,
+        stopLossPrice: position.stopLossPrice,
+        takeProfitPrice: position.takeProfitPrice,
+        evidenceState,
+        lastDecisionAt: decision?.timestamp ?? null,
+        decision: decision?.decision ?? null,
+        regime: decision?.regime ?? null,
+        regimeConfidence: decision?.regimeConfidence ?? null,
+        router: decision?.strategyDisposition ?? null,
+        confidence: decision?.confidence ?? null,
+        oracleTradeScore: decision?.oracleTradeScore ?? null,
+        riskDisposition: decision?.riskDisposition ?? 'NOT_EVALUATED',
+        externalEvidenceActive,
+        externalEvidenceContradictions,
+        evidenceIds: evidenceItems.map((item) => item.id),
+        decisionEvidenceIds: decision?.evidenceIds ?? [],
+        evidenceItems,
+        forecast: decision?.forecast ?? null,
+        primaryReason: decision?.primaryReason ?? 'No persisted decision explanation is available for this position.',
+      };
+    });
+
+    const exposurePositions = positionEvidence.map((position) => ({
+      market: position.market,
+      marketValue: position.marketValue,
+    }));
+    const correlationSeries = buildAlignedMarketReturnSeries(
+      checkpoint.loop.marketHistory ?? [],
+      exposurePositions.map((position) => position.market),
+      192,
+    );
+    const correlationObservationCount = correlationSeries.length
+      ? Math.min(...correlationSeries.map((item) => item.returns.length))
+      : 0;
+    const exposureLab = riskLab.map((item) => ({
+      profileId: item.profile.id,
+      profileLabel: item.profile.label,
+      assessment: assessPortfolioExposure(
+        equity,
+        exposurePositions,
+        {
+          grossExposureCapPct: item.profile.grossExposureCapPct,
+          cryptoClusterExposureCapPct: item.profile.cryptoClusterExposureCapPct,
+        },
+        correlationSeries,
+      ),
     }));
 
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
@@ -124,6 +224,7 @@ export default async function handler(request: any, response: any) {
         intervalMs: checkpoint.loop.config.intervalMs,
         maxMarkets: checkpoint.loop.config.maxMarkets,
         maxOpenPositions: checkpoint.loop.config.maxOpenPositions,
+        marketHistoryPoints: checkpoint.loop.marketHistory?.length ?? 0,
         lastCycle: lastCycle ? {
           startedAt: lastCycle.startedAt,
           finishedAt: lastCycle.finishedAt,
@@ -150,6 +251,13 @@ export default async function handler(request: any, response: any) {
       },
       performance,
       validation,
+      riskLab,
+      exposureLab,
+      correlation: {
+        alignedReturnObservations: correlationObservationCount,
+        markets: correlationSeries.map((item) => item.market),
+        available: correlationObservationCount >= 10,
+      },
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
@@ -158,6 +266,7 @@ export default async function handler(request: any, response: any) {
         scannedMarketsLastCycle: lastCycle?.scanned ?? 0,
         lastCycleErrors: cycleErrors,
       },
+      positionEvidence,
       equityCurve: portfolio.equityCurve.slice(-120),
       decisionTape,
       recentTrades,

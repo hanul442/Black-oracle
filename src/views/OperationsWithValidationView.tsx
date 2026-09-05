@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
+import { InteractiveEquityPanel } from '../components/InteractiveEquityPanel';
+import { PositionEvidencePanel } from '../components/PositionEvidencePanel';
+import { RiskLabPanel } from '../components/RiskLabPanel';
 import { OperationsView } from './OperationsView';
 
 type Validation = {
@@ -78,7 +81,7 @@ export const OperationsWithValidationView: React.FC = () => {
         <div className="mx-auto flex max-w-[1520px] flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5" />
-            <span className="font-mono text-[7px] uppercase tracking-[0.18em]">Monte Carlo validation</span>
+            <span className="font-mono text-[7px] uppercase tracking-[0.18em]">Account-normalized Monte Carlo</span>
             <span className="border border-current/20 px-1.5 py-1 font-mono text-[6px] uppercase tracking-[0.1em]">{verdict}</span>
           </div>
 
@@ -92,13 +95,18 @@ export const OperationsWithValidationView: React.FC = () => {
           </div>
 
           <div className="ml-auto font-mono text-[6px] uppercase tracking-[0.11em] text-[#4F5963]">
-            validation only · no order authority
+            conservative reference · validation only · no order authority
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <OperationsView />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <PositionEvidencePanel />
+        <InteractiveEquityPanel />
+        <RiskLabPanel />
+        <div className="min-h-[calc(100%-1px)]">
+          <OperationsView />
+        </div>
       </div>
     </div>
   );
