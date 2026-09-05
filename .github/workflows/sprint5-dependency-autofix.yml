@@ -30,7 +30,9 @@ jobs:
         run: npm ci
 
       - name: Apply safe lockfile audit fixes
-        run: npm audit fix --package-lock-only
+        # npm exits non-zero while any advisory remains. Preserve the safe lockfile changes,
+        # then verify that the refreshed lock installs before committing them.
+        run: npm audit fix --package-lock-only || true
 
       - name: Verify refreshed lockfile installs
         run: npm ci
