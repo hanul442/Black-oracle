@@ -8,10 +8,18 @@ const outputDir = path.resolve(process.env.LOCAL_QA_OUTPUT_DIR || 'artifacts/loc
 const result = {
   generatedAt: new Date().toISOString(),
   baseUrl,
+  operatorApis: [],
   desktop: { status: 'NOT_RUN', screenshots: [], errors: [] },
   mobile: { status: 'NOT_RUN', screenshots: [], errors: [] },
   overall: 'FAIL',
 };
+
+const operatorApiPaths = [
+  '/api/operator-log',
+  '/api/trade-cases',
+  '/api/trading-readiness',
+  '/api/trading-status',
+];
 
 const deviceCases = [
   {
@@ -36,6 +44,30 @@ const deviceCases = [
   },
 ];
 
+const verifyOperatorApisReturnJson = async () => {
+  for (const apiPath of operatorApiPaths) {
+    const response = await fetch(`${baseUrl}${apiPath}`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
+    let json = null;
+    let parseError = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch (error) {
+      parseError = error instanceof Error ? error.message : String(error);
+    }
+    const validJson = contentType.toLowerCase().includes('application/json') && parseError === null;
+    result.operatorApis.push({ path: apiPath, status: response.status, validJson });
+    if (!validJson) {
+      throw new Error(`${apiPath} must return JSON before the Vite SPA fallback (HTTP ${response.status}; ${parseError || contentType || 'no content-type'}).`);
+    }
+    if (!json || typeof json !== 'object') throw new Error(`${apiPath} returned JSON with an invalid object contract.`);
+  }
+};
+
 const ensureNoHorizontalOverflow = async (page, label) => {
   const metrics = await page.evaluate(() => ({
     width: window.innerWidth,
@@ -43,6 +75,13 @@ const ensureNoHorizontalOverflow = async (page, label) => {
   }));
   if (metrics.scrollWidth > metrics.width + 2) {
     throw new Error(`${label}: horizontal overflow ${metrics.scrollWidth}px > ${metrics.width}px`);
+  }
+};
+
+const ensureNoParserFailureBanner = async (page, label) => {
+  const bodyText = await page.locator('body').innerText();
+  if (/Unexpected token\s+['"]?</i.test(bodyText) && /not valid JSON/i.test(bodyText)) {
+    throw new Error(`${label}: operator surface exposed an invalid-JSON parser failure.`);
   }
 };
 
@@ -80,6 +119,7 @@ const runDevice = async (browser, device) => {
       }
       await page.waitForTimeout(800);
       await ensureNoHorizontalOverflow(page, `${device.id} ${label}`);
+      await ensureNoParserFailureBanner(page, `${device.id} ${label}`);
       const screenshotName = `${device.id}-${slug}.png`;
       await page.screenshot({ path: path.join(outputDir, screenshotName), fullPage: false });
       deviceResult.screenshots.push(screenshotName);
@@ -104,11 +144,18 @@ const runDevice = async (browser, device) => {
 };
 
 await mkdir(outputDir, { recursive: true });
-const browser = await chromium.launch({ headless: true });
 try {
-  for (const device of deviceCases) await runDevice(browser, device);
-} finally {
-  await browser.close();
+  await verifyOperatorApisReturnJson();
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const device of deviceCases) await runDevice(browser, device);
+  } finally {
+    await browser.close();
+  }
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  result.desktop.errors.push(message);
+  result.mobile.errors.push(message);
 }
 
 result.overall = result.desktop.status === 'PASS' && result.mobile.status === 'PASS' ? 'PASS' : 'FAIL';
