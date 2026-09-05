@@ -1,8 +1,10 @@
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import type { MarketPriceSnapshot } from '../../src/trading/marketHistory';
+import { buildTradeCaseRecord } from '../../src/trading/tradeCase';
 import type { LiquiditySnapshot } from '../../src/trading/types';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
+import { tradeCaseStore } from './tradeCaseStore';
 import { buildKrwLiquidityUniverse, getMarketLiquidity } from './universe';
 
 export interface PaperLoopConfig {
@@ -210,6 +212,19 @@ export class PaperLoopController {
             evidence,
             hasOpenPositionAfterStep,
           });
+
+          if (trace.action === 'ENTER' && step.fill) {
+            tradeCaseStore.recordEntry(buildTradeCaseRecord({
+              market,
+              fill: step.fill,
+              trace,
+              multiTimeframe: step.multiTimeframe,
+            }));
+          } else if (trace.action === 'EXIT') {
+            tradeCaseStore.closeMarket(market, step.fill?.timestamp ?? trace.timestamp, trace);
+          } else if (alreadyOpen || hasOpenPositionAfterStep) {
+            tradeCaseStore.appendDecision(market, trace);
+          }
 
           result.scanned += 1;
           if (trace.action === 'ENTER') result.entered += 1;
