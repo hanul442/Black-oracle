@@ -15,9 +15,13 @@ import {
 const stage = (status: number | null, ok: boolean, error: string | null = null) => ({ status, ok, error });
 
 test('scheduler preserves material headroom below the hosted Edge request ceiling', () => {
-  assert.equal(EVIDENCE_REFRESH_TIMEOUT_MS, 52_000);
+  assert.equal(EVIDENCE_REFRESH_TIMEOUT_MS, 56_000);
   assert.equal(PAPER_CYCLE_TIMEOUT_MS, 58_000);
-  assert.equal(SCHEDULER_DOWNSTREAM_BUDGET_MS, 110_000);
+  assert.equal(SCHEDULER_DOWNSTREAM_BUDGET_MS, 114_000);
+  assert.ok(
+    EVIDENCE_REFRESH_TIMEOUT_MS > 53_000,
+    'Evidence outer timeout must exceed the ~8s feed + 45s classifier internal timeout budget',
+  );
   assert.ok(
     SCHEDULER_DOWNSTREAM_BUDGET_MS <= MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS,
     'sequential downstream timeout budget must stay at or below the 115s internal ceiling',
