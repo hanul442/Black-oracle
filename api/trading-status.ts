@@ -21,11 +21,13 @@ export default async function handler(request: any, response: any) {
       { buildPaperPerformance },
       { buildRiskProfileComparison },
       { assessPortfolioExposure },
+      { buildAlignedMarketReturnSeries },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
       import('../src/trading/riskProfiles.js'),
       import('../src/trading/portfolioExposure.js'),
+      import('../src/trading/marketHistory.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -62,8 +64,6 @@ export default async function handler(request: any, response: any) {
 
     const positionReturns = checkpoint.session.closedTrades.map((trade) => trade.returnPct);
     const riskLab = buildRiskProfileComparison(positionReturns);
-    // Backward-compatible validation field now uses the Conservative account-impact normalized profile.
-    // This fixes the prior unit mismatch where position return was treated as whole-account return.
     const validation = riskLab[0].validation;
 
     const lastCycle = checkpoint.loop.lastCycle;
@@ -165,6 +165,14 @@ export default async function handler(request: any, response: any) {
       market: position.market,
       marketValue: position.marketValue,
     }));
+    const correlationSeries = buildAlignedMarketReturnSeries(
+      checkpoint.loop.marketHistory ?? [],
+      exposurePositions.map((position) => position.market),
+      192,
+    );
+    const correlationObservationCount = correlationSeries.length
+      ? Math.min(...correlationSeries.map((item) => item.returns.length))
+      : 0;
     const exposureLab = riskLab.map((item) => ({
       profileId: item.profile.id,
       profileLabel: item.profile.label,
@@ -175,7 +183,7 @@ export default async function handler(request: any, response: any) {
           grossExposureCapPct: item.profile.grossExposureCapPct,
           cryptoClusterExposureCapPct: item.profile.cryptoClusterExposureCapPct,
         },
-        [],
+        correlationSeries,
       ),
     }));
 
@@ -216,6 +224,7 @@ export default async function handler(request: any, response: any) {
         intervalMs: checkpoint.loop.config.intervalMs,
         maxMarkets: checkpoint.loop.config.maxMarkets,
         maxOpenPositions: checkpoint.loop.config.maxOpenPositions,
+        marketHistoryPoints: checkpoint.loop.marketHistory?.length ?? 0,
         lastCycle: lastCycle ? {
           startedAt: lastCycle.startedAt,
           finishedAt: lastCycle.finishedAt,
@@ -244,6 +253,11 @@ export default async function handler(request: any, response: any) {
       validation,
       riskLab,
       exposureLab,
+      correlation: {
+        alignedReturnObservations: correlationObservationCount,
+        markets: correlationSeries.map((item) => item.market),
+        available: correlationObservationCount >= 10,
+      },
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
