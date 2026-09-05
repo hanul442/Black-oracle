@@ -83,6 +83,7 @@ export interface TradingIntelligencePackage {
 export type IntelligenceDisposition = 'SUPPORTED' | 'CAUTION' | 'OPPOSED' | 'INSUFFICIENT' | 'STALE';
 export type FinalDecisionAction = 'ENTER' | 'HOLD' | 'EXIT' | 'NO_TRADE';
 export type FinalDecisionMode = 'OBSERVE_ONLY' | 'ENFORCE';
+export type FinalDecisionPolicy = 'BALANCED' | 'STRICT_CONSENSUS';
 
 export interface FinalDecisionInput {
   market: string;
@@ -90,6 +91,7 @@ export interface FinalDecisionInput {
   hasOpenPositionBefore: boolean;
   intelligence?: TradingIntelligencePackage | null;
   mode?: FinalDecisionMode;
+  policy?: FinalDecisionPolicy;
   now?: number;
 }
 
@@ -99,6 +101,7 @@ export interface FinalDecision {
   proposedAction: FinalDecisionAction;
   baseAction: FinalDecisionAction;
   mode: FinalDecisionMode;
+  policy: FinalDecisionPolicy;
   intelligenceDisposition: IntelligenceDisposition;
   intelligenceFresh: boolean;
   intelligenceConfidence: number;
@@ -264,6 +267,7 @@ const assessIntelligence = (
 
 export const buildFinalDecision = (input: FinalDecisionInput): FinalDecision => {
   const mode = input.mode ?? 'OBSERVE_ONLY';
+  const policy = input.policy ?? 'BALANCED';
   const now = input.now ?? Date.now();
   const baseAction = normalizeBaseAction(input.executionDecision, input.hasOpenPositionBefore);
   const intelligence = assessIntelligence(input.intelligence, now);
@@ -275,12 +279,17 @@ export const buildFinalDecision = (input: FinalDecisionInput): FinalDecision => 
     proposedAction = 'EXIT';
     reasons.push('Existing deterministic exit authority overrides intelligence overlays.');
   } else if (baseAction === 'ENTER') {
-    if (intelligence.disposition === 'SUPPORTED' || intelligence.disposition === 'CAUTION') {
+    const entrySupported = policy === 'STRICT_CONSENSUS'
+      ? intelligence.disposition === 'SUPPORTED'
+      : intelligence.disposition === 'SUPPORTED' || intelligence.disposition === 'CAUTION';
+    if (entrySupported) {
       proposedAction = 'ENTER';
-      reasons.push('Deterministic technical/risk entry remains eligible after intelligence review.');
+      reasons.push(policy === 'STRICT_CONSENSUS'
+        ? 'Strict consensus passed: fresh Evidence, Scenario Council, and deterministic Risk all support the entry.'
+        : 'Deterministic technical/risk entry remains eligible after intelligence review.');
     } else {
       proposedAction = 'NO_TRADE';
-      reasons.push(`New entry is blocked by intelligence disposition ${intelligence.disposition}.`);
+      reasons.push(`New entry is blocked by ${policy} intelligence policy with disposition ${intelligence.disposition}.`);
     }
   } else {
     // Intelligence cannot manufacture a new order when the technical/risk engine did not request one.
@@ -294,6 +303,7 @@ export const buildFinalDecision = (input: FinalDecisionInput): FinalDecision => 
     proposedAction,
     baseAction,
     mode,
+    policy,
     intelligenceDisposition: intelligence.disposition,
     intelligenceFresh: intelligence.fresh,
     intelligenceConfidence: intelligence.confidence,
