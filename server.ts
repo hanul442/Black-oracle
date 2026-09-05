@@ -5,6 +5,10 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import searchOracleHandler from './api/search-oracle';
 import legacyRssShimHandler from './api/fetch-rss';
+import operatorLogHandler from './api/operator-log';
+import tradeCasesHandler from './api/trade-cases';
+import tradingReadinessHandler from './api/trading-readiness';
+import tradingStatusHandler from './api/trading-status';
 import { registerTradingRoutes } from './server/trading/routes';
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -40,6 +44,17 @@ async function startServer() {
 
   // Trading routes are Paper-only. They do not use Firebase research storage.
   registerTradingRoutes(app);
+
+  // The Vercel operator endpoints are normally packaged as serverless functions. Mount the
+  // same read-only handlers ahead of Vite in local development so missing persistence/config
+  // returns JSON UNAVAILABLE/503 rather than falling through to index.html and corrupting the
+  // operator UI's JSON parser. This does not create a development mock or execution authority.
+  if (!production) {
+    app.get('/api/operator-log', (req, res) => void operatorLogHandler(req, res));
+    app.get('/api/trade-cases', (req, res) => void tradeCasesHandler(req, res));
+    app.get('/api/trading-readiness', (req, res) => void tradingReadinessHandler(req, res));
+    app.get('/api/trading-status', (req, res) => void tradingStatusHandler(req, res));
+  }
 
   // Research generation is authenticated and compute-only. The browser persists results
   // to /users/{auth.uid}/... under Firestore ownership rules.
