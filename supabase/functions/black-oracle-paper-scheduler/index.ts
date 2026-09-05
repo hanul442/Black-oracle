@@ -2,8 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildSchedulerPipelineOutcome,
+  EVIDENCE_REFRESH_TIMEOUT_MS,
   isEvidenceRefreshHttpSuccess,
   isPaperCycleHttpSuccess,
+  PAPER_CYCLE_TIMEOUT_MS,
   shouldRunPaperCycleAfterEvidenceRefresh,
   type SchedulerStageResult,
 } from "../_shared/paperSchedulerPolicy.ts";
@@ -193,7 +195,7 @@ Deno.serve(async (req: Request) => {
     "/api/trading-evidence-refresh",
     "POST",
     headers,
-    52_000,
+    EVIDENCE_REFRESH_TIMEOUT_MS,
     isEvidenceRefreshHttpSuccess,
   );
 
@@ -206,7 +208,7 @@ Deno.serve(async (req: Request) => {
       "/api/trading-paper-cycle",
       "GET",
       headers,
-      58_000,
+      PAPER_CYCLE_TIMEOUT_MS,
       isPaperCycleHttpSuccess,
     );
   } else {
