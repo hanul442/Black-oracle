@@ -56,6 +56,69 @@ jobs:
       - name: Production build
         run: npm run build
 
+  local-operator-ui-qa:
+    name: local-operator-ui-qa
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'sprint/5-evidence-governed-validation-closure'
+    needs: validate-trading-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright for local device QA
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start loopback-only development server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > /tmp/black-oracle-local-qa.log 2>&1 &
+          echo $! > /tmp/black-oracle-local-qa.pid
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/black-oracle-local-qa.log >&2 || true
+          exit 1
+
+      - name: Run desktop/mobile operator QA
+        env:
+          LOCAL_QA_URL: http://127.0.0.1:3000
+        run: node scripts/localOperatorQa.mjs
+
+      - name: Stop local development server
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/black-oracle-local-qa.pid ]]; then
+            kill "$(cat /tmp/black-oracle-local-qa.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload local operator QA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: black-oracle-local-operator-qa-${{ github.event.pull_request.head.sha }}
+          path: |
+            artifacts/local-operator-qa
+            /tmp/black-oracle-local-qa.log
+          if-no-files-found: warn
+          retention-days: 14
+
   preview-deployment-qa:
     name: preview-deployment-qa
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'sprint/5-evidence-governed-validation-closure'
