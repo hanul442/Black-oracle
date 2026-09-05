@@ -65,6 +65,21 @@ type ReadinessStatus = {
     ready: boolean;
     missing: string[];
   };
+  deploymentPreflight?: {
+    attempted: boolean;
+    environmentReady: boolean;
+    supabaseRuntimeReachable: boolean;
+    runtimeCheckpointPresent: boolean;
+    supabaseSchedulerReachable: boolean;
+    schedulerConfigPresent: boolean;
+    schedulerEnabled: boolean | null;
+    schedulerTargetVercel: boolean | null;
+    schedulerTargetProduction: boolean | null;
+    schedulerLastOk: boolean | null;
+    readyForPaperPreview: boolean;
+    readyForProductionPaperRollout: boolean;
+    blockers: string[];
+  };
   scheduler?: {
     expectedOrder: string[];
     protectiveExitAuthority: boolean;
@@ -115,8 +130,10 @@ export const LabView: React.FC = () => {
 
   const integrityDays = status?.integrity?.coverageDays ?? 0;
   const integrityRequired = status?.integrity?.requiredCoverageDays ?? 14;
-  const evidenceReady = readiness?.evidenceRefresh?.ready === true;
+  const deploymentPreflight = readiness?.deploymentPreflight;
+  const rolloutReady = deploymentPreflight?.readyForProductionPaperRollout === true;
   const missingEvidenceConfig = readiness?.evidenceRefresh?.missing ?? [];
+  const preflightBlockers = deploymentPreflight?.blockers ?? [];
   const schedulerBudget = readiness?.scheduler?.downstreamBudgetMs;
   const schedulerBudgetCeiling = readiness?.scheduler?.internalBudgetCeilingMs;
 
@@ -169,15 +186,18 @@ export const LabView: React.FC = () => {
             <div className="bg-[#070A0E] p-4">
               <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">STRICT GOVERNANCE & INTEGRITY</div>
               <div className="mt-3 space-y-2 text-[9px] leading-relaxed text-[#68737D]">
-                <div className={`border p-3 ${evidenceReady ? 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.025]' : 'border-[#C7A96B]/20 bg-[#C7A96B]/[0.025]'}`}>
+                <div className={`border p-3 ${rolloutReady ? 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.025]' : 'border-[#C7A96B]/20 bg-[#C7A96B]/[0.025]'}`}>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">Evidence pipeline readiness</span>
-                    <span className={`font-mono text-[7px] uppercase ${evidenceReady ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}`}>{readiness ? (evidenceReady ? 'READY' : 'BLOCKED') : 'UNAVAILABLE'}</span>
+                    <span className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">Production Paper preflight</span>
+                    <span className={`font-mono text-[7px] uppercase ${rolloutReady ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}`}>{readiness ? (rolloutReady ? 'READY' : 'BLOCKED') : 'UNAVAILABLE'}</span>
                   </div>
-                  <p className="mt-2">Persistence {readiness?.evidenceRefresh?.persistenceSupabase ? '✓' : '×'} · Supabase URL {readiness?.evidenceRefresh?.supabaseUrlConfigured ? '✓' : '×'} · Service role {readiness?.evidenceRefresh?.serviceRoleConfigured ? '✓' : '×'} · Classifier {readiness?.evidenceRefresh?.classifierConfigured ? '✓' : '×'}.</p>
-                  <p>Missing: <span className={missingEvidenceConfig.length ? 'text-[#C7A96B]' : 'text-[#72B6A0]'}>{missingEvidenceConfig.length ? missingEvidenceConfig.join(', ') : 'none'}</span>.</p>
+                  <p className="mt-2">Env {readiness?.evidenceRefresh?.ready ? '✓' : '×'} · Runtime DB {deploymentPreflight?.supabaseRuntimeReachable ? '✓' : '×'} · Checkpoint {deploymentPreflight?.runtimeCheckpointPresent ? '✓' : '×'} · Scheduler DB {deploymentPreflight?.supabaseSchedulerReachable ? '✓' : '×'}.</p>
+                  <p>Scheduler config {deploymentPreflight?.schedulerConfigPresent ? '✓' : '×'} · Enabled {deploymentPreflight?.schedulerEnabled ? '✓' : '×'} · Vercel target {deploymentPreflight?.schedulerTargetVercel ? '✓' : '×'} · Production target {deploymentPreflight?.schedulerTargetProduction ? '✓' : '×'}.</p>
+                  <p>Preview: <span className={deploymentPreflight?.readyForPaperPreview ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{deploymentPreflight?.readyForPaperPreview ? 'READY' : 'BLOCKED'}</span> · Production rollout: <span className={rolloutReady ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{rolloutReady ? 'READY' : 'BLOCKED'}</span>.</p>
+                  <p>Missing env: <span className={missingEvidenceConfig.length ? 'text-[#C7A96B]' : 'text-[#72B6A0]'}>{missingEvidenceConfig.length ? missingEvidenceConfig.join(', ') : 'none'}</span>.</p>
+                  <p>Preflight blockers: <span className={preflightBlockers.length ? 'text-[#C7A96B]' : 'text-[#72B6A0]'}>{preflightBlockers.length ? preflightBlockers.join(', ') : 'none'}</span>.</p>
                   {schedulerBudget != null && schedulerBudgetCeiling != null && <p>Scheduler downstream budget: {(schedulerBudget / 1000).toFixed(0)}s / {(schedulerBudgetCeiling / 1000).toFixed(0)}s internal ceiling. Protective exits remain authoritative if Evidence refresh degrades.</p>}
-                  <p className="text-[#4F5A64]">Only configuration presence is exposed; secret values are never returned by the readiness endpoint.</p>
+                  <p className="text-[#4F5A64]">Only booleans and blocker codes are exposed; service-role, Supabase URL and configured Vercel target values are never returned by the readiness endpoint.</p>
                 </div>
                 <p><span className="font-mono text-[7px] text-[#C7A96B]">{status?.governance?.policy || 'STRICT_CONSENSUS'}</span> · {status?.governance?.entryRule || 'Evidence + Scenario/Council + Risk required before new entry.'}</p>
                 <p>Protective exit authority: <span className={status?.governance?.protectiveExitAuthority ? 'text-[#72B6A0]' : 'text-[#D66565]'}>{status?.governance?.protectiveExitAuthority ? 'PRESERVED' : 'UNKNOWN'}</span>.</p>
