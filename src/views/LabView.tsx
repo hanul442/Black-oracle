@@ -56,31 +56,69 @@ type LabStatus = {
   governance?: { mode: string; policy: string; engine: string; protectiveExitAuthority: boolean; entryRule: string };
 };
 
+type ReadinessStatus = {
+  evidenceRefresh?: {
+    persistenceSupabase: boolean;
+    supabaseUrlConfigured: boolean;
+    serviceRoleConfigured: boolean;
+    classifierConfigured: boolean;
+    ready: boolean;
+    missing: string[];
+  };
+  scheduler?: {
+    expectedOrder: string[];
+    protectiveExitAuthority: boolean;
+    deploymentAuthority: boolean;
+    evidenceTimeoutMs: number;
+    paperCycleTimeoutMs: number;
+    downstreamBudgetMs: number;
+    internalBudgetCeilingMs: number;
+  };
+  secretValuesExposed?: boolean;
+};
+
 const pct = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(digits)}%`;
 const verdictTone = (value?: string) => value === 'PASS' ? 'text-[#72B6A0]' : value === 'REJECT' ? 'text-[#D66565]' : 'text-[#C7A96B]';
 
 export const LabView: React.FC = () => {
   const [status, setStatus] = useState<LabStatus | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const errors: string[] = [];
+
     try {
       const response = await fetch('/api/trading-status', { cache: 'no-store' });
       const payload = await response.json() as LabStatus & { error?: string };
       setStatus(payload);
-      setError(response.ok ? null : payload.error || 'Validation status request failed.');
+      if (!response.ok) errors.push(payload.error || 'Validation status request failed.');
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Validation status request failed.');
-    } finally {
-      setLoading(false);
+      errors.push(loadError instanceof Error ? loadError.message : 'Validation status request failed.');
     }
+
+    try {
+      const response = await fetch('/api/trading-readiness', { cache: 'no-store' });
+      const payload = await response.json() as ReadinessStatus & { error?: string };
+      if (response.ok) setReadiness(payload);
+      else errors.push(payload.error || 'Trading readiness request failed.');
+    } catch (readinessError) {
+      errors.push(readinessError instanceof Error ? readinessError.message : 'Trading readiness request failed.');
+    }
+
+    setError(errors.length ? errors.join(' · ') : null);
+    setLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
 
   const integrityDays = status?.integrity?.coverageDays ?? 0;
   const integrityRequired = status?.integrity?.requiredCoverageDays ?? 14;
+  const evidenceReady = readiness?.evidenceRefresh?.ready === true;
+  const missingEvidenceConfig = readiness?.evidenceRefresh?.missing ?? [];
+  const schedulerBudget = readiness?.scheduler?.downstreamBudgetMs;
+  const schedulerBudgetCeiling = readiness?.scheduler?.internalBudgetCeilingMs;
 
   return (
     <div className="h-full overflow-y-auto bg-[#05070A] pb-28 text-[#E9EDF1] md:pb-20">
@@ -131,6 +169,16 @@ export const LabView: React.FC = () => {
             <div className="bg-[#070A0E] p-4">
               <div className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">STRICT GOVERNANCE & INTEGRITY</div>
               <div className="mt-3 space-y-2 text-[9px] leading-relaxed text-[#68737D]">
+                <div className={`border p-3 ${evidenceReady ? 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.025]' : 'border-[#C7A96B]/20 bg-[#C7A96B]/[0.025]'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-[6px] uppercase tracking-[0.14em] text-[#59636D]">Evidence pipeline readiness</span>
+                    <span className={`font-mono text-[7px] uppercase ${evidenceReady ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}`}>{readiness ? (evidenceReady ? 'READY' : 'BLOCKED') : 'UNAVAILABLE'}</span>
+                  </div>
+                  <p className="mt-2">Persistence {readiness?.evidenceRefresh?.persistenceSupabase ? '✓' : '×'} · Supabase URL {readiness?.evidenceRefresh?.supabaseUrlConfigured ? '✓' : '×'} · Service role {readiness?.evidenceRefresh?.serviceRoleConfigured ? '✓' : '×'} · Classifier {readiness?.evidenceRefresh?.classifierConfigured ? '✓' : '×'}.</p>
+                  <p>Missing: <span className={missingEvidenceConfig.length ? 'text-[#C7A96B]' : 'text-[#72B6A0]'}>{missingEvidenceConfig.length ? missingEvidenceConfig.join(', ') : 'none'}</span>.</p>
+                  {schedulerBudget != null && schedulerBudgetCeiling != null && <p>Scheduler downstream budget: {(schedulerBudget / 1000).toFixed(0)}s / {(schedulerBudgetCeiling / 1000).toFixed(0)}s internal ceiling. Protective exits remain authoritative if Evidence refresh degrades.</p>}
+                  <p className="text-[#4F5A64]">Only configuration presence is exposed; secret values are never returned by the readiness endpoint.</p>
+                </div>
                 <p><span className="font-mono text-[7px] text-[#C7A96B]">{status?.governance?.policy || 'STRICT_CONSENSUS'}</span> · {status?.governance?.entryRule || 'Evidence + Scenario/Council + Risk required before new entry.'}</p>
                 <p>Protective exit authority: <span className={status?.governance?.protectiveExitAuthority ? 'text-[#72B6A0]' : 'text-[#D66565]'}>{status?.governance?.protectiveExitAuthority ? 'PRESERVED' : 'UNKNOWN'}</span>.</p>
                 <p>Integrity coverage: <span className={status?.integrity?.coverageComplete ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{integrityDays.toFixed(2)} / {integrityRequired} days</span>. A zero incident count is not promotion evidence until this full window is observed.</p>
