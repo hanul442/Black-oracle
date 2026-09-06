@@ -1,21 +1,20 @@
 import React from 'react';
-import { LogOut, Radar, Settings } from 'lucide-react';
+import { LogOut, RefreshCw, Settings } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
+import { PaperReadinessGrade } from './PaperReadinessGrade';
 
 const viewLabel: Record<string, string> = {
-  command: 'Monitor',
-  operations: 'Monitor',
-  cases: 'Positions',
-  watchlist: 'Position Detail',
-  ledger: 'Audit',
-  'hypothesis-summary': 'Audit Detail',
-  lab: 'Lab',
-  forecast: 'Scenario Detail',
-  council: 'Council Detail',
-  'oracle-field': 'Advanced Intelligence',
-  'oracle-feed': 'Advanced Intelligence',
-  settings: 'Settings',
+  command: 'MONITOR',
+  operations: 'MONITOR',
+  cases: 'POSITIONS',
+  watchlist: 'POSITIONS',
+  forecast: 'POSITIONS / SCENARIO',
+  council: 'POSITIONS / COUNCIL',
+  ledger: 'AUDIT',
+  'hypothesis-summary': 'AUDIT',
+  lab: 'LAB',
+  settings: 'SETTINGS',
 };
 
 export const TopBar: React.FC = () => {
@@ -37,11 +36,8 @@ export const TopBar: React.FC = () => {
         body: JSON.stringify({ userId: auth.currentUser?.uid, coreInterests }),
       });
       const data = await response.json();
-      if (data.success) {
-        addNotification(`Evidence collection synchronized across ${data.sourcesAnalyzed || 0} sources.`, 'success');
-      } else {
-        addNotification(data.error || 'Evidence synchronization failed.', 'error');
-      }
+      if (data.success) addNotification(`Evidence sync complete: ${data.sourcesAnalyzed || 0} sources.`, 'success');
+      else addNotification(data.error || 'Evidence synchronization failed.', 'error');
     } catch {
       addNotification('Evidence synchronization failed.', 'error');
     } finally {
@@ -50,51 +46,35 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="relative z-[70] flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#06090D]/96 px-2 backdrop-blur-xl sm:px-3 md:px-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <button onClick={() => setCurrentView('operations')} className="flex min-h-[44px] shrink-0 touch-manipulation items-center gap-2 lg:hidden">
-          <span className="relative flex h-5 w-5 items-center justify-center">
-            <span className="absolute h-4 w-4 rounded-full border border-[#43D9E6]/25" />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6]" />
-          </span>
-          <span className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#E4E9ED]">Black Oracle</span>
-        </button>
+    <header className="relative z-[70] flex h-8 shrink-0 items-center border-b border-[#202429] bg-[#070809] px-2 font-mono">
+      <button onClick={() => setCurrentView('operations')} className="mr-3 flex items-center gap-2 lg:hidden">
+        <span className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[#f3a312]">BO</span>
+      </button>
+      <span className="text-[6px] uppercase tracking-[0.08em] text-[#566069]">WORKSPACE</span>
+      <span className="mx-2 text-[#2d3338]">/</span>
+      <span className="text-[7px] uppercase tracking-[0.08em] text-[#b9c0c6]">{viewLabel[currentView] || 'MONITOR'}</span>
+      <span className="mx-3 hidden text-[#2d3338] sm:inline">|</span>
+      <span className="hidden text-[6px] uppercase tracking-[0.08em] text-[#4f585f] sm:inline">PERSISTED DATA ONLY</span>
+      <PaperReadinessGrade />
 
-        <div className="hidden items-center gap-2 lg:flex">
-          <span className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#3F4952]">Operator</span>
-          <span className="text-[#2C343B]">/</span>
-          <span className="text-[11px] text-[#9DA7B0]">{viewLabel[currentView] || 'Monitor'}</span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1 md:gap-2">
+      <div className="ml-auto flex h-full items-center gap-px border-l border-[#202429]">
         <button
           onClick={handleFetchData}
           disabled={isIngestingData}
-          className="flex h-11 min-w-11 touch-manipulation items-center justify-center gap-2 border border-white/[0.07] bg-white/[0.015] px-2.5 font-mono text-[7px] uppercase tracking-[0.15em] text-[#747F89] transition hover:border-[#43D9E6]/20 hover:text-[#BEC7CE] disabled:opacity-40 sm:h-8 sm:min-w-0"
+          className="flex h-full items-center gap-1.5 border-r border-[#202429] px-2.5 text-[6px] uppercase tracking-[0.08em] text-[#727c84] hover:bg-[#0c0d0f] hover:text-[#f3a312] disabled:opacity-40"
           aria-label="Synchronize evidence"
         >
-          <Radar className={`h-3.5 w-3.5 sm:h-3 sm:w-3 ${isIngestingData ? 'animate-spin text-[#43D9E6]' : ''}`} />
-          <span className="hidden sm:inline">{isIngestingData ? 'Syncing' : 'Sync evidence'}</span>
+          <RefreshCw className={`h-3 w-3 ${isIngestingData ? 'animate-spin text-[#f3a312]' : ''}`} />
+          <span className="hidden sm:inline">{isIngestingData ? 'SYNCING' : 'SYNC EVIDENCE'}</span>
         </button>
-
         <button
           onClick={() => setCurrentView('settings')}
-          className={`flex h-11 w-11 touch-manipulation items-center justify-center border transition sm:h-8 sm:w-8 ${
-            currentView === 'settings'
-              ? 'border-[#43D9E6]/25 text-[#43D9E6]'
-              : 'border-white/[0.07] text-[#606B75] hover:text-[#C7CED4]'
-          }`}
+          className={`flex h-full w-8 items-center justify-center border-r border-[#202429] ${currentView === 'settings' ? 'text-[#f3a312]' : 'text-[#626c74] hover:text-[#c0c7cc]'}`}
           aria-label="Settings"
         >
-          <Settings className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+          <Settings className="h-3.5 w-3.5" />
         </button>
-
-        <button
-          onClick={() => signOut(auth)}
-          className="hidden h-8 w-8 items-center justify-center border border-white/[0.07] text-[#4E5862] transition hover:border-[#D66565]/20 hover:text-[#D66565] lg:flex"
-          aria-label="Log out"
-        >
+        <button onClick={() => signOut(auth)} className="hidden h-full w-8 items-center justify-center text-[#555f67] hover:text-[#ff6262] lg:flex" aria-label="Log out">
           <LogOut className="h-3.5 w-3.5" />
         </button>
       </div>

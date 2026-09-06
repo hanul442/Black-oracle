@@ -18,6 +18,7 @@ export interface ExperimentSpec {
   hypothesis: string;
   strategyVersion: string;
   modelVersion: string | null;
+  researchConfigurationId?: string | null;
   markets: string[];
   regimes: string[];
   variables: ExperimentVariable[];
@@ -58,12 +59,15 @@ const freezeArray = <T>(items: T[]): readonly T[] => Object.freeze(items.slice()
 
 const normalizeMarkets = (markets: string[]) => [...new Set(markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].sort();
 const normalizeStrings = (items: string[]) => [...new Set(items.map((item) => item.trim()).filter(Boolean))].sort();
+const researchConfigurationIdPattern = /^rcfg-v1-[0-9a-f]{16}$/;
 
 export const validateExperimentSpec = (spec: ExperimentSpec) => {
   if (!spec.id.trim()) throw new Error('Experiment id is required.');
   if (!Number.isFinite(spec.createdAt) || spec.createdAt <= 0) throw new Error('Experiment createdAt must be a positive timestamp.');
   if (!spec.hypothesis.trim()) throw new Error('Experiment hypothesis is required.');
   if (!spec.strategyVersion.trim()) throw new Error('Experiment strategyVersion is required.');
+  const configurationId = String(spec.researchConfigurationId ?? '').trim().toLowerCase();
+  if (configurationId && !researchConfigurationIdPattern.test(configurationId)) throw new Error('Experiment researchConfigurationId is invalid.');
   if (!spec.markets.length) throw new Error('Experiment requires at least one market.');
   if (!spec.criteria.length) throw new Error('Experiment requires at least one acceptance criterion.');
   for (const criterion of spec.criteria) {
@@ -79,6 +83,7 @@ export const normalizeExperimentSpec = (spec: ExperimentSpec): ExperimentSpec =>
     hypothesis: spec.hypothesis.trim(),
     strategyVersion: spec.strategyVersion.trim(),
     modelVersion: spec.modelVersion?.trim() || null,
+    researchConfigurationId: String(spec.researchConfigurationId ?? '').trim().toLowerCase() || null,
     markets: freezeArray(normalizeMarkets(spec.markets)) as string[],
     regimes: freezeArray(normalizeStrings(spec.regimes)) as string[],
     variables: freezeArray(spec.variables.map((item) => Object.freeze({ ...item, name: item.name.trim() }))) as ExperimentVariable[],

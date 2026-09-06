@@ -1,0 +1,111 @@
+export default async function handler(request: any, response: any) {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET');
+    return response.status(405).json({ success: false, error: 'Method not allowed.' });
+  }
+  response.setHeader('Cache-Control', 'no-store, max-age=0');
+
+  try {
+    if (String(process.env.TRADING_PERSISTENCE_BACKEND ?? '').toLowerCase() !== 'supabase') {
+      return response.status(503).json({ success: false, available: false, error: 'Research validation requires Supabase persistence in this deployment.' });
+    }
+
+    const [
+      { tradingCheckpointStore },
+      {
+        buildExpectedShortfall,
+        buildProbabilityBacktestOverfitting,
+        buildCalibration,
+        buildBlockRegimeMonteCarlo,
+      },
+      { buildResearchTrialLineage, buildLineageAwareDeflatedSharpe },
+      { summarizeCouncilComparison },
+      { normalizeStrategyReturnPanel, buildAlignedStrategyReturnSeries, summarizeStrategyReturnPanel },
+    ] = await Promise.all([
+      import('../server/trading/persistence.js'),
+      import('../src/trading/researchValidation.js'),
+      import('../src/trading/researchTrialLineage.js'),
+      import('../src/trading/councilComparison.js'),
+      import('../src/trading/strategyReturnPanel.js'),
+    ]);
+
+    const checkpoint = await tradingCheckpointStore.load();
+    if (!checkpoint) return response.status(200).json({ success: true, available: false, now: Date.now() });
+
+    const closedReturns = checkpoint.session.closedTrades.map((trade) => trade.returnPct);
+    const validationSamples = Array.isArray(checkpoint.loop.validationSamples) ? checkpoint.loop.validationSamples : [];
+    const blockSamples = validationSamples.map((item) => ({ returnPct: item.directionalReturn, regime: item.regime || 'UNKNOWN' }));
+    const comparisons = Array.isArray(checkpoint.loop.councilComparisons) ? checkpoint.loop.councilComparisons : [];
+    const resolvedComparisons = comparisons.filter((item) => item.resolvedAt != null && item.v1Favorable != null && item.v2Favorable != null);
+    const v1Calibration = buildCalibration(resolvedComparisons.map((item) => ({
+      probability: item.v1.probability * 0.7 + item.v1.confidence * 0.3,
+      outcome: Boolean(item.v1Favorable),
+    })));
+    const v2Calibration = buildCalibration(resolvedComparisons.map((item) => ({
+      probability: item.v2.probability * 0.7 + item.v2.confidence * 0.3,
+      outcome: Boolean(item.v2Favorable),
+    })));
+
+    const strategyPanelPersisted = Boolean(checkpoint.loop.strategyReturnPanel);
+    const strategyPanel = normalizeStrategyReturnPanel(checkpoint.loop.strategyReturnPanel);
+    const strategyPanelSummary = summarizeStrategyReturnPanel(strategyPanel);
+    const strategySeries = buildAlignedStrategyReturnSeries(strategyPanel);
+    const pbo = buildProbabilityBacktestOverfitting(strategySeries.map((item) => ({ id: item.id, returns: item.returns })));
+    const pboSource = strategyPanelPersisted ? 'PERSISTED_PROSPECTIVE_STRATEGY_COHORT' : 'PROSPECTIVE_COHORT_NOT_STARTED';
+    const pboNote = pbo.available
+      ? `PBO is calculated from ${strategyPanelSummary.alignedObservations} aligned, prospectively resolved observations across ${strategyPanelSummary.candidateCount} research candidates.`
+      : strategyPanelPersisted
+        ? `Prospective Strategy Factory cohort is collecting aligned observations; ${strategyPanelSummary.alignedObservations}/${strategyPanelSummary.minimumPboObservations} required observations are currently resolved.`
+        : 'Strategy Factory prospective return-panel collection has not yet appeared in the persisted runtime checkpoint.';
+
+    const experimentLedgerEvents = Array.isArray(checkpoint.experimentLedger) ? checkpoint.experimentLedger : [];
+    const trialLineage = buildResearchTrialLineage({
+      strategyReturnPanel: strategyPanelPersisted ? checkpoint.loop.strategyReturnPanel : null,
+      experimentLedgerEvents,
+    });
+    const deflatedSharpe = buildLineageAwareDeflatedSharpe(closedReturns, trialLineage);
+
+    return response.status(200).json({
+      success: true,
+      available: true,
+      now: Date.now(),
+      sampleBasis: {
+        closedTrades: closedReturns.length,
+        blindValidationSamples: validationSamples.length,
+        councilComparisonSamples: comparisons.length,
+        resolvedCouncilComparisons: resolvedComparisons.length,
+        strategyCandidates: strategyPanelSummary.candidateCount,
+        strategyPanelObservations: strategyPanelSummary.observations,
+        alignedStrategyObservations: strategyPanelSummary.alignedObservations,
+        experimentLedgerEvents: experimentLedgerEvents.length,
+      },
+      expectedShortfall: {
+        es95: buildExpectedShortfall(closedReturns, 0.95),
+        es99: buildExpectedShortfall(closedReturns, 0.99),
+      },
+      deflatedSharpe,
+      probabilityBacktestOverfitting: {
+        ...pbo,
+        source: pboSource,
+        note: pboNote,
+        panel: strategyPanelSummary,
+      },
+      blockRegimeMonteCarlo: {
+        ...buildBlockRegimeMonteCarlo(blockSamples),
+        sampleBasis: 'BLIND_VALIDATION_DIRECTIONAL_RETURNS',
+      },
+      councilComparison: summarizeCouncilComparison(comparisons),
+      forecastCalibration: {
+        v1: v1Calibration,
+        v2: v2Calibration,
+        sampleBasis: 'RESOLVED_COUNCIL_COMPARISON_TOP_SCENARIO',
+      },
+      executionAuthority: false,
+      promotionAuthority: false,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown research validation error.';
+    console.error('Black Oracle research validation error:', error);
+    return response.status(500).json({ success: false, available: false, error: message });
+  }
+}
