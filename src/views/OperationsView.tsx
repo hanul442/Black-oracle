@@ -13,6 +13,34 @@ import {
   WalletCards,
 } from 'lucide-react';
 
+type MicrostructureView = {
+  available: boolean;
+  sampleTrades: number;
+  sampleCoverageMs: number | null;
+  takerImbalance: number | null;
+  orderbookImbalanceTop5: number | null;
+  orderbookImbalanceTop15: number | null;
+  orderbookImbalanceTop30: number | null;
+  pressureScore: number | null;
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'UNAVAILABLE';
+  confidence: number;
+  pointOfControl: number | null;
+  valueAreaLow: number | null;
+  valueAreaHigh: number | null;
+  profileLocation: 'ABOVE_VALUE' | 'IN_VALUE' | 'BELOW_VALUE' | 'AT_POC' | 'UNAVAILABLE';
+};
+
+type ChallengerView = {
+  available: boolean;
+  baselineAction: string;
+  baselineOracleScore: number;
+  alignment: 'SUPPORTS' | 'CONFLICTS' | 'NEUTRAL' | 'UNAVAILABLE';
+  pressureScore: number | null;
+  shadowScoreAdjustment: number;
+  shadowOracleScore: number;
+  confidence: number;
+};
+
 type DecisionTapeItem = {
   timestamp: number;
   market: string;
@@ -35,6 +63,8 @@ type DecisionTapeItem = {
   evidenceActiveCount?: number;
   evidenceContradictionCount?: number;
   evidenceIds?: string[];
+  microstructure?: MicrostructureView | null;
+  challenger?: ChallengerView | null;
   primaryReason?: string | null;
   reasons?: string[];
   riskReasons?: string[];
@@ -54,6 +84,10 @@ type ClosedTrade = {
   strategyVersion: string;
   entryOracleTradeScore: number;
   exitOracleTradeScore: number;
+  entryAudit?: null | {
+    microstructure?: MicrostructureView | null;
+    challenger?: ChallengerView | null;
+  };
 };
 
 type OperationsPayload = {
@@ -134,6 +168,14 @@ type OperationsPayload = {
       avgReturnPct: number;
       netPnl: number;
     }>;
+    microstructureBuckets?: Array<{
+      alignment: 'SUPPORTS' | 'CONFLICTS' | 'NEUTRAL' | 'UNAVAILABLE';
+      trades: number;
+      wins: number;
+      winRate: number;
+      avgReturnPct: number;
+      netPnl: number;
+    }>;
   };
   ingestion?: {
     markedMarkets: number;
@@ -166,6 +208,9 @@ const formatAge = (ms: number | null | undefined) => {
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
   return `${number.format(ms / 3_600_000)}h`;
 };
+const formatSignedScore = (value: number | null | undefined) => value == null || !Number.isFinite(value)
+  ? '—'
+  : `${value > 0 ? '+' : ''}${number.format(value)}`;
 
 export const OperationsView: React.FC = () => {
   const [data, setData] = useState<OperationsPayload | null>(null);
@@ -272,6 +317,17 @@ export const OperationsView: React.FC = () => {
               </Panel>
             </div>
 
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,.75fr)]">
+              <Panel>
+                <PanelHeader title="Microstructure shadow" eyebrow="Executed flow + displayed depth" detail="no order authority" />
+                <MicrostructureTape items={data?.decisionTape || []} />
+              </Panel>
+              <Panel>
+                <PanelHeader title="Challenger calibration" eyebrow="Closed-trade outcomes" detail={`${data?.performance?.trades || 0} total`} />
+                <ChallengerBuckets buckets={data?.performance?.microstructureBuckets || []} />
+              </Panel>
+            </div>
+
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               <Panel>
                 <PanelHeader title="Data ingestion" eyebrow="Observed inputs" detail="real checkpoint fields" />
@@ -284,6 +340,7 @@ export const OperationsView: React.FC = () => {
                     label="Evidence contradictions / cycle"
                     value={String((data?.decisionTape || []).reduce((sum, item) => sum + (item.evidenceContradictionCount || 0), 0))}
                   />
+                  <StatusRow label="Microstructure available / cycle" value={String((data?.decisionTape || []).filter((item) => item.microstructure?.available).length)} />
                   <StatusRow label="Cycle errors" value={String(data?.ingestion?.lastCycleErrors ?? '—')} danger={(data?.ingestion?.lastCycleErrors || 0) > 0} />
                   <StatusRow label="15m / 1h / 4h freshness" value="Not persisted yet" muted />
                 </div>
@@ -460,6 +517,82 @@ const DecisionTape = ({ items }: { items: DecisionTapeItem[] }) => (
   </div>
 );
 
+const MicrostructureTape = ({ items }: { items: DecisionTapeItem[] }) => (
+  <div className="divide-y divide-white/[0.05]">
+    {items.map((item) => {
+      const micro = item.microstructure;
+      const challenger = item.challenger;
+      const alignment = challenger?.alignment ?? 'UNAVAILABLE';
+      const alignmentTone = alignment === 'SUPPORTS'
+        ? 'text-[#78B39F]'
+        : alignment === 'CONFLICTS'
+          ? 'text-[#D47A7A]'
+          : alignment === 'NEUTRAL'
+            ? 'text-[#C7A96B]'
+            : 'text-[#59636D]';
+      return (
+        <div key={`micro-${item.market}`} className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Database className="h-3.5 w-3.5 text-[#59636D]" />
+              <span className="font-mono text-[9px] text-[#C9D0D6]">{item.market}</span>
+              <span className={`font-mono text-[7px] uppercase tracking-[0.1em] ${alignmentTone}`}>{alignment}</span>
+            </div>
+            <div className="font-mono text-[7px] text-[#69747E]">
+              shadow {challenger ? number.format(challenger.shadowOracleScore) : '—'} / base {item.oracleTradeScore == null ? '—' : number.format(item.oracleTradeScore)}
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-4">
+            <MiniStat label="PRESSURE" value={formatSignedScore(micro?.pressureScore)} tone={(micro?.pressureScore ?? 0) >= 20 ? 'positive' : (micro?.pressureScore ?? 0) <= -20 ? 'negative' : undefined} />
+            <MiniStat label="TAKER FLOW" value={formatPct(micro?.takerImbalance, true)} tone={(micro?.takerImbalance ?? 0) > 0 ? 'positive' : (micro?.takerImbalance ?? 0) < 0 ? 'negative' : undefined} />
+            <MiniStat label="BOOK 5 / 30" value={`${formatPct(micro?.orderbookImbalanceTop5, true)} / ${formatPct(micro?.orderbookImbalanceTop30, true)}`} />
+            <MiniStat label="PROFILE" value={micro?.profileLocation?.replaceAll('_', ' ') ?? '—'} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[6px] uppercase tracking-[0.1em] text-[#4F5963]">
+            <span>{micro?.sampleTrades ?? 0} prints</span>
+            <span>coverage {formatAge(micro?.sampleCoverageMs)}</span>
+            <span>POC {formatMoney(micro?.pointOfControl)}</span>
+            <span>VA {formatMoney(micro?.valueAreaLow)}–{formatMoney(micro?.valueAreaHigh)}</span>
+            <span>shadow Δ {challenger ? formatSignedScore(challenger.shadowScoreAdjustment) : '—'}</span>
+          </div>
+        </div>
+      );
+    })}
+    {!items.length && <Unavailable text="No microstructure observations have been persisted yet." padded />}
+  </div>
+);
+
+const ChallengerBuckets = ({ buckets }: { buckets: NonNullable<NonNullable<OperationsPayload['performance']>['microstructureBuckets']> }) => (
+  <div className="p-4">
+    <div className="mb-3 border border-[#C7A96B]/15 bg-[#C7A96B]/[0.025] p-3 font-mono text-[6px] uppercase tracking-[0.11em] text-[#8D7D5B]">
+      observational only · compare realized outcomes before any promotion
+    </div>
+    <div className="space-y-2">
+      {buckets.map((bucket) => {
+        const tone = bucket.alignment === 'SUPPORTS'
+          ? 'text-[#78B39F]'
+          : bucket.alignment === 'CONFLICTS'
+            ? 'text-[#D47A7A]'
+            : 'text-[#78838D]';
+        return (
+          <div key={bucket.alignment} className="border border-white/[0.05] bg-[#060A0E] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className={`font-mono text-[7px] uppercase tracking-[0.12em] ${tone}`}>{bucket.alignment}</span>
+              <span className="font-mono text-[7px] text-[#7D8791]">{bucket.trades} trades</span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-[6px] uppercase tracking-[0.08em] text-[#56616C]">
+              <span>win {formatPct(bucket.winRate)}</span>
+              <span>avg {formatPct(bucket.avgReturnPct, true)}</span>
+              <span>pnl {formatMoney(bucket.netPnl)}</span>
+            </div>
+          </div>
+        );
+      })}
+      {!buckets.length && <Unavailable text="Awaiting closed-trade challenger sample." />}
+    </div>
+  </div>
+);
+
 const EquityChart = ({ points }: { points: Array<{ timestamp: number; equity: number }> }) => {
   const normalized = useMemo(() => {
     if (points.length < 2) return [];
@@ -510,20 +643,24 @@ const MiniStat = ({ label, value, tone }: { label: string; value: string; tone?:
 const RecentTrades = ({ trades }: { trades: ClosedTrade[] }) => (
   <div className="overflow-x-auto">
     {trades.length ? (
-      <div className="min-w-[680px]">
-        <div className="grid grid-cols-[90px_100px_90px_90px_100px_minmax(160px,1fr)] border-b border-white/[0.05] px-4 py-2 font-mono text-[6px] uppercase tracking-[0.12em] text-[#46515B]">
-          <span>Closed</span><span>Market</span><span>Return</span><span>Net P&L</span><span>Score</span><span>Reason</span>
+      <div className="min-w-[760px]">
+        <div className="grid grid-cols-[90px_100px_90px_90px_100px_110px_minmax(160px,1fr)] border-b border-white/[0.05] px-4 py-2 font-mono text-[6px] uppercase tracking-[0.12em] text-[#46515B]">
+          <span>Closed</span><span>Market</span><span>Return</span><span>Net P&L</span><span>Score</span><span>Micro</span><span>Reason</span>
         </div>
-        {trades.map((trade) => (
-          <div key={trade.id} className="grid grid-cols-[90px_100px_90px_90px_100px_minmax(160px,1fr)] items-center border-b border-white/[0.045] px-4 py-3 text-[9px] last:border-b-0">
-            <span className="font-mono text-[7px] text-[#56616C]">{formatTime(trade.closedAt)}</span>
-            <span className="font-mono text-[#C8CFD5]">{trade.market}</span>
-            <span className={trade.returnPct >= 0 ? 'text-[#78B39F]' : 'text-[#D47A7A]'}>{formatPct(trade.returnPct, true)}</span>
-            <span className={trade.netPnl >= 0 ? 'text-[#78B39F]' : 'text-[#D47A7A]'}>{formatMoney(trade.netPnl)}</span>
-            <span className="font-mono text-[#7E8993]">{number.format(trade.entryOracleTradeScore)} → {number.format(trade.exitOracleTradeScore)}</span>
-            <span className="truncate text-[#68737D]">{trade.exitReason}</span>
-          </div>
-        ))}
+        {trades.map((trade) => {
+          const alignment = trade.entryAudit?.challenger?.alignment ?? 'UNAVAILABLE';
+          return (
+            <div key={trade.id} className="grid grid-cols-[90px_100px_90px_90px_100px_110px_minmax(160px,1fr)] items-center border-b border-white/[0.045] px-4 py-3 text-[9px] last:border-b-0">
+              <span className="font-mono text-[7px] text-[#56616C]">{formatTime(trade.closedAt)}</span>
+              <span className="font-mono text-[#C8CFD5]">{trade.market}</span>
+              <span className={trade.returnPct >= 0 ? 'text-[#78B39F]' : 'text-[#D47A7A]'}>{formatPct(trade.returnPct, true)}</span>
+              <span className={trade.netPnl >= 0 ? 'text-[#78B39F]' : 'text-[#D47A7A]'}>{formatMoney(trade.netPnl)}</span>
+              <span className="font-mono text-[#7E8993]">{number.format(trade.entryOracleTradeScore)} → {number.format(trade.exitOracleTradeScore)}</span>
+              <span className="font-mono text-[7px] text-[#68737D]">{alignment}</span>
+              <span className="truncate text-[#68737D]">{trade.exitReason}</span>
+            </div>
+          );
+        })}
       </div>
     ) : <Unavailable text="No closed Paper trades yet." padded />}
   </div>

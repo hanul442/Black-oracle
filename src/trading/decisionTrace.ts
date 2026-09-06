@@ -1,5 +1,7 @@
 import type { EvidenceAggregate } from './evidence';
 import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
+import type { MicrostructureSnapshot } from './microstructure';
+import type { MicrostructureChallengerSnapshot } from './microstructureChallenger';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
 import type {
   ExecutionDecision,
@@ -48,6 +50,23 @@ export interface DecisionTrace {
     liquiditySweep: 'BULLISH' | 'BEARISH' | null;
   };
   cycle: MultiCycleSnapshot | null;
+  microstructure: null | {
+    available: boolean;
+    sampleTrades: number;
+    sampleCoverageMs: number | null;
+    takerImbalance: number | null;
+    orderbookImbalanceTop5: number | null;
+    orderbookImbalanceTop15: number | null;
+    orderbookImbalanceTop30: number | null;
+    pressureScore: number | null;
+    direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'UNAVAILABLE';
+    confidence: number;
+    pointOfControl: number | null;
+    valueAreaLow: number | null;
+    valueAreaHigh: number | null;
+    profileLocation: 'ABOVE_VALUE' | 'IN_VALUE' | 'BELOW_VALUE' | 'AT_POC' | 'UNAVAILABLE';
+  };
+  challenger: MicrostructureChallengerSnapshot | null;
   tradeMap: TradeMapSnapshot | null;
   primaryReason: string;
   reasons: string[];
@@ -60,6 +79,8 @@ export interface DecisionTraceInput {
   decision: ExecutionDecision;
   multiTimeframe: MultiTimeframeSnapshot;
   evidence: EvidenceAggregate;
+  microstructure?: MicrostructureSnapshot | null;
+  challenger?: MicrostructureChallengerSnapshot | null;
   tradeMap?: TradeMapSnapshot | null;
   hasOpenPositionAfterStep: boolean;
 }
@@ -82,6 +103,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const router = buildStrategyRouterDecision(multiTimeframe, forecast);
   const technical = oneHour.technicalEvidence;
   const structure = oneHour.structure;
+  const micro = input.microstructure;
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -123,6 +145,23 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
       frames: { ...multiTimeframe.cycle.frames },
       reasons: multiTimeframe.cycle.reasons.slice(),
     } : null,
+    microstructure: micro ? {
+      available: micro.available,
+      sampleTrades: micro.sampleTrades,
+      sampleCoverageMs: micro.sampleCoverageMs,
+      takerImbalance: micro.takerImbalance,
+      orderbookImbalanceTop5: micro.orderbookImbalanceTop5,
+      orderbookImbalanceTop15: micro.orderbookImbalanceTop15,
+      orderbookImbalanceTop30: micro.orderbookImbalanceTop30,
+      pressureScore: micro.pressureScore,
+      direction: micro.direction,
+      confidence: micro.confidence,
+      pointOfControl: micro.profile.pointOfControl,
+      valueAreaLow: micro.profile.valueAreaLow,
+      valueAreaHigh: micro.profile.valueAreaHigh,
+      profileLocation: micro.profile.currentLocation,
+    } : null,
+    challenger: input.challenger ? { ...input.challenger, reasons: input.challenger.reasons.slice() } : null,
     tradeMap: input.tradeMap ? { ...input.tradeMap, reasons: input.tradeMap.reasons.slice() } : null,
     primaryReason,
     reasons: decision.reasons.slice(),
