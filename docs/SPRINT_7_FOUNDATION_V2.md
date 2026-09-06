@@ -1,12 +1,12 @@
 # Black Oracle Sprint 7 — Foundation v2
 
-Status: IMPLEMENTATION IN PROGRESS / NO PRODUCTION DEPLOYMENT
+Status: IMPLEMENTATION IN PROGRESS / PAPER AUTHORITY UNCHANGED / NO PRODUCTION DEPLOYMENT
 
-Base: latest validated `sprint/6-empirical-paper-validation` head at stack/rebase time. Sprint 7 is intentionally maintained as a stacked branch until Sprint 6 is integrated.
+Base: `sprint/6-empirical-paper-validation`. On 2026-09-06 the Sprint 7 branch was replayed onto Sprint 6 head `a22cb6d32dfce89156ff419120336c84f95a928e`. The pre-rebase Sprint 7 state is retained at `backup/sprint-7-pre-rebase-20260906`.
 
 ## 1. Objective
 
-Convert the existing evidence-governed PAPER engine into a safer research-to-execution architecture without changing current production authority.
+Convert the existing evidence-governed PAPER engine into a safer research-to-execution architecture without silently changing trading behavior or production authority.
 
 Benchmark synthesis used for the architecture:
 
@@ -16,18 +16,21 @@ Benchmark synthesis used for the architecture:
 - Freqtrade: lookahead and recursive/warm-up integrity checks
 - TradingAgents: Council/debate layer only; never direct execution authority
 
-The immediate Sprint 7 order is:
+Sprint 7 sequencing:
 
 1. Validation integrity before strategy evaluation
-2. Standardized portfolio target contract
-3. Replay/PAPER parity seam
-4. Only then expand factory, grading, Vault, drift and allocation
+2. Reproducible historical data identity and warm-up evidence
+3. Standardized portfolio target contract
+4. Shadow StrategyIntent -> Target -> post-risk Target parity
+5. Replay/PAPER execution-adapter parity
+6. Validation Hard Gate integration
+7. Only then expand Vault, drift, allocation and lifecycle automation
 
 ## 2. Current-state audit
 
 ### KEEP
 
-The following foundations already exist and remain strategically valid:
+The following foundations remain strategically valid:
 
 - Evidence ingestion, source policy and evidence readiness
 - Deterministic governance core and Council comparison/challenger architecture
@@ -45,38 +48,25 @@ The following foundations already exist and remain strategically valid:
 ### MODIFY
 
 1. `executionPolicy.ts`
-   - Current signal, sizing, risk and execution-command semantics are still compressed into one `ExecutionDecision`.
-   - Target architecture must become `Strategy Intent -> Portfolio Target -> Risk Overlay -> Execution Adapter`.
-   - Sprint 7 introduces a shadow target contract first so behavior does not change silently.
+   - Signal, sizing, risk and execution-command semantics remain compressed into one `ExecutionDecision`.
+   - Target architecture is `Strategy Intent -> Portfolio Target -> Risk Overlay -> Execution Adapter`.
+   - Authority is not moved until shadow parity is demonstrated.
 
 2. `blindValidation.ts`
-   - Existing `noLookahead: true` correctly describes post-decision outcome anchoring.
-   - It must not be interpreted as proof that every strategy input/indicator is globally free of future data.
-   - Separate input-integrity gates are therefore required before strategy evaluation.
+   - `noLookahead: true` describes post-decision outcome anchoring.
+   - It is not proof that every strategy input or indicator is globally future-data-free.
+   - Input-integrity evidence is therefore maintained separately.
 
 3. Upbit candle history
-   - Current public minute-candle helper requests at most 200 observations, matching the exchange endpoint request cap.
-   - This is enough for the current EMA200 minimum but not enough for meaningful recursive warm-up comparisons across 200/250/300/400 windows.
-   - A paginated historical-candle reader is required before recursive stability becomes an authoritative gate.
+   - A single minute-candle request is capped at 200 observations.
+   - Sprint 7 now provides bounded pagination so 200/250/300/400 warm-up comparisons can be reproduced without changing the current PAPER polling path.
 
 4. Strategy Factory promotion logic
-   - Factory candidates already fail closed on several validation metrics.
-   - Future promotion must additionally require validation-integrity provenance, rating Hard Gates and reproducible configuration IDs before candidate status can advance.
+   - Future candidate advancement must require input-integrity provenance, reproducible configuration/data IDs, validation Hard Gates and rating confidence.
 
 5. Rating / deployment labels
    - Grade-derived labels are governance classifications only.
-   - They must never imply execution or production-promotion authority.
-
-### ADD
-
-- Pre-strategy candle integrity gate
-- Recursive indicator warm-up stability probe
-- Standardized portfolio-target contract
-- Replay/PAPER execution adapter contract and parity comparison
-- Strategy Vault persistence + full lineage graph
-- Test-to-live drift engine with HEALTHY/WATCH/DEGRADED/QUARANTINE/RETIRED lifecycle
-- Portfolio allocator based on target weights rather than direct BUY/SELL commands
-- Cross-engine execution/replay parity evidence
+   - They never imply execution or production-promotion authority.
 
 ### DEPRECATE / DO NOT EXPAND
 
@@ -85,36 +75,34 @@ The following foundations already exist and remain strategically valid:
 - Automatic PAPER-to-LIVE promotion
 - Automatic live strategy replacement
 - Direct strategy-to-broker command coupling as a long-term architecture
-- Treating a backtest/OOS grade as sufficient evidence for live eligibility
+- Treating backtest/OOS grade as sufficient evidence for live eligibility
 
-## 3. Sprint 7 implemented in this branch
+## 3. Implemented
 
-### P0-A — deterministic candle integrity gate
+### S7-01A — deterministic candle integrity gate
 
-New `validationIntegrity.ts` checks before strategy evaluation:
+`validationIntegrity.ts` checks before strategy evaluation:
 
 - invalid/non-finite timestamp
 - future candle / evaluation-cutoff violation
 - duplicate timestamp
-- non-monotonic timestamp on the supplied evaluation order
+- non-monotonic timestamp on supplied evaluation order
 - mixed market
 - mixed timeframe
 - invalid OHLC
 - invalid volume
 - minimum warm-up depth
-- abnormal candle gaps (WATCH, not silent)
+- abnormal candle gaps as WATCH rather than silent acceptance
 
-`server/trading/multiTimeframe.ts` now fails closed on blocking integrity faults before any trading snapshot is built.
+`server/trading/multiTimeframe.ts` fails closed on blocking integrity faults before a trading snapshot is built.
 
-### P0-B — recursive warm-up probe
+### S7-01B — recursive warm-up stability primitive
 
-New `warmupStability.ts` compares indicator outputs at the same terminal candle while varying trailing warm-up windows. It reports normalized per-indicator drift and PASS/WATCH/REJECT/INSUFFICIENT_DATA.
+`warmupStability.ts` compares terminal indicator outputs across trailing warm-up windows. It reports normalized indicator drift and PASS/WATCH/REJECT/INSUFFICIENT_DATA.
 
-This probe is implemented and tested as a research primitive. It is intentionally not yet an authoritative live/PAPER gate because the current Upbit history reader only supplies 200 candles per timeframe.
+### S7-01C — shadow Portfolio Target contract
 
-### P1-A — shadow Portfolio Target contract
-
-New `portfolioTargetContract.ts` expresses the desired target state with:
+`portfolioTargetContract.ts` expresses desired target state with:
 
 - current/target weight
 - current/target notional
@@ -124,51 +112,104 @@ New `portfolioTargetContract.ts` expresses the desired target state with:
 - strategy version
 - immutable `executionAuthority: false`
 
-The current PAPER session emits this target into the Trading Ledger and links submitted PAPER orders to `portfolioTargetId`.
+The PAPER session records this target and links PAPER order audit events to `portfolioTargetId`. The legacy decision remains the only order authority.
 
-Important: the existing deterministic PAPER decision -> broker path is still authoritative in this phase. The new contract is shadow-only so Sprint 7 does not alter production trading behavior before parity is proven.
+### S7-02 — historical data integrity + reproducible dataset evidence
 
-## 4. Production-state boundary observed during implementation
+Implemented:
 
-Read-only Supabase inspection on 2026-09-06 showed the existing PAPER runtime still active and healthy:
+- bounded Upbit minute-candle pagination, up to 1,000 candles per research request
+- explicit exclusive `to` cursor handling
+- duplicate page-boundary detection that fails closed
+- deterministic candle canonicalization
+- SHA-256 dataset checksum
+- stable `datasetId`
+- default 400-candle input-validation policy with 200/250/300/400 recursive warm-up windows
+- explicit `InputValidationLedgerRecord`
+- separation of input-quality evidence from outcome/alpha samples
+- idempotent input-validation ledger merge
+- tests for pagination boundaries, checksum reproducibility, material data mutation, 400-candle warm-up evidence and insufficient-history rejection
+
+Important boundary: the current real-time PAPER multi-timeframe reader still requests the existing 200 candles per timeframe. The >200-candle reader is a validation/research primitive in this increment so API load, latency and PAPER behavior do not change silently.
+
+### S7-03A — shadow target pipeline + legacy parity evidence
+
+Implemented:
+
+`Legacy ExecutionDecision -> StrategyIntent(shadow) -> PortfolioTarget(shadow) -> RiskAdjustedTarget(shadow) -> ParityReport`
+
+Properties:
+
+- `StrategyIntentContract` has no execution authority
+- `RiskAdjustedTargetContract` records the already-applied legacy risk result without rerunning or changing risk
+- ENTER/HOLD/RISK-REJECT/EXIT semantics are parity-tested
+- notional delta and BUY/SELL/null side semantics are compared against the authoritative legacy decision
+- PAPER `SIGNAL` ledger records Intent, Target, post-risk Target and parity evidence
+- submitted PAPER orders retain the target/parity provenance IDs
+- a shadow parity failure is audit evidence only in S7-03A; it cannot create, cancel or resize an order
+
+This is intentionally a transition seam, not the final architecture. Strategy Intent is still derived from the legacy decision until parity coverage is sufficient to split the upstream policy safely.
+
+## 4. Validation / branch integrity
+
+On 2026-09-06:
+
+- the stale/diverged Sprint 7 stack was detected before further expansion
+- the original head was backed up to `backup/sprint-7-pre-rebase-20260906`
+- Sprint 7 was replayed onto the latest Sprint 6 safety/security baseline
+- the rebased S7-02 checkpoint passed both main validation workflows
+- Vercel commit status remained an independent failed external deployment check; the connected Vercel API did not expose the project needed to retrieve the detailed deployment failure
+
+Interpretation:
+
+- GitHub typecheck/build/trading validation: code-quality gate
+- Vercel Preview: deployment/runtime QA gate
+- production rollout: separate human-approved gate
+
+A Vercel failure must not be mislabeled as a passing Preview, but it also does not grant or revoke PAPER execution authority.
+
+## 5. Production-state boundary observed during implementation
+
+A read-only Supabase inspection on 2026-09-06 observed the existing PAPER runtime active at the time of inspection:
 
 - runtime: `black-oracle-paper`
 - scheduler enabled: true
-- most recent scheduler HTTP status: 200 / OK
+- most recent scheduler HTTP status at inspection: 200 / OK
 - interval: 15 minutes
 - max scanned markets: 6
 - max concurrent open positions: 4
 - persisted cycle count at inspection: 181
-- persisted closed trades: 7
-- persisted open positions: 4
+- persisted closed trades at inspection: 7
+- persisted open positions at inspection: 4
+
+These are historical inspection values, not a claim of the current live database state.
 
 No production table, scheduler configuration, Edge Function, risk limit or trading credential was changed by Sprint 7 implementation.
 
-The current database contains the original Black Oracle runtime/scheduler tables. The Sprint 6 `black_oracle_operator_events` migration remains Git-side and was not auto-applied.
+## 6. Next code increments
 
-## 5. Next code increments
+### S7-03B — independent Strategy Intent seam
 
-### S7-02 — Historical data integrity + pagination
+Goal: split signal intent from execution/risk semantics without behavior change.
 
-- paginated Upbit candle history reader
-- stable data-set ID / checksum
-- recursive warm-up gate using >200 observations
-- explicit input-integrity record in Validation Ledger
+Planned sequence:
 
-### S7-03 — Authoritative target pipeline
+`Signal/Strategy -> StrategyIntent -> PortfolioTarget -> RiskAdjustedTarget -> Legacy ExecutionDecision comparator`
 
-Refactor without strategy-behavior changes:
+Requirements:
 
-`Signal/Strategy -> StrategyIntent -> PortfolioTarget -> RiskAdjustedTarget -> ExecutionDecision`
+- independent intent type created before risk evaluation
+- deterministic mapper from current signals/position state
+- shadow comparison against the current `ExecutionDecision`
+- mismatch ledger and fail-closed promotion status
+- no broker authority transfer
 
-Legacy and refactored outputs must be compared in shadow mode until parity is demonstrated.
-
-### S7-04 — Replay / PAPER parity
+### S7-04 — Replay / PAPER adapter parity
 
 - common execution adapter interface
 - deterministic historical replay adapter
 - existing PAPER broker adapter
-- parity report: target, expected order, fill assumptions, fees, slippage, position state
+- parity report for requested target, expected order, fill assumptions, fees, slippage and resulting position state
 - no Live adapter with order authority in this sprint
 
 ### S7-05 — Validation Hard Gate integration
@@ -176,7 +217,7 @@ Legacy and refactored outputs must be compared in shadow mode until parity is de
 Promotion requires all of:
 
 - input integrity PASS
-- warm-up stability PASS/WATCH within approved policy
+- warm-up stability inside approved policy
 - OOS / blind evidence
 - walk-forward robustness
 - Monte Carlo survival
@@ -184,13 +225,16 @@ Promotion requires all of:
 - minimum sample and observation depth
 - evidence/audit coverage
 - grade confidence and Hard Gate compliance
+- reproducible dataset/configuration lineage
+- required parity evidence
 
-## 6. Non-negotiable safety rules
+## 7. Non-negotiable safety rules
 
-- PAPER remains the only automated execution mode in this sprint.
+- PAPER remains the only automated execution mode in Sprint 7.
 - Council and LLM outputs have no execution authority.
 - Strategy Factory output has no execution authority.
-- Portfolio Target v1 has no execution authority.
+- Portfolio Target, Strategy Intent, post-risk Target and parity objects have no execution authority.
 - No automatic Champion or Council promotion.
 - No automatic PAPER-to-LIVE transition.
 - No production schema migration or deployment from this branch without explicit human approval.
+- Production rollout, qualification arming and capital scaling remain separate human-approved gates.
