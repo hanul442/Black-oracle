@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ExperimentLedgerEvent } from './experimentLedger.ts';
-import { buildLineageAwareDeflatedSharpe, buildResearchTrialLineage } from './researchTrialLineage.ts';
+import { buildResearchTrialLineage, buildLineageAwareDeflatedSharpe } from './researchTrialLineage.ts';
+import { buildDefaultStrategyResearchCohort } from './strategyReturnPanel.ts';
 
-const strategyPanel = (count = 9) => ({
+const configurationId = (index: number) => `rcfg-v1-${index.toString(16).padStart(16, '0')}`;
+
+const strategyPanel = (count = 9, canonical = true) => ({
   observations: [{
     predictions: Array.from({ length: count }, (_, index) => ({
       candidateId: `candidate-${index}`,
       fingerprint: `fingerprint-${index}`,
+      ...(canonical ? { researchConfigurationId: configurationId(index + 1) } : {}),
     })),
   }],
 });
 
-const planned = (id: string, sequence: number, candidate = 0.7): ExperimentLedgerEvent => ({
+const planned = (id: string, sequence: number, candidate = 0.7, researchConfigurationId?: string): ExperimentLedgerEvent => ({
   id: `event-${sequence}`,
   sequence,
   timestamp: 1_700_000_000_000 + sequence,
@@ -25,6 +29,7 @@ const planned = (id: string, sequence: number, candidate = 0.7): ExperimentLedge
       hypothesis: 'candidate improves robustness',
       strategyVersion: 'strategy-v1',
       modelVersion: null,
+      researchConfigurationId: researchConfigurationId ?? null,
       markets: ['KRW-BTC'],
       regimes: ['RANGE'],
       variables: [{ name: 'minConfidence', baseline: 0.62, candidate }],
@@ -51,13 +56,28 @@ test('trial lineage is missing when no configuration was actually tried', () => 
   assert.equal(lineage.integrity, 'MISSING');
 });
 
-test('observed Strategy Factory fingerprints become actual DSR trials', () => {
+test('observed Strategy Factory canonical ids become actual DSR trials', () => {
   const lineage = buildResearchTrialLineage({ strategyReturnPanel: strategyPanel(9), experimentLedgerEvents: [] });
   assert.equal(lineage.available, true);
   assert.equal(lineage.strategyFactoryTrials, 9);
+  assert.equal(lineage.canonicalTrialCount, 9);
+  assert.equal(lineage.unmappedStrategyTrials, 0);
   assert.equal(lineage.trialCount, 9);
   assert.equal(lineage.source, 'STRATEGY_FACTORY_OBSERVED');
   assert.equal(lineage.integrity, 'PASS');
+});
+
+test('Strategy Factory candidate genomes derive canonical research configuration ids without rewriting old observations', () => {
+  const cohort = buildDefaultStrategyResearchCohort();
+  const lineage = buildResearchTrialLineage({
+    strategyReturnPanel: {
+      cohort,
+      observations: [{ predictions: cohort.candidates.map((candidate) => ({ candidateId: candidate.id, fingerprint: candidate.fingerprint })) }],
+    },
+  });
+  assert.equal(lineage.strategyFactoryTrials, cohort.candidates.length);
+  assert.equal(lineage.canonicalTrialCount, cohort.candidates.length);
+  assert.equal(lineage.unmappedStrategyTrials, 0);
 });
 
 test('planned-only experiments are not counted as tried configurations', () => {
@@ -66,7 +86,7 @@ test('planned-only experiments are not counted as tried configurations', () => {
   assert.equal(lineage.experimentTrials, 0);
 });
 
-test('started experiments count and duplicate configurations deduplicate', () => {
+test('started experiments count and duplicate unbound configurations deduplicate within Experiment Ledger', () => {
   const events = [
     planned('exp-a', 1), started('exp-a', 2),
     planned('exp-b', 3), started('exp-b', 4),
@@ -75,6 +95,7 @@ test('started experiments count and duplicate configurations deduplicate', () =>
   assert.equal(lineage.available, true);
   assert.equal(lineage.experimentTrials, 1);
   assert.equal(lineage.trialCount, 1);
+  assert.equal(lineage.unmappedExperimentTrials, 1);
   assert.equal(lineage.integrity, 'PASS');
 });
 
@@ -87,13 +108,34 @@ test('different experiment configurations remain distinct trials', () => {
   assert.equal(lineage.experimentTrials, 2);
 });
 
-test('combined sources use conservative sum with explicit lower bound', () => {
+test('canonical Strategy Factory and Experiment identities deduplicate exact cross-source overlap', () => {
+  const sharedId = configurationId(1);
+  const events = [planned('exp-a', 1, 0.7, sharedId), started('exp-a', 2)];
+  const lineage = buildResearchTrialLineage({ strategyReturnPanel: strategyPanel(9), experimentLedgerEvents: events });
+  assert.equal(lineage.trialCount, 9);
+  assert.equal(lineage.lowerBoundTrialCount, 9);
+  assert.equal(lineage.canonicalTrialCount, 9);
+  assert.equal(lineage.crossSourceOverlap, 1);
+  assert.equal(lineage.source, 'COMBINED_CANONICAL');
+  assert.equal(lineage.integrity, 'PASS');
+});
+
+test('distinct canonical Strategy Factory and Experiment identities remain distinct', () => {
+  const events = [planned('exp-a', 1, 0.7, configurationId(99)), started('exp-a', 2)];
+  const lineage = buildResearchTrialLineage({ strategyReturnPanel: strategyPanel(9), experimentLedgerEvents: events });
+  assert.equal(lineage.trialCount, 10);
+  assert.equal(lineage.crossSourceOverlap, 0);
+  assert.equal(lineage.source, 'COMBINED_CANONICAL');
+});
+
+test('unbound cross-source experiments retain conservative upper counting', () => {
   const events = [planned('exp-a', 1), started('exp-a', 2)];
   const lineage = buildResearchTrialLineage({ strategyReturnPanel: strategyPanel(9), experimentLedgerEvents: events });
   assert.equal(lineage.trialCount, 10);
   assert.equal(lineage.lowerBoundTrialCount, 9);
   assert.equal(lineage.source, 'COMBINED_CONSERVATIVE');
   assert.equal(lineage.integrity, 'CONSERVATIVE');
+  assert.equal(lineage.unmappedExperimentTrials, 1);
 });
 
 test('DSR fails closed when tried-configuration lineage is missing', () => {
