@@ -44,7 +44,6 @@ const safeQualificationConfig = () => {
 
 const advanceRuntimeQualificationWindow = () => {
   const config = safeQualificationConfig();
-  if (!config) return qualificationWindow;
   qualificationWindow = advanceQualificationWindow({
     existing: qualificationWindow,
     config,
