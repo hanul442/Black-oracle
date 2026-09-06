@@ -1,5 +1,5 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
-import { DeterministicReplayExecutionAdapter, compareExecutionFills } from '../../src/trading/executionAdapterParity';
+import { DeterministicReplayExecutionAdapter, compareExecutionFills, type ExecutionFillParityReport } from '../../src/trading/executionAdapterParity';
 import { buildExecutionDecision, type ExecutionPolicyInput } from '../../src/trading/executionPolicy';
 import type { GovernedTradingIntelligencePackage } from '../../src/trading/governanceCore';
 import type { FinalDecision } from '../../src/trading/intelligencePipeline';
@@ -83,8 +83,6 @@ export class PaperTradingSession {
       else if (governance?.finalDecision.action !== 'ENTER') decision = governanceVetoDecision(baseDecision, governance?.finalDecision.reasons ?? ['Governance evaluation was unavailable; new entry failed closed.']);
     }
 
-    // Sprint 7 bridge: the legacy decision remains authoritative. The independent
-    // pre-risk intent seam and post-governance target pipeline are observation-only.
     const targetPipeline = buildShadowTargetPipeline({
       market: normalized,
       strategyVersion: TRADING_STRATEGY_VERSION,
@@ -102,60 +100,15 @@ export class PaperTradingSession {
       governancePolicy: governance?.finalDecision.policy ?? null, intelligenceDisposition: governance?.finalDecision.intelligenceDisposition ?? null,
       intelligencePackageId: governance?.intelligence.id ?? null, scenarioSetId: governance?.intelligence.scenarios.id ?? null, councilRunId: governance?.intelligence.council.id ?? null,
       portfolioEntryBlockReasons: newEntryAllowed ? [] : newEntryBlockReasons, governanceError,
-      independentStrategyIntent: {
-        id: independentPolicyShadow.intent.id,
-        action: independentPolicyShadow.intent.action,
-        gate: independentPolicyShadow.intent.gate,
-        requestedNotional: independentPolicyShadow.intent.requestedNotional,
-        executionAuthority: independentPolicyShadow.intent.executionAuthority,
-      },
-      independentPolicyParity: {
-        id: independentPolicyShadow.parity.id,
-        status: independentPolicyShadow.parity.status,
-        actionParity: independentPolicyShadow.parity.actionParity,
-        sideParity: independentPolicyShadow.parity.sideParity,
-        notionalParity: independentPolicyShadow.parity.notionalParity,
-        protectionParity: independentPolicyShadow.parity.protectionParity,
-        riskDispositionParity: independentPolicyShadow.parity.riskDispositionParity,
-        executionAuthority: independentPolicyShadow.parity.executionAuthority,
-      },
-      strategyIntent: {
-        id: targetPipeline.intent.id,
-        action: targetPipeline.intent.action,
-        requestedNotional: targetPipeline.intent.requestedNotional,
-        executionAuthority: targetPipeline.intent.executionAuthority,
-      },
-      portfolioTarget: {
-        id: portfolioTarget.id,
-        source: portfolioTarget.source,
-        intent: portfolioTarget.intent,
-        currentWeight: portfolioTarget.currentWeight,
-        targetWeight: portfolioTarget.targetWeight,
-        currentNotional: portfolioTarget.currentNotional,
-        targetNotional: portfolioTarget.targetNotional,
-        deltaNotional: portfolioTarget.deltaNotional,
-        riskDisposition: portfolioTarget.riskDisposition,
-        executionAuthority: portfolioTarget.executionAuthority,
-      },
-      riskAdjustedTarget: {
-        id: targetPipeline.riskAdjustedTarget.id,
-        approvedTargetNotional: targetPipeline.riskAdjustedTarget.approvedTargetNotional,
-        approvedDeltaNotional: targetPipeline.riskAdjustedTarget.approvedDeltaNotional,
-        riskDisposition: targetPipeline.riskAdjustedTarget.riskDisposition,
-        executionAuthority: targetPipeline.riskAdjustedTarget.executionAuthority,
-      },
-      targetPipelineParity: {
-        id: targetPipeline.parity.id,
-        status: targetPipeline.parity.status,
-        expectedDeltaNotional: targetPipeline.parity.expectedDeltaNotional,
-        actualDeltaNotional: targetPipeline.parity.actualDeltaNotional,
-        absoluteDifference: targetPipeline.parity.absoluteDifference,
-        tolerance: targetPipeline.parity.tolerance,
-        executionAuthority: targetPipeline.parity.executionAuthority,
-      },
+      independentStrategyIntent: { id: independentPolicyShadow.intent.id, action: independentPolicyShadow.intent.action, gate: independentPolicyShadow.intent.gate, requestedNotional: independentPolicyShadow.intent.requestedNotional, executionAuthority: independentPolicyShadow.intent.executionAuthority },
+      independentPolicyParity: { id: independentPolicyShadow.parity.id, status: independentPolicyShadow.parity.status, actionParity: independentPolicyShadow.parity.actionParity, sideParity: independentPolicyShadow.parity.sideParity, notionalParity: independentPolicyShadow.parity.notionalParity, protectionParity: independentPolicyShadow.parity.protectionParity, riskDispositionParity: independentPolicyShadow.parity.riskDispositionParity, executionAuthority: independentPolicyShadow.parity.executionAuthority },
+      strategyIntent: { id: targetPipeline.intent.id, action: targetPipeline.intent.action, requestedNotional: targetPipeline.intent.requestedNotional, executionAuthority: targetPipeline.intent.executionAuthority },
+      portfolioTarget: { id: portfolioTarget.id, source: portfolioTarget.source, intent: portfolioTarget.intent, currentWeight: portfolioTarget.currentWeight, targetWeight: portfolioTarget.targetWeight, currentNotional: portfolioTarget.currentNotional, targetNotional: portfolioTarget.targetNotional, deltaNotional: portfolioTarget.deltaNotional, riskDisposition: portfolioTarget.riskDisposition, executionAuthority: portfolioTarget.executionAuthority },
+      riskAdjustedTarget: { id: targetPipeline.riskAdjustedTarget.id, approvedTargetNotional: targetPipeline.riskAdjustedTarget.approvedTargetNotional, approvedDeltaNotional: targetPipeline.riskAdjustedTarget.approvedDeltaNotional, riskDisposition: targetPipeline.riskAdjustedTarget.riskDisposition, executionAuthority: targetPipeline.riskAdjustedTarget.executionAuthority },
+      targetPipelineParity: { id: targetPipeline.parity.id, status: targetPipeline.parity.status, expectedDeltaNotional: targetPipeline.parity.expectedDeltaNotional, actualDeltaNotional: targetPipeline.parity.actualDeltaNotional, absoluteDifference: targetPipeline.parity.absoluteDifference, tolerance: targetPipeline.parity.tolerance, executionAuthority: targetPipeline.parity.executionAuthority },
     });
 
-    let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null; let executionAdapterParity = null;
+    let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null; let executionAdapterParity: ExecutionFillParityReport | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
       const timestamp = Date.now();
       const orderId = `paper-${timestamp}-${normalized}-buy`;
