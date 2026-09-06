@@ -1,5 +1,6 @@
 export * from './championChallenger';
 export * from './config';
+export * from './councilV2';
 export * from './evidence';
 export * from './evidenceSourcePolicy';
 export * from './executionPolicy';
