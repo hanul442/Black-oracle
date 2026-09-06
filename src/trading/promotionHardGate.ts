@@ -32,6 +32,7 @@ export interface PromotionHardGatePolicy {
     target: number;
     adapter: number;
   };
+  requiredInputTimeframes: number[];
   allowWarmupWatch: boolean;
   minimumGradeByStage: Record<StrategyPromotionStage, OracleGrade>;
   minimumRatingConfidence: 'MEDIUM' | 'HIGH';
@@ -39,7 +40,7 @@ export interface PromotionHardGatePolicy {
 
 export interface PromotionHardGateInput {
   stage: StrategyPromotionStage;
-  inputValidation: InputValidationLedgerRecord | null;
+  inputValidation: InputValidationLedgerRecord | InputValidationLedgerRecord[] | null;
   blindValidation: BlindValidationResult | null;
   walkForward: WalkForwardResult | null;
   monteCarlo: MonteCarloValidation | null;
@@ -80,6 +81,7 @@ export const DEFAULT_PROMOTION_HARD_GATE_POLICY: PromotionHardGatePolicy = {
   minimumMonteCarloTrades: 20,
   minimumAuditCoverage: 0.9,
   minimumParityObservations: { policy: 20, target: 20, adapter: 5 },
+  requiredInputTimeframes: [15, 60, 240],
   allowWarmupWatch: true,
   minimumGradeByStage: {
     EXPERIMENT_TO_INCUBATOR: 'BBB-',
@@ -94,6 +96,7 @@ const parityStatus = (value: unknown): string | null => {
   const record = asRecord(value);
   return typeof record?.status === 'string' ? record.status : null;
 };
+const inputRecords = (value: PromotionHardGateInput['inputValidation']): InputValidationLedgerRecord[] => value == null ? [] : Array.isArray(value) ? value : [value];
 
 /** Summarize Sprint 7 shadow/runtime parity evidence from the immutable Trading Ledger. */
 export const summarizePromotionParityFromLedger = (events: TradingLedgerEvent[]): PromotionParitySummary => {
@@ -143,35 +146,55 @@ export const buildStrategyPromotionEligibility = (
 ): StrategyPromotionEligibility => {
   const minimumGrade = policy.minimumGradeByStage[input.stage];
   const checks: PromotionGateCheck[] = [];
+  const records = inputRecords(input.inputValidation);
+  const requiredFrames = [...new Set(policy.requiredInputTimeframes.map((value) => Math.trunc(value)).filter((value) => value > 0))];
+  const recordByFrame = new Map(records
+    .filter((record) => Number.isFinite(record.dataset.timeframeMinutes))
+    .map((record) => [record.dataset.timeframeMinutes as number, record] as [number, InputValidationLedgerRecord]));
+  const missingFrames = requiredFrames.filter((frame) => !recordByFrame.has(frame));
+  const requiredRecords = requiredFrames.flatMap((frame) => recordByFrame.get(frame) ? [recordByFrame.get(frame)!] : []);
 
-  const inputRecord = input.inputValidation;
-  const integrityAvailable = Boolean(inputRecord);
+  const integrityFailed = requiredRecords.filter((record) => record.integrity.disposition !== 'PASS');
+  const integrityPassed = missingFrames.length === 0 && integrityFailed.length === 0 && requiredRecords.length === requiredFrames.length;
   checks.push(check(
     'INPUT_INTEGRITY',
-    inputRecord?.integrity.disposition === 'PASS',
-    !integrityAvailable,
-    inputRecord ? `Candle integrity is ${inputRecord.integrity.disposition}.` : 'Input validation provenance is missing.',
+    integrityPassed,
+    missingFrames.length > 0 || records.length === 0,
+    integrityPassed
+      ? `Required input integrity passed for ${requiredFrames.join('/')} minute timeframes.`
+      : missingFrames.length
+        ? `Input-validation provenance is missing for timeframe(s): ${missingFrames.join(', ')}.`
+        : `Input integrity failed for timeframe(s): ${integrityFailed.map((record) => record.dataset.timeframeMinutes).join(', ')}.`,
   ));
 
-  const warmupDisposition = inputRecord?.warmup?.disposition ?? null;
-  const warmupPassed = warmupDisposition === 'PASS' || (policy.allowWarmupWatch && warmupDisposition === 'WATCH');
+  const unstableWarmup = requiredRecords.filter((record) => {
+    const disposition = record.warmup?.disposition ?? null;
+    return disposition !== 'PASS' && !(policy.allowWarmupWatch && disposition === 'WATCH');
+  });
+  const warmupMissing = missingFrames.length > 0 || requiredRecords.some((record) => !record.warmup || record.warmup.disposition === 'INSUFFICIENT_DATA');
+  const warmupPassed = missingFrames.length === 0 && unstableWarmup.length === 0 && requiredRecords.length === requiredFrames.length;
   checks.push(check(
     'WARMUP_STABILITY',
     warmupPassed,
-    warmupDisposition == null || warmupDisposition === 'INSUFFICIENT_DATA',
-    warmupDisposition ? `Recursive warm-up stability is ${warmupDisposition}.` : 'Recursive warm-up evidence is missing.',
+    warmupMissing,
+    warmupPassed
+      ? `Recursive warm-up stability is inside policy for ${requiredFrames.join('/')} minute timeframes.`
+      : warmupMissing
+        ? 'Recursive warm-up evidence is incomplete for one or more required timeframes.'
+        : `Recursive warm-up policy failed for timeframe(s): ${unstableWarmup.map((record) => `${record.dataset.timeframeMinutes}:${record.warmup?.disposition ?? 'MISSING'}`).join(', ')}.`,
   ));
 
-  const datasetReproducible = Boolean(
-    inputRecord?.dataset.datasetId
-    && /^sha256:[0-9a-f]{64}$/.test(inputRecord.dataset.checksum)
-    && /^rcfg-v1-[0-9a-f]{16}$/.test(String(input.researchConfigurationId ?? '').toLowerCase()),
-  );
+  const researchConfigurationValid = /^rcfg-v1-[0-9a-f]{16}$/.test(String(input.researchConfigurationId ?? '').toLowerCase());
+  const reproducibleRecords = requiredRecords.filter((record) => Boolean(record.dataset.datasetId) && /^sha256:[0-9a-f]{64}$/.test(record.dataset.checksum));
+  const singleMarket = new Set(requiredRecords.map((record) => record.dataset.market).filter(Boolean)).size <= 1;
+  const datasetReproducible = missingFrames.length === 0 && reproducibleRecords.length === requiredFrames.length && researchConfigurationValid && singleMarket;
   checks.push(check(
     'REPRODUCIBLE_LINEAGE',
     datasetReproducible,
-    !inputRecord || !input.researchConfigurationId,
-    datasetReproducible ? `Dataset ${inputRecord!.dataset.datasetId} and research configuration are reproducibly identified.` : 'Dataset checksum and/or research configuration ID is missing or invalid.',
+    missingFrames.length > 0 || records.length === 0 || !input.researchConfigurationId,
+    datasetReproducible
+      ? `All required datasets and research configuration ${input.researchConfigurationId} are reproducibly identified.`
+      : 'Required timeframe checksums, a consistent market, and/or research configuration ID are missing or invalid.',
   ));
 
   const blind = input.blindValidation;
