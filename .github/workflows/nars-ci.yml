@@ -9,6 +9,7 @@ on:
     branches:
       - nars-v4-foundation
       - nars-v4-shadow-data-plane
+      - nars-v4-event-clustering
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'

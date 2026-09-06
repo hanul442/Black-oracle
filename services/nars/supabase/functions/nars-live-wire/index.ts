@@ -1,14 +1,41 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
+const VERSION = "4.1.2-cluster";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+
+type RestFailure = { ok: false; status: number; detail: string };
+
+function dbError(error: string, result: RestFailure): Response {
+  return reply(500, { ok: false, error, status: result.status, detail: result.detail });
+}
 
 function asBoolean(value: string | null): boolean | null {
   if (value == null) return null;
   if (/^(1|true|y|yes)$/i.test(value)) return true;
   if (/^(0|false|n|no)$/i.test(value)) return false;
   return null;
+}
+
+function parseLimit(value: string | null): number {
+  return Math.min(200, Math.max(1, Number.parseInt(value ?? "50", 10) || 50));
+}
+
+function validDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? null : date.toISOString();
+}
+
+async function restJson(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  path: string,
+): Promise<{ ok: true; rows: Array<Record<string, unknown>> } | RestFailure> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { headers });
+  if (!response.ok) return { ok: false, status: response.status, detail: (await response.text()).slice(0, 800) };
+  return { ok: true, rows: await response.json() as Array<Record<string, unknown>> };
 }
 
 Deno.serve(async (req: Request) => {
@@ -23,34 +50,146 @@ Deno.serve(async (req: Request) => {
 
   const input = new URL(req.url);
   const headers = { authorization: `Bearer ${serviceRole}`, apikey: serviceRole };
+  const view = input.searchParams.get("view")?.trim() || "documents";
+  const limit = parseLimit(input.searchParams.get("limit"));
 
-  if (input.searchParams.get("view") === "metrics") {
-    const metricsRes = await fetch(`${supabaseUrl}/rest/v1/nars_shadow_metrics_v1?select=*`, { headers });
-    if (!metricsRes.ok) {
-      return reply(500, {
-        ok: false,
-        error: "shadow_metrics_query_failed",
-        status: metricsRes.status,
-        detail: (await metricsRes.text()).slice(0, 800),
-      });
-    }
-    const rows = await metricsRes.json() as Array<Record<string, unknown>>;
+  if (view === "metrics") {
+    const [shadow, cluster] = await Promise.all([
+      restJson(supabaseUrl, headers, "nars_shadow_metrics_v1?select=*"),
+      restJson(supabaseUrl, headers, "nars_cluster_metrics_v1?select=*"),
+    ]);
+    if (!shadow.ok) return dbError("shadow_metrics_query_failed", shadow);
+    if (!cluster.ok) return dbError("cluster_metrics_query_failed", cluster);
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
-      version: "4.0.2-shadow",
-      view: "metrics",
-      metrics: rows[0] ?? null,
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        shadow: shadow.rows[0] ?? null,
+        cluster: cluster.rows[0] ?? null,
+      },
     });
   }
 
-  const limit = Math.min(200, Math.max(1, Number.parseInt(input.searchParams.get("limit") ?? "50", 10) || 50));
+  if (view === "review") {
+    const reviewType = input.searchParams.get("type")?.trim() || null;
+    if (reviewType && !["story_document", "event_story"].includes(reviewType)) {
+      return reply(400, { ok: false, error: "invalid_review_type" });
+    }
+    const params = new URLSearchParams();
+    params.set("select", "review_type,parent_id,child_id,similarity,method,parent_title,child_title,observed_at");
+    params.set("order", "observed_at.desc");
+    params.set("limit", String(limit));
+    if (reviewType) params.set("review_type", `eq.${reviewType}`);
+    const result = await restJson(supabaseUrl, headers, `nars_cluster_review_queue_v1?${params.toString()}`);
+    if (!result.ok) return dbError("cluster_review_query_failed", result);
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, reviewType },
+      items: result.rows,
+    });
+  }
+
+  if (view === "stories") {
+    const status = input.searchParams.get("status")?.trim() || null;
+    const language = input.searchParams.get("language")?.trim() || null;
+    const eventId = input.searchParams.get("event_id")?.trim() || null;
+    const sinceRaw = input.searchParams.get("since")?.trim() || null;
+    const since = validDate(sinceRaw);
+    if (sinceRaw && !since) return reply(400, { ok: false, error: "invalid_since" });
+
+    const params = new URLSearchParams();
+    params.set("select", "story_id,story_key,display_title,canonical_title,language,status,first_seen_at,last_seen_at,document_count,source_count,breaking_count,event_id,event_status,priority_score,evidence_grade,event_similarity,sources");
+    params.set("order", "last_seen_at.desc");
+    params.set("limit", String(limit));
+    if (status) params.set("status", `eq.${status}`);
+    if (language) params.set("language", `eq.${language}`);
+    if (eventId) params.set("event_id", `eq.${eventId}`);
+    if (since) params.set("last_seen_at", `gte.${since}`);
+
+    const result = await restJson(supabaseUrl, headers, `nars_story_wire_v1?${params.toString()}`);
+    if (!result.ok) return dbError("story_wire_query_failed", result);
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, status, language, eventId, since },
+      items: result.rows,
+    });
+  }
+
+  if (view === "events") {
+    const status = input.searchParams.get("status")?.trim() || null;
+    const language = input.searchParams.get("language")?.trim() || null;
+    const eventId = input.searchParams.get("event_id")?.trim() || null;
+    const sinceRaw = input.searchParams.get("since")?.trim() || null;
+    const since = validDate(sinceRaw);
+    const minSources = Math.max(0, Number.parseInt(input.searchParams.get("min_sources") ?? "0", 10) || 0);
+    const minStories = Math.max(0, Number.parseInt(input.searchParams.get("min_stories") ?? "0", 10) || 0);
+    if (sinceRaw && !since) return reply(400, { ok: false, error: "invalid_since" });
+
+    const params = new URLSearchParams();
+    params.set("select", "event_id,event_key,title,status,priority_score,evidence_grade,first_detected_at,last_updated_at,story_count,document_count,source_count,breaking_count,cluster_method,language");
+    params.set("order", "last_updated_at.desc");
+    params.set("limit", String(limit));
+    if (eventId) params.set("event_id", `eq.${eventId}`);
+    if (status) params.set("status", `eq.${status}`);
+    if (language) params.set("language", `eq.${language}`);
+    if (since) params.set("last_updated_at", `gte.${since}`);
+    if (minSources > 0) params.set("source_count", `gte.${minSources}`);
+    if (minStories > 0) params.set("story_count", `gte.${minStories}`);
+
+    const result = await restJson(supabaseUrl, headers, `nars_event_wire_v1?${params.toString()}`);
+    if (!result.ok) return dbError("event_wire_query_failed", result);
+
+    if (eventId && result.rows.length === 1) {
+      const storyParams = new URLSearchParams();
+      storyParams.set("select", "story_id,story_key,display_title,language,status,first_seen_at,last_seen_at,document_count,source_count,breaking_count,event_similarity,sources");
+      storyParams.set("event_id", `eq.${eventId}`);
+      storyParams.set("order", "first_seen_at.asc");
+      const stories = await restJson(supabaseUrl, headers, `nars_story_wire_v1?${storyParams.toString()}`);
+      return reply(200, {
+        ok: true,
+        service: "nars-live-wire",
+        version: VERSION,
+        view: "event_detail",
+        event: result.rows[0],
+        stories: stories.ok ? stories.rows : [],
+        storyQueryError: stories.ok ? null : { status: stories.status, detail: stories.detail },
+      });
+    }
+
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, status, language, eventId, since, minSources, minStories },
+      items: result.rows,
+    });
+  }
+
+  if (view !== "documents") return reply(400, { ok: false, error: "invalid_view" });
+
   const origin = input.searchParams.get("origin")?.trim() || null;
   const source = input.searchParams.get("source")?.trim() || null;
   const breaking = asBoolean(input.searchParams.get("breaking"));
-  const since = input.searchParams.get("since")?.trim() || null;
+  const sinceRaw = input.searchParams.get("since")?.trim() || null;
+  const since = validDate(sinceRaw);
   const seenBy = input.searchParams.get("seen_by")?.trim() || null;
-
+  if (sinceRaw && !since) return reply(400, { ok: false, error: "invalid_since" });
   if (seenBy && !["v3", "collector", "both", "v3_only", "collector_only"].includes(seenBy)) {
     return reply(400, { ok: false, error: "invalid_seen_by" });
   }
@@ -76,23 +215,12 @@ Deno.serve(async (req: Request) => {
     params.set("v3_seen", "eq.false");
     params.set("collector_seen", "eq.true");
   }
-  if (since) {
-    const date = new Date(since);
-    if (Number.isNaN(date.valueOf())) return reply(400, { ok: false, error: "invalid_since" });
-    params.set("last_seen_at", `gte.${date.toISOString()}`);
-  }
+  if (since) params.set("last_seen_at", `gte.${since}`);
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/nars_live_wire_v1?${params.toString()}`, { headers });
-  if (!response.ok) {
-    return reply(500, {
-      ok: false,
-      error: "live_wire_query_failed",
-      status: response.status,
-      detail: (await response.text()).slice(0, 800),
-    });
-  }
+  const result = await restJson(supabaseUrl, headers, `nars_live_wire_v1?${params.toString()}`);
+  if (!result.ok) return dbError("live_wire_query_failed", result);
 
-  const rows = await response.json() as Array<Record<string, unknown> & {
+  const rows = result.rows as Array<Record<string, unknown> & {
     retrieved_at?: string;
     last_seen_at?: string;
     source_key?: string;
@@ -101,7 +229,6 @@ Deno.serve(async (req: Request) => {
     collector_seen?: boolean;
     collector_minus_v3_seconds?: number | string | null;
   }>;
-
   const newestRaw = rows[0]?.last_seen_at ?? rows[0]?.retrieved_at;
   const newest = newestRaw ? new Date(String(newestRaw)) : null;
   const lagSeconds = newest && !Number.isNaN(newest.valueOf())
@@ -121,14 +248,12 @@ Deno.serve(async (req: Request) => {
     const ingestOrigin = String(row.ingest_origin ?? "unknown");
     sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) ?? 0) + 1);
     originCounts.set(ingestOrigin, (originCounts.get(ingestOrigin) ?? 0) + 1);
-
     const v3 = row.v3_seen === true;
     const collector = row.collector_seen === true;
     if (v3 && collector) both += 1;
     else if (v3) v3Only += 1;
     else if (collector) collectorOnly += 1;
     else neither += 1;
-
     const delta = Number(row.collector_minus_v3_seconds);
     if (Number.isFinite(delta)) deltas.push(delta);
   }
@@ -142,7 +267,8 @@ Deno.serve(async (req: Request) => {
   return reply(200, {
     ok: true,
     service: "nars-live-wire",
-    version: "4.0.2-shadow",
+    version: VERSION,
+    view,
     generatedAt: new Date().toISOString(),
     count: rows.length,
     lagSeconds,
@@ -150,14 +276,7 @@ Deno.serve(async (req: Request) => {
     summary: {
       sources: Object.fromEntries(sourceCounts),
       origins: Object.fromEntries(originCounts),
-      comparison: {
-        v3Only,
-        collectorOnly,
-        both,
-        neither,
-        overlapRate,
-        meanCollectorMinusV3Seconds: meanDeltaSeconds,
-      },
+      comparison: { v3Only, collectorOnly, both, neither, overlapRate, meanCollectorMinusV3Seconds: meanDeltaSeconds },
     },
     items: rows,
   });
