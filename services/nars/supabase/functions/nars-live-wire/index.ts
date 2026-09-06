@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
+const VERSION = "4.1.2-cluster";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -47,14 +48,46 @@ Deno.serve(async (req: Request) => {
   const limit = parseLimit(input.searchParams.get("limit"));
 
   if (view === "metrics") {
-    const result = await restJson(supabaseUrl, headers, "nars_shadow_metrics_v1?select=*");
-    if (!result.ok) return reply(500, { ok: false, error: "shadow_metrics_query_failed", ...result });
+    const [shadow, cluster] = await Promise.all([
+      restJson(supabaseUrl, headers, "nars_shadow_metrics_v1?select=*"),
+      restJson(supabaseUrl, headers, "nars_cluster_metrics_v1?select=*"),
+    ]);
+    if (!shadow.ok) return reply(500, { ok: false, error: "shadow_metrics_query_failed", ...shadow });
+    if (!cluster.ok) return reply(500, { ok: false, error: "cluster_metrics_query_failed", ...cluster });
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
-      version: "4.1.1-cluster",
+      version: VERSION,
       view,
-      metrics: result.rows[0] ?? null,
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        shadow: shadow.rows[0] ?? null,
+        cluster: cluster.rows[0] ?? null,
+      },
+    });
+  }
+
+  if (view === "review") {
+    const reviewType = input.searchParams.get("type")?.trim() || null;
+    if (reviewType && !["story_document", "event_story"].includes(reviewType)) {
+      return reply(400, { ok: false, error: "invalid_review_type" });
+    }
+    const params = new URLSearchParams();
+    params.set("select", "review_type,parent_id,child_id,similarity,method,parent_title,child_title,observed_at");
+    params.set("order", "observed_at.desc");
+    params.set("limit", String(limit));
+    if (reviewType) params.set("review_type", `eq.${reviewType}`);
+    const result = await restJson(supabaseUrl, headers, `nars_cluster_review_queue_v1?${params.toString()}`);
+    if (!result.ok) return reply(500, { ok: false, error: "cluster_review_query_failed", ...result });
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, reviewType },
+      items: result.rows,
     });
   }
 
@@ -80,7 +113,7 @@ Deno.serve(async (req: Request) => {
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
-      version: "4.1.1-cluster",
+      version: VERSION,
       view,
       generatedAt: new Date().toISOString(),
       count: result.rows.length,
@@ -122,7 +155,7 @@ Deno.serve(async (req: Request) => {
       return reply(200, {
         ok: true,
         service: "nars-live-wire",
-        version: "4.1.1-cluster",
+        version: VERSION,
         view: "event_detail",
         event: result.rows[0],
         stories: stories.ok ? stories.rows : [],
@@ -133,7 +166,7 @@ Deno.serve(async (req: Request) => {
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
-      version: "4.1.1-cluster",
+      version: VERSION,
       view,
       generatedAt: new Date().toISOString(),
       count: result.rows.length,
@@ -228,7 +261,7 @@ Deno.serve(async (req: Request) => {
   return reply(200, {
     ok: true,
     service: "nars-live-wire",
-    version: "4.1.1-cluster",
+    version: VERSION,
     view,
     generatedAt: new Date().toISOString(),
     count: rows.length,
