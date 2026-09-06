@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   BookOpen,
   ChevronRight,
-  Database,
   FlaskConical,
   Plus,
   Radar,
@@ -21,6 +20,28 @@ type AuditCompleteness = {
   dimensions?: Array<{ id: string; state: string; reason: string }>;
 };
 
+type Forecast = {
+  available: boolean;
+  direction: string;
+  confidence: number;
+  uncertainty?: number;
+  reasons?: string[];
+};
+
+type TraceGovernance = {
+  finalDecisionId?: string | null;
+  baseAction?: string | null;
+  mode?: string | null;
+  policy?: string | null;
+  intelligenceDisposition?: string | null;
+  intelligenceConfidence?: number | null;
+  intelligencePackageId?: string | null;
+  scenarioSetId?: string | null;
+  recommendedScenarioId?: string | null;
+  councilRunId?: string | null;
+  reasons?: string[];
+};
+
 type Trace = {
   timestamp: number;
   market: string;
@@ -30,13 +51,14 @@ type Trace = {
   confidence?: number | null;
   strategyDisposition?: string | null;
   riskDisposition?: string | null;
-  forecast?: null | { available: boolean; direction: string; confidence: number; uncertainty?: number; reasons?: string[] };
+  forecast?: Forecast | null;
   evidenceActiveCount?: number;
   evidenceContradictionCount?: number;
   evidenceIds?: string[];
   primaryReason?: string | null;
   reasons?: string[];
   riskReasons?: string[];
+  governance?: TraceGovernance | null;
   auditCompleteness?: AuditCompleteness;
 };
 
@@ -63,7 +85,7 @@ type PositionEvidence = {
   externalEvidenceContradictions: number;
   evidenceIds: string[];
   primaryReason: string;
-  forecast?: null | { available: boolean; direction: string; confidence: number; uncertainty?: number; reasons?: string[] };
+  forecast?: Forecast | null;
   evidenceItems?: Array<{
     id: string;
     title: string;
@@ -93,7 +115,7 @@ type DecisionItem = {
   evidenceContradictionCount?: number;
   evidenceIds?: string[];
   primaryReason?: string | null;
-  forecast?: null | { available: boolean; direction: string; confidence: number; uncertainty?: number; reasons?: string[] };
+  forecast?: Forecast | null;
 };
 
 type TradingStatus = {
@@ -101,6 +123,54 @@ type TradingStatus = {
   status?: string;
   positionEvidence?: PositionEvidence[];
   decisionTape?: DecisionItem[];
+};
+
+type GovernanceScenario = {
+  id: string;
+  market: string;
+  label: string;
+  probability: number;
+  confidence: number;
+  direction: string;
+  thesis: string;
+  triggerConditions: string[];
+  invalidationConditions: string[];
+  watchItems: string[];
+  evidenceIds: string[];
+};
+
+type CouncilRanking = {
+  scenarioId: string;
+  rank: number;
+  consensusScore: number;
+  probabilityEstimate: number;
+  confidence: number;
+  disposition: string;
+  dominantSupport?: string | null;
+  dominantChallenge?: string | null;
+  unresolvedUncertainty: string[];
+  preservedDissent: string[];
+};
+
+type LensReview = {
+  lensId: string;
+  scenarioId: string;
+  stance: string;
+  confidence: number;
+  reasons: string[];
+};
+
+type GovernanceSnapshot = {
+  intelligencePackageId: string | null;
+  scenarioSetId: string | null;
+  councilRunId: string | null;
+  finalDecisionId: string | null;
+  generatedAt: number | null;
+  expiresAt: number | null;
+  recommendedScenarioId: string | null;
+  scenarios: GovernanceScenario[];
+  councilRankings: CouncilRanking[];
+  lensReviews: LensReview[];
 };
 
 type TradeCase = {
@@ -111,8 +181,10 @@ type TradeCase = {
   openedAt: number;
   closedAt: number | null;
   intelligencePackageId: string | null;
+  scenarioSetId?: string | null;
   councilRunId: string | null;
   finalDecisionId: string | null;
+  governanceSnapshot?: GovernanceSnapshot | null;
   supervisionNotes: string[];
   entry: {
     timestamp: number;
@@ -152,6 +224,7 @@ const pct = (value: number | null | undefined, digits = 0) => value == null || !
 const cash = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : value < 0 ? '-' : ''}₩${money.format(Math.abs(value))}`;
 const price = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `₩${money.format(value)}`;
 const stamp = (value: number | null | undefined) => value ? new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
+const metric = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : Math.abs(value) <= 1 ? pct(value) : value.toFixed(1);
 
 const normalizeMarket = (value: string) => {
   const normalized = value.trim().toUpperCase().replace(/\s+/g, '');
@@ -277,7 +350,7 @@ export const CasesView: React.FC = () => {
             <div>
               <div className="font-mono text-[7px] uppercase tracking-[0.22em] text-[#43D9E6]">Position supervision</div>
               <h1 className="mt-2 text-[28px] font-medium tracking-[-0.04em] md:text-[34px]">Positions</h1>
-              <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D]">Live holdings, system candidates and research watchlist share one inspection model. Forecast and Council are provenance layers inside each market dossier rather than separate primary destinations.</p>
+              <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-[#68737D]">Holdings, candidates and research share one inspection model. Evidence, Scenario and Council stay attached to the market dossier so an operator can reconstruct the decision chain without leaving Positions.</p>
             </div>
             <div className="flex flex-wrap gap-3 font-mono text-[6px] uppercase tracking-[0.12em] text-[#59636D]"><span>{activePositions.length} open</span><span>{candidates.length} candidates</span><span>{research.length} research</span><span>{closedCases.length} closed</span><span className={status?.status === 'OK' ? 'text-[#72B6A0]' : 'text-[#C7A96B]'}>{status?.status || 'WAITING'}</span></div>
           </div>
@@ -350,19 +423,58 @@ const OverviewTab = ({ position, trace, tradeCase, segment }: { position: Positi
   ['SCORE', String(trace?.oracleTradeScore ?? position?.oracleTradeScore ?? '—')],
   ['CASE', tradeCase?.id || 'No persisted trade case'],
   ['STRATEGY', tradeCase?.entry.strategyVersion || '—'],
-]} />{tradeCase?.entry.multiTimeframe && <div className="border border-white/[0.055] bg-[#05070A] p-3"><div className="font-mono text-[6px] uppercase tracking-[0.13em] text-[#59636D]">ENTRY MULTI-TIMEFRAME</div><div className="mt-3 grid gap-px bg-white/[0.04] sm:grid-cols-3"><Frame label="4H" item={tradeCase.entry.multiTimeframe.frames.fourHour} /><Frame label="1H" item={tradeCase.entry.multiTimeframe.frames.oneHour} /><Frame label="15M" item={tradeCase.entry.multiTimeframe.frames.fifteenMinute} /></div></div>}{trace?.auditCompleteness?.missing?.length ? <div className="border border-[#C7A96B]/18 bg-[#C7A96B]/[0.02] p-3"><div className="font-mono text-[6px] uppercase text-[#C7A96B]">MISSING AUDIT LINKS</div><div className="mt-2 flex flex-wrap gap-1">{trace.auditCompleteness.missing.map((item) => <span key={item} className="border border-[#C7A96B]/16 px-1.5 py-1 font-mono text-[5px] uppercase text-[#A88D5F]">{item}</span>)}</div></div> : null}</div>;
+]} />{tradeCase?.entry.multiTimeframe && <div className="border border-white/[0.055] bg-[#05070A] p-3"><div className="font-mono text-[6px] uppercase tracking-[0.13em] text-[#59636D]">ENTRY MULTI-TIMEFRAME</div><div className="mt-3 grid gap-px bg-white/[0.04] sm:grid-cols-3"><Frame label="4H" item={tradeCase.entry.multiTimeframe.frames.fourHour} /><Frame label="1H" item={tradeCase.entry.multiTimeframe.frames.oneHour} /><Frame label="15M" item={tradeCase.entry.multiTimeframe.frames.fifteenMinute} /></div></div>}{trace?.governance && <div className="border border-[#72B6A0]/18 bg-[#72B6A0]/[0.02] p-3"><div className="font-mono text-[6px] uppercase text-[#72B6A0]">GOVERNANCE DECISION</div><div className="mt-2 grid gap-2 sm:grid-cols-2"><KeyValue label="POLICY" value={trace.governance.policy || '—'} /><KeyValue label="DISPOSITION" value={trace.governance.intelligenceDisposition || '—'} /><KeyValue label="BASE → FINAL" value={`${trace.governance.baseAction || '—'} → ${trace.action}`} /><KeyValue label="SCENARIO" value={trace.governance.recommendedScenarioId || '—'} /></div></div>}{trace?.auditCompleteness?.missing?.length ? <div className="border border-[#C7A96B]/18 bg-[#C7A96B]/[0.02] p-3"><div className="font-mono text-[6px] uppercase text-[#C7A96B]">MISSING AUDIT LINKS</div><div className="mt-2 flex flex-wrap gap-1">{trace.auditCompleteness.missing.map((item) => <span key={item} className="border border-[#C7A96B]/16 px-1.5 py-1 font-mono text-[5px] uppercase text-[#A88D5F]">{item}</span>)}</div></div> : null}</div>;
 
 const EvidenceTab = ({ position, trace }: { position: PositionEvidence | null; trace: Trace | null }) => <div><div className="grid grid-cols-3 gap-px bg-white/[0.04]"><Stat label="STATE" value={position?.evidenceState || ((trace?.evidenceActiveCount || 0) > 0 ? 'ATTACHED' : 'NONE')} warning={(position?.evidenceState || 'TECHNICAL_ONLY') !== 'EVIDENCE_SUPPORTED'} /><Stat label="ACTIVE" value={String(position?.externalEvidenceActive ?? trace?.evidenceActiveCount ?? 0)} /><Stat label="CONTRADICTIONS" value={String(position?.externalEvidenceContradictions ?? trace?.evidenceContradictionCount ?? 0)} warning={(position?.externalEvidenceContradictions || trace?.evidenceContradictionCount || 0) > 0} /></div><div className="mt-3 space-y-2">{(position?.evidenceItems || []).map((item) => <div key={item.id} className="border border-white/[0.055] bg-[#05070A] p-3"><div className="flex flex-wrap items-center gap-2 font-mono text-[5px] uppercase text-[#59636D]"><span className="text-[#8B969F]">{item.publisher}</span><span>{item.sourceType}</span><span>REL {Math.round(item.reliability * (item.reliability <= 1 ? 100 : 1))}</span><span>{item.direction}</span>{item.contradictionOf && <span className="text-[#D66565]">CONTRADICTS</span>}</div><div className="mt-1.5 text-[10px] text-[#AEB7BF]">{item.title}</div>{item.summary && <div className="mt-1 text-[8px] leading-relaxed text-[#59636D]">{item.summary}</div>}<div className="mt-2 font-mono text-[5px] text-[#46515B]">{item.id} · observed {stamp(item.observedAt)} · expires {stamp(item.expiresAt)}</div></div>)}{!(position?.evidenceItems || []).length && <Empty text={(trace?.evidenceIds || []).length ? `Evidence IDs: ${(trace?.evidenceIds || []).join(' · ')}` : 'No structured external evidence attached to this dossier.'} />}</div></div>;
 
-const ScenarioTab = ({ trace, tradeCase }: { trace: Trace | null; tradeCase: TradeCase | null }) => <div className="space-y-3"><div className="border border-white/[0.055] bg-[#05070A] p-4"><div className="font-mono text-[6px] uppercase text-[#59636D]">LATEST FORECAST</div>{trace?.forecast?.available ? <><div className="mt-2 text-[18px] font-light text-[#C8D0D6]">{trace.forecast.direction}</div><div className="mt-2 flex gap-4 font-mono text-[6px] uppercase text-[#59636D]"><span>CONF <b className="font-normal text-[#8C98A2]">{pct(trace.forecast.confidence)}</b></span><span>UNCERTAINTY <b className="font-normal text-[#8C98A2]">{pct(trace.forecast.uncertainty)}</b></span></div>{trace.forecast.reasons?.length ? <div className="mt-3 space-y-1 text-[9px] text-[#68737D]">{trace.forecast.reasons.map((reason, index) => <div key={`${reason}-${index}`}>{reason}</div>)}</div> : null}</> : <div className="mt-3 text-[9px] text-[#C7A96B]">Forecast unavailable at the persisted decision point.</div>}</div><div className={`border p-4 ${tradeCase?.intelligencePackageId ? 'border-[#72B6A0]/18 bg-[#72B6A0]/[0.02]' : 'border-[#C7A96B]/18 bg-[#C7A96B]/[0.02]'}`}><div className="font-mono text-[6px] uppercase text-[#59636D]">PERSISTED SCENARIO / INTELLIGENCE LINK</div><div className="mt-2 font-mono text-[8px] text-[#8D98A2]">{tradeCase?.intelligencePackageId || 'NOT LINKED'}</div><div className="mt-2 text-[8px] leading-relaxed text-[#59636D]">A forecast is not treated as a full scenario chain. Until a persisted scenario package is linked, Audit completeness keeps this dimension missing.</div></div></div>;
+const ScenarioTab = ({ trace, tradeCase }: { trace: Trace | null; tradeCase: TradeCase | null }) => {
+  const governance = tradeCase?.governanceSnapshot || null;
+  const scenarios = (governance?.scenarios || []).slice().sort((a, b) => b.probability - a.probability);
+  return <div className="space-y-3">
+    <div className="border border-white/[0.055] bg-[#05070A] p-4"><div className="font-mono text-[6px] uppercase text-[#59636D]">LATEST EVIDENCE FORECAST</div>{trace?.forecast?.available ? <><div className="mt-2 text-[18px] font-light text-[#C8D0D6]">{trace.forecast.direction}</div><div className="mt-2 flex gap-4 font-mono text-[6px] uppercase text-[#59636D]"><span>CONF <b className="font-normal text-[#8C98A2]">{pct(trace.forecast.confidence)}</b></span><span>UNCERTAINTY <b className="font-normal text-[#8C98A2]">{pct(trace.forecast.uncertainty)}</b></span></div>{trace.forecast.reasons?.length ? <div className="mt-3 space-y-1 text-[9px] text-[#68737D]">{trace.forecast.reasons.map((reason, index) => <div key={`${reason}-${index}`}>{reason}</div>)}</div> : null}</> : <div className="mt-3 text-[9px] text-[#C7A96B]">Forecast unavailable at the persisted decision point.</div>}</div>
+    {governance ? <>
+      <div className="grid gap-px bg-white/[0.04] sm:grid-cols-4"><Stat label="SCENARIO SET" value={governance.scenarioSetId || '—'} /><Stat label="GENERATED" value={stamp(governance.generatedAt)} /><Stat label="EXPIRES" value={stamp(governance.expiresAt)} /><Stat label="RECOMMENDED" value={governance.recommendedScenarioId || 'NONE'} warning={!governance.recommendedScenarioId} /></div>
+      <div className="space-y-2">{scenarios.map((scenario) => {
+        const recommended = scenario.id === governance.recommendedScenarioId;
+        return <div key={scenario.id} className={`border p-3 ${recommended ? 'border-[#72B6A0]/22 bg-[#72B6A0]/[0.025]' : 'border-white/[0.055] bg-[#05070A]'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-[8px] text-[#AEB7BF]">#{scenario.label}</span><span className="font-mono text-[6px] uppercase text-[#59636D]">{scenario.direction}</span>{recommended && <span className="border border-[#72B6A0]/20 px-1.5 py-0.5 font-mono text-[5px] uppercase text-[#72B6A0]">Council lead</span>}</div><div className="font-mono text-[7px] text-[#8A959F]">P {pct(scenario.probability)} · C {pct(scenario.confidence)}</div></div>
+          <div className="mt-2 text-[10px] leading-relaxed text-[#8B969F]">{scenario.thesis}</div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-3"><ScenarioList title="TRIGGERS" items={scenario.triggerConditions} /><ScenarioList title="INVALIDATION" items={scenario.invalidationConditions} warning /><ScenarioList title="WATCH" items={scenario.watchItems} /></div>
+          <div className="mt-2 break-all font-mono text-[5px] leading-relaxed text-[#414B54]">{scenario.evidenceIds.length ? `Evidence ${scenario.evidenceIds.join(' · ')}` : 'No Evidence IDs attached.'}</div>
+        </div>;
+      })}</div>
+    </> : <Empty text="No persisted Scenario dossier exists for this market/case. Black Oracle does not reconstruct or fabricate a missing scenario after the fact." />}
+  </div>;
+};
 
-const CouncilTab = ({ tradeCase }: { tradeCase: TradeCase | null }) => <div className={`border p-4 ${tradeCase?.councilRunId ? 'border-[#72B6A0]/18 bg-[#72B6A0]/[0.02]' : 'border-[#C7A96B]/18 bg-[#C7A96B]/[0.02]'}`}><div className="font-mono text-[6px] uppercase text-[#59636D]">COUNCIL RUN</div><div className="mt-2 font-mono text-[9px] text-[#AEB7BF]">{tradeCase?.councilRunId || 'NO PERSISTED COUNCIL RUN LINKED'}</div><div className="mt-3 text-[9px] leading-relaxed text-[#68737D]">Council remains advisory. A missing run is shown as an audit gap rather than silently substituting a generic opinion.</div>{tradeCase?.finalDecisionId && <div className="mt-3 border-t border-white/[0.05] pt-2 font-mono text-[6px] text-[#59636D]">FINAL DECISION {tradeCase.finalDecisionId}</div>}</div>;
+const CouncilTab = ({ tradeCase }: { tradeCase: TradeCase | null }) => {
+  const governance = tradeCase?.governanceSnapshot || null;
+  const rankings = (governance?.councilRankings || []).slice().sort((a, b) => a.rank - b.rank);
+  return <div className="space-y-3">
+    <div className={`border p-4 ${governance?.councilRunId ? 'border-[#72B6A0]/18 bg-[#72B6A0]/[0.02]' : 'border-[#C7A96B]/18 bg-[#C7A96B]/[0.02]'}`}><div className="font-mono text-[6px] uppercase text-[#59636D]">DETERMINISTIC COUNCIL RUN</div><div className="mt-2 break-all font-mono text-[8px] text-[#AEB7BF]">{governance?.councilRunId || tradeCase?.councilRunId || 'NO PERSISTED COUNCIL RUN'}</div><div className="mt-2 text-[9px] leading-relaxed text-[#68737D]">Council ranks scenarios and preserves dissent. It cannot manufacture an order, override deterministic Risk, or block protective exits.</div>{(governance?.finalDecisionId || tradeCase?.finalDecisionId) && <div className="mt-3 break-all border-t border-white/[0.05] pt-2 font-mono text-[6px] text-[#59636D]">FINAL DECISION {governance?.finalDecisionId || tradeCase?.finalDecisionId}</div>}</div>
+    {governance ? <>
+      <div className="space-y-2">{rankings.map((ranking) => {
+        const scenario = governance.scenarios.find((item) => item.id === ranking.scenarioId);
+        const recommended = ranking.scenarioId === governance.recommendedScenarioId;
+        const reviews = governance.lensReviews.filter((item) => item.scenarioId === ranking.scenarioId);
+        return <div key={ranking.scenarioId} className={`border p-3 ${recommended ? 'border-[#72B6A0]/22 bg-[#72B6A0]/[0.025]' : 'border-white/[0.055] bg-[#05070A]'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="font-mono text-[8px] text-[#AEB7BF]">R{ranking.rank} · {scenario?.label || ranking.scenarioId}</span><span className={`font-mono text-[6px] uppercase ${ranking.disposition === 'ADVANCE' ? 'text-[#72B6A0]' : ranking.disposition === 'REJECT' ? 'text-[#D66565]' : 'text-[#C7A96B]'}`}>{ranking.disposition}</span></div><div className="font-mono text-[6px] text-[#59636D]">consensus {metric(ranking.consensusScore)} · P {pct(ranking.probabilityEstimate)} · C {pct(ranking.confidence)}</div></div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2"><KeyValue label="DOMINANT SUPPORT" value={ranking.dominantSupport || 'None persisted'} /><KeyValue label="DOMINANT CHALLENGE" value={ranking.dominantChallenge || 'None persisted'} /></div>
+          {(ranking.preservedDissent.length > 0 || ranking.unresolvedUncertainty.length > 0) && <div className="mt-3 grid gap-2 sm:grid-cols-2"><ScenarioList title="PRESERVED DISSENT" items={ranking.preservedDissent} warning /><ScenarioList title="UNRESOLVED" items={ranking.unresolvedUncertainty} warning /></div>}
+          <div className="mt-3 grid gap-2 md:grid-cols-2">{reviews.map((review, index) => <div key={`${review.lensId}-${index}`} className="border border-white/[0.05] bg-[#070A0E] p-2.5"><div className="flex items-center justify-between gap-2 font-mono text-[6px] uppercase"><span className="text-[#8A959F]">{review.lensId}</span><span className={review.stance === 'SUPPORT' ? 'text-[#72B6A0]' : review.stance === 'CHALLENGE' ? 'text-[#D69A9A]' : 'text-[#C7A96B]'}>{review.stance} · {pct(review.confidence)}</span></div><div className="mt-2 space-y-1 text-[8px] leading-relaxed text-[#59636D]">{review.reasons.map((reason, reasonIndex) => <div key={`${reason}-${reasonIndex}`}>{reason}</div>)}</div></div>)}</div>
+        </div>;
+      })}</div>
+    </> : <Empty text="No persisted Council dossier exists for this market/case. A generic AI opinion is never substituted for a missing run." />}
+  </div>;
+};
 
 const RiskTab = ({ position, trace }: { position: PositionEvidence | null; trace: Trace | null }) => <div className="space-y-3"><div className="grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-4"><Stat label="RISK GATE" value={trace?.riskDisposition || position?.riskDisposition || '—'} warning={(trace?.riskDisposition || position?.riskDisposition) === 'REJECT'} /><Stat label="STOP" value={price(position?.stopLossPrice)} /><Stat label="TARGET" value={price(position?.takeProfitPrice)} /><Stat label="UNREALIZED" value={cash(position?.unrealizedPnl)} warning={(position?.unrealizedPnl || 0) < 0} /></div><div className="border border-white/[0.055] bg-[#05070A] p-3"><div className="font-mono text-[6px] uppercase text-[#59636D]">RISK REASONS</div><div className="mt-2 space-y-1.5 text-[9px] text-[#68737D]">{trace?.riskReasons?.length ? trace.riskReasons.map((reason, index) => <div key={`${reason}-${index}`}>{reason}</div>) : <div>No separate risk reason persisted.</div>}</div></div>{trace?.auditCompleteness?.dimensions && <div className="border border-white/[0.055] bg-[#05070A] p-3"><div className="font-mono text-[6px] uppercase text-[#59636D]">RISK / EXECUTION AUDIT</div><div className="mt-2 space-y-2">{trace.auditCompleteness.dimensions.filter((item) => item.id === 'RISK_GATE' || item.id === 'EXECUTION_TRACE' || item.id === 'OUTCOME').map((item) => <div key={item.id}><div className={`font-mono text-[6px] uppercase ${item.state === 'PASS' ? 'text-[#72B6A0]' : item.state === 'MISSING' ? 'text-[#C7A96B]' : 'text-[#59636D]'}`}>{item.id} · {item.state}</div><div className="mt-0.5 text-[8px] text-[#59636D]">{item.reason}</div></div>)}</div></div>}</div>;
 
-const HistoryTab = ({ tradeCase, trace }: { tradeCase: TradeCase | null; trace: Trace | null }) => <div className="space-y-1">{(tradeCase?.decisionHistory || []).filter(Boolean).map((item, index) => <div key={`${item?.timestamp}-${index}`} className="grid grid-cols-[70px_72px_minmax(0,1fr)] gap-2 border-b border-white/[0.045] px-2 py-2.5 font-mono text-[6px]"><span className="text-[#4F5963]">{stamp(item?.timestamp)}</span><span className={item?.action === 'ENTER' ? 'text-[#72B6A0]' : item?.action === 'EXIT' ? 'text-[#C7A96B]' : 'text-[#77818B]'}>{item?.action || '—'}</span><div className="min-w-0"><div className="truncate text-[#8A959F]">{item?.primaryReason || 'No persisted reason.'}</div><div className="mt-1 flex flex-wrap gap-2 text-[#46515B]"><span>{item?.regime || '—'}</span><span>score {item?.oracleTradeScore ?? '—'}</span><span>risk {item?.riskDisposition || '—'}</span><span>audit {item?.auditCompleteness?.score ?? '—'}%</span></div></div></div>)}{!(tradeCase?.decisionHistory || []).length && <Empty text={trace ? 'No persistent trade-case history yet; only the current decision trace is available.' : 'No decision history available for this market.'} />}</div>;
+const HistoryTab = ({ tradeCase, trace }: { tradeCase: TradeCase | null; trace: Trace | null }) => <div className="space-y-1">{(tradeCase?.decisionHistory || []).filter(Boolean).map((item, index) => <div key={`${item?.timestamp}-${index}`} className="grid grid-cols-[70px_72px_minmax(0,1fr)] gap-2 border-b border-white/[0.045] px-2 py-2.5 font-mono text-[6px]"><span className="text-[#4F5963]">{stamp(item?.timestamp)}</span><span className={item?.action === 'ENTER' ? 'text-[#72B6A0]' : item?.action === 'EXIT' ? 'text-[#C7A96B]' : 'text-[#77818B]'}>{item?.action || '—'}</span><div className="min-w-0"><div className="truncate text-[#8A959F]">{item?.primaryReason || 'No persisted reason.'}</div><div className="mt-1 flex flex-wrap gap-2 text-[#46515B]"><span>{item?.regime || '—'}</span><span>score {item?.oracleTradeScore ?? '—'}</span><span>risk {item?.riskDisposition || '—'}</span><span>governance {item?.governance?.intelligenceDisposition || '—'}</span><span>audit {item?.auditCompleteness?.score ?? '—'}%</span></div></div></div>)}{!(tradeCase?.decisionHistory || []).length && <Empty text={trace ? 'No persistent trade-case history yet; only the current decision trace is available.' : 'No decision history available for this market.'} />}</div>;
 
-const Stat = ({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) => <div className="bg-[#05070A] px-3 py-3"><div className="font-mono text-[5px] uppercase tracking-[0.12em] text-[#46515B]">{label}</div><div className={`mt-1 font-mono text-[9px] ${warning ? 'text-[#C7A96B]' : 'text-[#9FA9B2]'}`}>{value}</div></div>;
-const InfoGrid = ({ rows }: { rows: Array<[string, string]> }) => <div className="grid gap-px bg-white/[0.04] sm:grid-cols-2">{rows.map(([label, value]) => <div key={label} className="bg-[#05070A] p-3"><div className="font-mono text-[5px] uppercase text-[#46515B]">{label}</div><div className="mt-1 text-[9px] text-[#8A959F]">{value}</div></div>)}</div>;
+const ScenarioList = ({ title, items, warning = false }: { title: string; items: string[]; warning?: boolean }) => <div className="border border-white/[0.05] bg-[#070A0E] p-2.5"><div className={`font-mono text-[5px] uppercase ${warning ? 'text-[#C7A96B]' : 'text-[#59636D]'}`}>{title}</div><div className="mt-2 space-y-1 text-[8px] leading-relaxed text-[#66717B]">{items.length ? items.map((item, index) => <div key={`${item}-${index}`}>· {item}</div>) : <div>None persisted.</div>}</div></div>;
+const KeyValue = ({ label, value }: { label: string; value: string }) => <div className="border border-white/[0.05] bg-[#05070A] p-2.5"><div className="font-mono text-[5px] uppercase text-[#46515B]">{label}</div><div className="mt-1 break-words text-[8px] leading-relaxed text-[#7F8A94]">{value}</div></div>;
+const Stat = ({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) => <div className="bg-[#05070A] px-3 py-3"><div className="font-mono text-[5px] uppercase tracking-[0.12em] text-[#46515B]">{label}</div><div className={`mt-1 break-all font-mono text-[9px] ${warning ? 'text-[#C7A96B]' : 'text-[#9FA9B2]'}`}>{value}</div></div>;
+const InfoGrid = ({ rows }: { rows: Array<[string, string]> }) => <div className="grid gap-px bg-white/[0.04] sm:grid-cols-2">{rows.map(([label, value]) => <div key={label} className="bg-[#05070A] p-3"><div className="font-mono text-[5px] uppercase text-[#46515B]">{label}</div><div className="mt-1 break-words text-[9px] text-[#8A959F]">{value}</div></div>)}</div>;
 const Frame = ({ label, item }: { label: string; item: { directionalScore: number; confidence: number; regime: string } }) => <div className="bg-[#070A0E] p-3"><div className="font-mono text-[6px] text-[#59636D]">{label}</div><div className="mt-1 font-mono text-[9px] text-[#AEB7BF]">{item.regime}</div><div className="mt-1 font-mono text-[6px] text-[#59636D]">score {item.directionalScore.toFixed(1)} · conf {pct(item.confidence)}</div></div>;
 const Empty = ({ text }: { text: string }) => <div className="border border-white/[0.055] bg-[#05070A] px-4 py-12 text-center text-[9px] leading-relaxed text-[#59636D]">{text}</div>;

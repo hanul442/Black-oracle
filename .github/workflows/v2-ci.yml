@@ -29,6 +29,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency security gate
+        # High and critical advisories block release. Remaining moderate Express 4/qs advisories
+        # are visible in the audit output and must not be silently upgraded through an unsupported override.
+        run: npm audit --audit-level=high
+
       - name: Typecheck
         run: npm run lint
 

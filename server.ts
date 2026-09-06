@@ -5,6 +5,10 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import searchOracleHandler from './api/search-oracle';
 import legacyRssShimHandler from './api/fetch-rss';
+import operatorLogHandler from './api/operator-log';
+import tradeCasesHandler from './api/trade-cases';
+import tradingReadinessHandler from './api/trading-readiness';
+import tradingStatusHandler from './api/trading-status';
 import { registerTradingRoutes } from './server/trading/routes';
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -33,10 +37,24 @@ const generateWithRetry = async (options: any, maxRetries = 2) => {
 async function startServer() {
   const app = express();
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+  const production = process.env.NODE_ENV === 'production';
+  const devHost = process.env.DEV_HOST?.trim() || '127.0.0.1';
+  const listenHost = production ? '0.0.0.0' : devHost;
   app.use(express.json({ limit: '1mb' }));
 
   // Trading routes are Paper-only. They do not use Firebase research storage.
   registerTradingRoutes(app);
+
+  // The Vercel operator endpoints are normally packaged as serverless functions. Mount the
+  // same read-only handlers ahead of Vite in local development so missing persistence/config
+  // returns JSON UNAVAILABLE/503 rather than falling through to index.html and corrupting the
+  // operator UI's JSON parser. This does not create a development mock or execution authority.
+  if (!production) {
+    app.get('/api/operator-log', (req, res) => void operatorLogHandler(req, res));
+    app.get('/api/trade-cases', (req, res) => void tradeCasesHandler(req, res));
+    app.get('/api/trading-readiness', (req, res) => void tradingReadinessHandler(req, res));
+    app.get('/api/trading-status', (req, res) => void tradingStatusHandler(req, res));
+  }
 
   // Research generation is authenticated and compute-only. The browser persists results
   // to /users/{auth.uid}/... under Firestore ownership rules.
@@ -96,17 +114,20 @@ async function startServer() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!production) {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
+    if (!['127.0.0.1', 'localhost', '::1'].includes(devHost)) {
+      console.warn('Black Oracle development server is explicitly exposed beyond loopback via DEV_HOST. Keep this limited to trusted networks and update Vite before wider exposure.');
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*all', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Black Oracle server listening on http://0.0.0.0:${port}`);
+  app.listen(port, listenHost, () => {
+    console.log(`Black Oracle server listening on http://${listenHost}:${port}`);
   });
 }
 

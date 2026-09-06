@@ -1,9 +1,16 @@
 import Parser from 'rss-parser';
+import { selectDiverseEvidenceCandidates } from '../src/trading/evidenceCandidateSelection.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const MAX_MARKETS = 6;
 const MAX_CANDIDATES = 36;
+export const FSC_PRESS_RELEASE_RSS = 'https://www.fsc.go.kr/about/fsc_bbs_rss/?fid=0111';
+export const BOK_MONETARY_POLICY_RSS = 'https://www.bok.or.kr/portal/bbs/P0000559/news.rss?menuNo=200690';
+const PRIMARY_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+const NEWS_MAX_AGE_MS = 48 * 60 * 60_000;
+const BOK_MAX_AGE_MS = 48 * 60 * 60_000;
+const MAX_SOURCE_FUTURE_SKEW_MS = 5 * 60_000;
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -100,6 +107,23 @@ const matchesMarket = (text: string, market: string) => {
   });
 };
 
+const KOREAN_CRYPTO_REGULATORY_TERMS = [
+  '가상자산',
+  '디지털자산',
+  '암호자산',
+  '가상화폐',
+  '코인거래소',
+  '가상자산사업자',
+  'virtual asset',
+  'digital asset',
+  'crypto asset',
+];
+
+export const isBroadKoreanCryptoRegulatory = (text: string) => {
+  const normalized = text.toLowerCase();
+  return KOREAN_CRYPTO_REGULATORY_TERMS.some((term) => normalized.includes(term.toLowerCase()));
+};
+
 const cleanTitlePublisher = (title: string, fallback: string) => {
   const parts = title.split(' - ');
   if (parts.length < 2) return { title: title.trim(), publisher: fallback };
@@ -107,38 +131,56 @@ const cleanTitlePublisher = (title: string, fallback: string) => {
   return { title: parts.slice(0, -1).join(' - ').trim(), publisher };
 };
 
-const itemTimestamp = (item: any) => {
+const validatedItemTimestamp = (item: any, maxAgeMs: number, now = Date.now()) => {
   const value = item.isoDate || item.pubDate || item.published || item.updated;
   const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : Date.now();
+  if (!Number.isFinite(parsed)) return null;
+  const ageMs = now - parsed;
+  if (ageMs < -MAX_SOURCE_FUTURE_SKEW_MS || ageMs > maxAgeMs) return null;
+  return parsed;
 };
 
-const makeCandidateId = (market: string, index: number, source: string) =>
-  `${market}-${source}-${index}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+const shortHash = (value: string) => {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const makeCandidateId = (market: string, discriminator: string | number, source: string) =>
+  `${market}-${source}-${discriminator}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+
+const provenanceDiscriminator = (item: any) => shortHash(`${String(item?.link || '')}|${String(item?.title || '')}`);
 
 const collectCoinDesk = async (markets: string[], warnings: string[]) => {
   try {
     const feed = await parser.parseURL('https://www.coindesk.com/arc/outboundfeeds/rss/');
+    const now = Date.now();
     const result: Candidate[] = [];
     for (const market of markets) {
       const matching = (feed.items || [])
         .filter((item: any) => matchesMarket(`${item.title || ''} ${item.contentSnippet || ''}`, market))
-        .slice(0, 2);
-      matching.forEach((item: any, index: number) => {
-        if (!item.link || !item.title) return;
+        .slice(0, 4);
+      for (const item of matching) {
+        if (!item.link || !item.title) continue;
+        const publishedAt = validatedItemTimestamp(item, NEWS_MAX_AGE_MS, now);
+        if (publishedAt == null) continue;
         result.push({
-          candidateId: makeCandidateId(market, index, 'coindesk'),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'coindesk'),
           market,
           title: String(item.title).trim(),
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
           publisher: 'CoinDesk',
           sourceUrl: String(item.link),
-          publishedAt: itemTimestamp(item),
+          publishedAt,
           sourceType: 'NEWS',
           reliability: 0.80,
           tags: ['coindesk', 'language:en', market.replace(/^KRW-/, '').toLowerCase()],
         });
-      });
+        if (result.filter((candidate) => candidate.market === market).length >= 2) break;
+      }
     }
     return result;
   } catch (error) {
@@ -151,23 +193,102 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
   if (!markets.includes('KRW-ETH')) return [] as Candidate[];
   try {
     const feed = await parser.parseURL('https://blog.ethereum.org/feed.xml');
-    return (feed.items || []).slice(0, 3).flatMap((item: any, index: number): Candidate[] => {
-      if (!item.link || !item.title) return [];
-      return [{
-        candidateId: makeCandidateId('KRW-ETH', index, 'ethereum-foundation'),
+    const now = Date.now();
+    const result: Candidate[] = [];
+    for (const item of feed.items || []) {
+      if (result.length >= 3) break;
+      if (!item.link || !item.title) continue;
+      const publishedAt = validatedItemTimestamp(item, PRIMARY_MAX_AGE_MS, now);
+      if (publishedAt == null) continue;
+      result.push({
+        candidateId: makeCandidateId('KRW-ETH', provenanceDiscriminator(item), 'ethereum-foundation'),
         market: 'KRW-ETH',
         title: String(item.title).trim(),
         summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
         publisher: 'Ethereum Foundation',
         sourceUrl: String(item.link),
-        publishedAt: itemTimestamp(item),
+        publishedAt,
         sourceType: 'PRIMARY',
         reliability: 0.96,
         tags: ['official', 'ethereum', 'protocol', 'language:en'],
-      }];
-    });
+      });
+    }
+    return result;
   } catch (error) {
     warnings.push(`Ethereum Foundation RSS: ${errorMessage(error)}`);
+    return [];
+  }
+};
+
+const collectFscPrimary = async (markets: string[], warnings: string[]) => {
+  try {
+    const feed = await parser.parseURL(FSC_PRESS_RELEASE_RSS);
+    const now = Date.now();
+    const relevant = (feed.items || [])
+      .filter((item: any) => item?.title && item?.link)
+      .filter((item: any) => isBroadKoreanCryptoRegulatory(`${item.title || ''} ${item.contentSnippet || ''} ${item.content || ''}`))
+      .flatMap((item: any) => {
+        const publishedAt = validatedItemTimestamp(item, PRIMARY_MAX_AGE_MS, now);
+        return publishedAt == null ? [] : [{ item, publishedAt }];
+      })
+      .slice(0, 3);
+
+    const result: Candidate[] = [];
+    for (const market of markets) {
+      for (const { item, publishedAt } of relevant) {
+        result.push({
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'fsc-korea'),
+          market,
+          title: String(item.title).trim(),
+          summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
+          publisher: '금융위원회',
+          sourceUrl: String(item.link),
+          publishedAt,
+          sourceType: 'PRIMARY',
+          reliability: 0.94,
+          tags: ['official', 'fsc-korea', 'regulation', 'language:ko', market.replace(/^KRW-/, '').toLowerCase()],
+        });
+      }
+    }
+    return result;
+  } catch (error) {
+    warnings.push(`금융위원회 RSS: ${errorMessage(error)}`);
+    return [];
+  }
+};
+
+const collectBokMacro = async (markets: string[], warnings: string[]) => {
+  try {
+    const feed = await parser.parseURL(BOK_MONETARY_POLICY_RSS);
+    const now = Date.now();
+    const relevant = (feed.items || [])
+      .flatMap((item: any) => {
+        if (!item?.title || !item?.link) return [];
+        const publishedAt = validatedItemTimestamp(item, BOK_MAX_AGE_MS, now);
+        return publishedAt == null ? [] : [{ item, publishedAt }];
+      })
+      .slice(0, 2);
+
+    const result: Candidate[] = [];
+    for (const market of markets) {
+      for (const { item, publishedAt } of relevant) {
+        result.push({
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'bok-monetary-policy'),
+          market,
+          title: String(item.title).trim(),
+          summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
+          publisher: '한국은행',
+          sourceUrl: String(item.link),
+          publishedAt,
+          sourceType: 'MACRO',
+          reliability: 0.96,
+          tags: ['official', 'bok-korea', 'macro', 'monetary-policy', 'language:ko', market.replace(/^KRW-/, '').toLowerCase()],
+        });
+      }
+    }
+    return result;
+  } catch (error) {
+    warnings.push(`한국은행 통화정책 RSS: ${errorMessage(error)}`);
     return [];
   }
 };
@@ -177,8 +298,7 @@ const collectGoogleNews = async (
   warnings: string[],
   language: NewsLanguage,
 ) => {
-  const result: Candidate[] = [];
-  for (const market of markets) {
+  const batches = await Promise.all(markets.map(async (market): Promise<Candidate[]> => {
     const symbol = market.replace(/^KRW-/, '');
     const suffix = language === 'KO' ? '가상자산 when:24h' : 'crypto when:24h';
     const query = `${assetTerms(market, language).slice(0, 2).join(' OR ')} ${suffix}`;
@@ -189,41 +309,36 @@ const collectGoogleNews = async (
 
     try {
       const feed = await parser.parseURL(url);
-      let accepted = 0;
+      const now = Date.now();
+      const result: Candidate[] = [];
       for (const item of feed.items || []) {
-        if (accepted >= 2 || !item.title || !item.link) break;
+        if (result.length >= 2) break;
+        if (!item.title || !item.link) continue;
         const parsed = cleanTitlePublisher(String(item.title), 'Google News');
         const reliability = publisherReliability(parsed.publisher);
         if (reliability <= 0) continue;
+        const publishedAt = validatedItemTimestamp(item, NEWS_MAX_AGE_MS, now);
+        if (publishedAt == null) continue;
         result.push({
-          candidateId: makeCandidateId(market, accepted, `gnews-${language.toLowerCase()}-${symbol}`),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), `gnews-${language.toLowerCase()}-${symbol}`),
           market,
           title: parsed.title,
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
           publisher: parsed.publisher,
           sourceUrl: String(item.link),
-          publishedAt: itemTimestamp(item),
+          publishedAt,
           sourceType: 'NEWS',
           reliability,
           tags: ['google-news', `language:${language.toLowerCase()}`, symbol.toLowerCase()],
         });
-        accepted += 1;
       }
+      return result;
     } catch (error) {
       warnings.push(`Google News ${language} ${market}: ${errorMessage(error)}`);
+      return [];
     }
-  }
-  return result;
-};
-
-const dedupeCandidates = (items: Candidate[]) => {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = `${item.market}|${item.sourceUrl}|${item.title.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, MAX_CANDIDATES);
+  }));
+  return batches.flat();
 };
 
 const extractOutputText = (payload: any) => {
@@ -373,18 +488,26 @@ export default async function handler(request: any, response: any) {
       return json(response, 200, { success: true, runtimeId, markets: [], candidates: 0, accepted: 0, warnings });
     }
 
-    const [coinDesk, ethereumPrimary, googleNewsEn, googleNewsKo] = await Promise.all([
+    const [coinDesk, ethereumPrimary, fscPrimary, bokMacro, googleNewsEn, googleNewsKo] = await Promise.all([
       collectCoinDesk(markets, warnings),
       collectEthereumPrimary(markets, warnings),
+      collectFscPrimary(markets, warnings),
+      collectBokMacro(markets, warnings),
       collectGoogleNews(markets, warnings, 'EN'),
       collectGoogleNews(markets, warnings, 'KO'),
     ]);
-    const candidates = dedupeCandidates([
-      ...ethereumPrimary,
-      ...coinDesk,
-      ...googleNewsEn,
-      ...googleNewsKo,
-    ]);
+    const candidates = selectDiverseEvidenceCandidates<Candidate>(
+      markets,
+      [
+        { id: 'ethereum-primary', items: ethereumPrimary },
+        { id: 'fsc-primary', items: fscPrimary },
+        { id: 'bok-macro', items: bokMacro },
+        { id: 'coindesk', items: coinDesk },
+        { id: 'google-news-ko', items: googleNewsKo },
+        { id: 'google-news-en', items: googleNewsEn },
+      ],
+      MAX_CANDIDATES,
+    );
     const existingEvidence = runtime.tradingEvidenceStore.list(undefined, false);
     const classifications = await classifyCandidates(candidates, existingEvidence);
     const classificationById = new Map(classifications.map((item) => [item.candidateId, item]));
@@ -416,8 +539,13 @@ export default async function handler(request: any, response: any) {
       runtimeId,
       markets,
       candidates: candidates.length,
+      selectionPolicy: 'MARKET_SOURCE_DIVERSITY_V1',
       candidateBreakdown: {
-        primary: ethereumPrimary.length,
+        primary: ethereumPrimary.length + fscPrimary.length,
+        macro: bokMacro.length,
+        ethereumPrimary: ethereumPrimary.length,
+        fscPrimary: fscPrimary.length,
+        bokMacro: bokMacro.length,
         coindesk: coinDesk.length,
         english: googleNewsEn.length,
         korean: googleNewsKo.length,
