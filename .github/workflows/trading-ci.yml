@@ -6,6 +6,7 @@ on:
       - feat/trading-core-v0.1
       - integration/black-oracle-v0.2
       - sprint/6-empirical-paper-validation
+      - sprint/7-validation-integrity-target-contract
   pull_request:
     branches:
       - feat/oracle-field-v2

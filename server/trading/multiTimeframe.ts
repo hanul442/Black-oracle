@@ -1,6 +1,7 @@
 import { buildMultiTimeframeConsensus } from '../../src/trading/multiTimeframe';
 import { buildTradingSnapshot } from '../../src/trading/snapshot';
 import type { MultiTimeframeSnapshot } from '../../src/trading/types';
+import { assertCandleIntegrity } from '../../src/trading/validationIntegrity';
 import { getMinuteCandles } from './upbitPublic';
 
 export const buildMarketMultiTimeframe = async (
@@ -13,6 +14,13 @@ export const buildMarketMultiTimeframe = async (
     getMinuteCandles(normalized, 60, 200),
     getMinuteCandles(normalized, 15, 200),
   ]);
+
+  // Validation integrity is an upstream hard gate: strategy code never sees a future,
+  // duplicate, malformed, mixed-market, mixed-timeframe, or under-warmed candle set.
+  const evaluationCutoff = Date.now();
+  assertCandleIntegrity(fourHourCandles, { asOf: evaluationCutoff, minWarmupCandles: 200 });
+  assertCandleIntegrity(oneHourCandles, { asOf: evaluationCutoff, minWarmupCandles: 200 });
+  assertCandleIntegrity(fifteenMinuteCandles, { asOf: evaluationCutoff, minWarmupCandles: 200 });
 
   const fourHour = buildTradingSnapshot(fourHourCandles, eventScore);
   const oneHour = buildTradingSnapshot(oneHourCandles, eventScore);
