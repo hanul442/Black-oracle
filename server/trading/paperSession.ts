@@ -6,7 +6,7 @@ import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
-import { projectExecutionDecisionToPortfolioTarget } from '../../src/trading/portfolioTargetContract';
+import { buildShadowTargetPipeline } from '../../src/trading/targetPipeline';
 import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
@@ -77,9 +77,10 @@ export class PaperTradingSession {
       else if (governance?.finalDecision.action !== 'ENTER') decision = governanceVetoDecision(baseDecision, governance?.finalDecision.reasons ?? ['Governance evaluation was unavailable; new entry failed closed.']);
     }
 
-    // Sprint 7 bridge: make target state explicit while preserving the authoritative
-    // legacy PAPER decision -> broker path. The target is shadow-only and cannot place orders.
-    const portfolioTarget = projectExecutionDecisionToPortfolioTarget({
+    // Sprint 7 bridge: the legacy decision remains authoritative. The shadow pipeline
+    // makes Intent -> Target -> post-risk Target explicit and proves notional/side parity.
+    // A parity REJECT is audit evidence only in S7-03; it cannot create or cancel orders.
+    const targetPipeline = buildShadowTargetPipeline({
       market: normalized,
       strategyVersion: TRADING_STRATEGY_VERSION,
       generatedAt: Date.now(),
@@ -87,6 +88,7 @@ export class PaperTradingSession {
       portfolio: before,
       decision,
     });
+    const portfolioTarget = targetPipeline.target;
 
     this.ledger.append('MARKET_SNAPSHOT', { market: normalized, price: liquidity.tradePrice, liquidityScore: liquidity.score, multiTimeframeScore: multiTimeframe.oracleTradeScore, eventScore: eventScore ?? null });
     this.ledger.append('SIGNAL', {
@@ -95,6 +97,12 @@ export class PaperTradingSession {
       governancePolicy: governance?.finalDecision.policy ?? null, intelligenceDisposition: governance?.finalDecision.intelligenceDisposition ?? null,
       intelligencePackageId: governance?.intelligence.id ?? null, scenarioSetId: governance?.intelligence.scenarios.id ?? null, councilRunId: governance?.intelligence.council.id ?? null,
       portfolioEntryBlockReasons: newEntryAllowed ? [] : newEntryBlockReasons, governanceError,
+      strategyIntent: {
+        id: targetPipeline.intent.id,
+        action: targetPipeline.intent.action,
+        requestedNotional: targetPipeline.intent.requestedNotional,
+        executionAuthority: targetPipeline.intent.executionAuthority,
+      },
       portfolioTarget: {
         id: portfolioTarget.id,
         source: portfolioTarget.source,
@@ -107,17 +115,33 @@ export class PaperTradingSession {
         riskDisposition: portfolioTarget.riskDisposition,
         executionAuthority: portfolioTarget.executionAuthority,
       },
+      riskAdjustedTarget: {
+        id: targetPipeline.riskAdjustedTarget.id,
+        approvedTargetNotional: targetPipeline.riskAdjustedTarget.approvedTargetNotional,
+        approvedDeltaNotional: targetPipeline.riskAdjustedTarget.approvedDeltaNotional,
+        riskDisposition: targetPipeline.riskAdjustedTarget.riskDisposition,
+        executionAuthority: targetPipeline.riskAdjustedTarget.executionAuthority,
+      },
+      targetPipelineParity: {
+        id: targetPipeline.parity.id,
+        status: targetPipeline.parity.status,
+        expectedDeltaNotional: targetPipeline.parity.expectedDeltaNotional,
+        actualDeltaNotional: targetPipeline.parity.actualDeltaNotional,
+        absoluteDifference: targetPipeline.parity.absoluteDifference,
+        tolerance: targetPipeline.parity.tolerance,
+        executionAuthority: targetPipeline.parity.executionAuthority,
+      },
     });
 
     let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
-      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, portfolioTargetId: portfolioTarget.id });
+      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'BUY', notional: decision.notional, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       this.portfolio.applyFill(fill); this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
       if (decision.stopLossPrice && decision.takeProfitPrice) this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
-      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, portfolioTargetId: portfolioTarget.id });
+      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'SELL', quantity: position.quantity, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       const entry = this.entryMetadata.get(normalized); const costBasis = position.averageCost * fill.quantity; const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
       const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity; const netPnl = fill.notional - fill.fee - costBasis;
@@ -126,7 +150,7 @@ export class PaperTradingSession {
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
     }
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now()); const performance = buildPaperPerformance(this.closedTrades, after.equityCurve, after.initialEquity, after.equity, after.drawdownPct);
-    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, decision, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
+    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, decision, targetPipeline, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
   }
 }
 
