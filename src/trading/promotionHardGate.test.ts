@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { BlindValidationResult, WalkForwardResult } from './blindValidation';
 import type { MonteCarloValidation } from './monteCarlo';
-import { buildStrategyPromotionEligibility, summarizePromotionParityFromLedger } from './promotionHardGate';
+import { buildStrategyPromotionEligibility, summarizePromotionParityFromLedger, type PromotionHardGateInput } from './promotionHardGate';
 import type { OracleRatingResult } from './rating';
 import type { TradingLedgerEvent } from './types';
 import type { InputValidationLedgerRecord } from './validationDataset';
@@ -41,17 +41,17 @@ const monteCarlo = (): MonteCarloValidation => ({
 
 const rating = (grade: OracleRatingResult['grade'] = 'A0'): OracleRatingResult => ({
   version: 'BO-RATING-v0.2-governance', grade, baseGrade: grade, rawScore: 85, coverage: 1, confidenceScore: 0.9,
-  confidence: 'HIGH', trend: 'STABLE', deploymentStatus: grade.startsWith('AA') || grade.startsWith('AAA') ? 'CHAMPION_CANDIDATE' : 'CHALLENGER',
+  confidence: 'HIGH', trend: 'STABLE', deploymentStatus: grade.startsWith('AA') ? 'CHAMPION_CANDIDATE' : 'CHALLENGER',
   maxAllowedGrade: null, appliedGateKeys: [], missingRequiredDimensions: [], dimensions: [], reasons: [], executionAuthority: false,
 });
 
-const passingInput = () => ({
-  stage: 'INCUBATOR_TO_CHALLENGER' as const,
+const passingInput = (): PromotionHardGateInput => ({
+  stage: 'INCUBATOR_TO_CHALLENGER',
   inputValidation: inputValidation(),
   blindValidation: blind(),
   walkForward: walkForward(),
   monteCarlo: monteCarlo(),
-  costStressVerdict: 'PASS' as const,
+  costStressVerdict: 'PASS',
   auditCoverage: 0.98,
   rating: rating('A0'),
   researchConfigurationId: 'rcfg-v1-0123456789abcdef',
