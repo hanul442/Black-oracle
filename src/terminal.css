@@ -2,6 +2,12 @@
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
+  text-rendering: geometricPrecision;
+}
+
+.terminal-screen button,
+.terminal-screen select {
+  border-radius: 0;
 }
 
 .terminal-screen * {
@@ -81,5 +87,14 @@
 @media (max-width: 1279px) {
   .terminal-screen {
     font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-screen *,
+  .terminal-screen *::before,
+  .terminal-screen *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
