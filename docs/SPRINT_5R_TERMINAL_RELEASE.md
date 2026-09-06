@@ -87,6 +87,7 @@ Required surfaces:
 - Expected Shortfall / tail risk
 - Deflated Sharpe Ratio
 - Probability of Backtest Overfitting when a valid multi-strategy panel exists
+- Strategy Factory prospective panel accumulation/progress
 - forecast/Council calibration metrics
 - Council v1/v2 prospective comparison
 - integrity coverage/incidents
@@ -208,7 +209,15 @@ DSR adjusts a strategy's observed Sharpe for sample size, skewness, kurtosis and
 
 ### Probability of Backtest Overfitting
 
-PBO requires aligned return histories for multiple comparable strategy configurations. A single strategy history is not enough. Until Strategy Factory persists that panel, PBO remains `INSUFFICIENT_DATA` with source `STRATEGY_RETURN_PANEL_NOT_PERSISTED`.
+PBO requires aligned return histories for multiple comparable strategy configurations. A single strategy history is not enough.
+
+Sprint 5R now persists a **prospective Strategy Factory shadow cohort** rather than fabricating a historical candidate panel. The default cohort contains one control plus eight bounded Genome variants. Every candidate receives the same PAPER-time technical, Evidence and liquidity context and produces only a research `ENTER` or `NO_TRADE` shadow prediction. These predictions never influence the real PAPER decision and keep `executionAuthority=false` and `promotionAuthority=false`.
+
+Each cohort observation is resolved only after the fixed four-hour research horizon using the first retained market-history price at or after the target timestamp. Candidate return is the observed long return when that candidate predicted `ENTER`, otherwise zero for `NO_TRADE`. The aligned return panel therefore grows prospectively with no lookahead.
+
+PBO remains `INSUFFICIENT_DATA` until at least three candidates and **60 fully aligned resolved observations** are available. When that gate closes, the API calculates PBO from the persisted cohort with source `PERSISTED_PROSPECTIVE_STRATEGY_COHORT`. The LAB terminal shows candidate count and `aligned / 60` progress.
+
+The current evaluator is versioned `PROSPECTIVE_GENOME_PROXY_V1`. It is a controlled prospective candidate-comparison layer, not a claim that every Genome has already been replayed through a full independent broker/runtime implementation. A later Strategy Factory release may replace the proxy evaluator with a deeper candidate execution simulation after validation.
 
 ### Block / regime Monte Carlo
 
@@ -245,6 +254,7 @@ Sprint 5R is complete only when all of the following are true:
 - protective exits remain active during Evidence degradation
 - Scenario/Council/decision/execution provenance is reconstructable
 - Council v2 remains observation-only until deliberate promotion review
+- Strategy Factory shadow candidates remain observation-only and never influence PAPER execution
 
 ### Operator terminal
 - Monitor terminal works on desktop/mobile
@@ -253,6 +263,7 @@ Sprint 5R is complete only when all of the following are true:
 - Lab terminal works on desktop/mobile
 - server-side Grade Surveillance is visible
 - Research Validation v2 is visible without inventing unavailable metrics
+- Strategy Factory PBO panel progress is visible
 - no document-level horizontal overflow
 - no synthetic values or hidden missing links
 
@@ -282,13 +293,15 @@ No automatic production merge or scheduler rollout is authorized by this documen
 ### Sprint 6 — Research evidence accumulation
 - accumulate Grade Surveillance history
 - accumulate Council v1/v2 prospective observations
-- persist Strategy Factory aligned candidate-return panels for valid PBO
-- calibrate DSR search-space lineage
+- accumulate at least 60 aligned Strategy Factory cohort observations so PBO becomes empirically available
+- review whether `PROSPECTIVE_GENOME_PROXY_V1` should be replaced by deeper candidate execution simulation
+- calibrate DSR search-space lineage from Experiment / Strategy Factory history
 - extend execution-cost/slippage distributions
 
 ### Sprint 7 — Strategy Factory & empirical Council evaluation
 - Strategy Genome lifecycle
 - candidate generation/competition
+- empirical PBO and DSR governance
 - agent/lens contribution measurement
 - Council calibration and disagreement value
 - human-reviewed Champion/Challenger promotion
