@@ -13,7 +13,7 @@ export default async function handler(request: any, response: any) {
     const [
       { tradingCheckpointStore },
       { buildEmpiricalAccumulationHealth, buildDailyEmpiricalPaperReport, scopeEmpiricalInputToQualificationWindow },
-      { normalizeQualificationWindow, qualificationWindowSummary },
+      { normalizeQualificationWindow, qualificationWindowConfigFromEnv, qualificationWindowSummary },
       { normalizeStrategyReturnPanel, summarizeStrategyReturnPanel },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
@@ -57,7 +57,27 @@ export default async function handler(request: any, response: any) {
     };
     const qualificationWindow = normalizeQualificationWindow(checkpoint.qualificationWindow);
     const windowSummary = qualificationWindowSummary(qualificationWindow);
-    const qualificationStartedAt = qualificationWindow?.status === 'COLLECTING' ? qualificationWindow.startedAt : null;
+    let runtimePin = null;
+    let runtimePinError: string | null = null;
+    try {
+      runtimePin = qualificationWindowConfigFromEnv();
+    } catch (error) {
+      runtimePinError = error instanceof Error ? error.message : 'Invalid qualification runtime pin.';
+    }
+    const pinMatches = Boolean(
+      qualificationWindow
+      && runtimePin
+      && qualificationWindow.id === runtimePin.id
+      && qualificationWindow.armedAt === runtimePin.armedAt
+      && qualificationWindow.sourceRevision === runtimePin.sourceRevision,
+    );
+    const creditActive = Boolean(
+      qualificationWindow?.status === 'COLLECTING'
+      && qualificationWindow.startedAt
+      && pinMatches
+      && !runtimePinError,
+    );
+    const qualificationStartedAt = creditActive ? qualificationWindow?.startedAt ?? null : null;
     const qualifiedInput = scopeEmpiricalInputToQualificationWindow(empiricalInput, qualificationStartedAt);
 
     return response.status(200).json({
@@ -68,7 +88,15 @@ export default async function handler(request: any, response: any) {
       daily: buildDailyEmpiricalPaperReport(empiricalInput),
       qualification: {
         window: windowSummary,
-        creditActive: qualificationStartedAt != null,
+        runtimePin: {
+          configured: Boolean(runtimePin),
+          matchesPersistedWindow: pinMatches,
+          id: runtimePin?.id ?? null,
+          armedAt: runtimePin?.armedAt ?? null,
+          sourceRevision: runtimePin?.sourceRevision ?? null,
+          error: runtimePinError,
+        },
+        creditActive,
         accumulation: buildEmpiricalAccumulationHealth(qualifiedInput),
         daily: buildDailyEmpiricalPaperReport(qualifiedInput),
         legacyCreditAllowed: false,
