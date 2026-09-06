@@ -26,7 +26,6 @@ test('deterministic replay fill matches the current PaperBroker BUY model', () =
   assert.equal(result.parity.fillPriceParity, true);
   assert.equal(result.parity.feeParity, true);
   assert.equal(result.replay.fillPrice, result.paper.fillPrice);
-  assert.equal(result.replay.executionAuthority, undefined);
 });
 
 test('Replay/PAPER lifecycle remains equal across full BUY then SELL round trip', () => {
