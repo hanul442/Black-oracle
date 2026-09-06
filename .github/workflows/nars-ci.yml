@@ -12,6 +12,7 @@ on:
       - nars-v4-event-clustering
       - nars-v4-evidence-scoring
       - nars-v4-source-provenance
+      - nars-v4-primary-resolver
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
