@@ -7,6 +7,7 @@ const readyEnv = {
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-secret-value',
   OPENAI_API_KEY: 'openai-secret-value',
+  CRON_SECRET: 'scheduler-secret-value',
   TRADING_RUNTIME_ID: 'black-oracle-paper',
 };
 
@@ -37,7 +38,7 @@ const buildFetch = (target = 'https://black-oracle.vercel.app', enabled = true, 
   return { fetchImpl, calls };
 };
 
-test('production PAPER preflight passes only with real read-only runtime + scheduler checks', async () => {
+test('production PAPER preflight passes only with real read-only runtime + production-pinned scheduler checks', async () => {
   const { fetchImpl, calls } = buildFetch();
   const result = await probePaperDeploymentPreflight(readyEnv, fetchImpl);
 
@@ -59,6 +60,7 @@ test('production PAPER preflight passes only with real read-only runtime + sched
   const serialized = JSON.stringify(result);
   assert.doesNotMatch(serialized, /service-role-secret-value/);
   assert.doesNotMatch(serialized, /openai-secret-value/);
+  assert.doesNotMatch(serialized, /scheduler-secret-value/);
   assert.doesNotMatch(serialized, /example\.supabase\.co/);
   assert.doesNotMatch(serialized, /black-oracle\.vercel\.app/);
 });
@@ -78,13 +80,13 @@ test('missing environment configuration fails closed without probing Supabase', 
   assert.equal(calls, 0);
 });
 
-test('valid preview target may pass Paper preview but cannot pass production rollout', async () => {
+test('preview scheduler target is blocked rather than receiving scheduler credentials', async () => {
   const { fetchImpl } = buildFetch('https://black-oracle-feature-preview.vercel.app');
   const result = await probePaperDeploymentPreflight(readyEnv, fetchImpl);
 
   assert.equal(result.schedulerTargetVercel, true);
   assert.equal(result.schedulerTargetProduction, false);
-  assert.equal(result.readyForPaperPreview, true);
+  assert.equal(result.readyForPaperPreview, false);
   assert.equal(result.readyForProductionPaperRollout, false);
   assert.deepEqual(result.blockers, ['SCHEDULER_TARGET_NOT_PRODUCTION']);
 });
@@ -97,4 +99,17 @@ test('invalid scheduler target fails both preview and production preflight', asy
   assert.equal(result.readyForPaperPreview, false);
   assert.equal(result.readyForProductionPaperRollout, false);
   assert.ok(result.blockers.includes('SCHEDULER_TARGET_INVALID'));
+});
+
+test('missing dedicated scheduler secret blocks deployment readiness before probing Supabase', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response('unexpected', { status: 500 });
+  }) as typeof fetch;
+  const result = await probePaperDeploymentPreflight({ ...readyEnv, CRON_SECRET: '' }, fetchImpl);
+  assert.equal(result.attempted, false);
+  assert.equal(result.readyForProductionPaperRollout, false);
+  assert.deepEqual(result.blockers, ['ENVIRONMENT_NOT_READY']);
+  assert.equal(calls, 0);
 });
