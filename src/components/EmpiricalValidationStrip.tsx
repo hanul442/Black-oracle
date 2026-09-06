@@ -36,6 +36,12 @@ type EmpiricalPayload = {
   qualification?: {
     creditActive?: boolean;
     legacyCreditAllowed?: false;
+    experimentBinding?: {
+      rawTriedEvents?: number;
+      qualifiedTriedEvents?: number;
+      requiresExactWindowBinding?: boolean;
+      requiresResearchConfigurationId?: boolean;
+    };
     window?: {
       id?: string | null;
       status?: string;
@@ -91,6 +97,7 @@ export const EmpiricalValidationStrip: React.FC = () => {
   const qDaily = qualification?.daily;
   const qActive = qualification?.creditActive === true;
   const qualificationWindow = qualification?.window;
+  const experimentBinding = qualification?.experimentBinding;
   const failedGate = accumulation?.operationalGates?.find((gate) => gate.status === 'FAIL');
   const windowFailure = qualificationWindow?.invalidationReasons?.[0];
 
@@ -126,7 +133,8 @@ export const EmpiricalValidationStrip: React.FC = () => {
         <span>qualified cycles {qActive ? integer(qDaily?.cycles?.count) : '0'}</span>
         <span>q strategy resolved {qActive ? integer(qDaily?.research?.strategyResolved) : '0'}</span>
         <span className="hidden sm:inline">q council resolved {qActive ? integer(qDaily?.research?.councilResolved) : '0'}</span>
-        <span className="hidden md:inline">q grade {qActive ? (qDaily?.grade?.closing || '—') : 'NOT STARTED'}</span>
+        <span className="hidden md:inline">exp bind {integer(experimentBinding?.qualifiedTriedEvents)}/{integer(experimentBinding?.rawTriedEvents)} raw</span>
+        <span className="hidden lg:inline">q grade {qActive ? (qDaily?.grade?.closing || '—') : 'NOT STARTED'}</span>
         {(windowFailure || failedGate) && <span className="ml-auto truncate text-[#ff6262]">{windowFailure || `${failedGate?.key}: ${failedGate?.reason}`}</span>}
       </div>
     </section>
