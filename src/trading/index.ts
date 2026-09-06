@@ -24,6 +24,7 @@ export * from './paperReadinessRating';
 export * from './performance';
 export * from './portfolioExposure';
 export * from './portfolioTargetContract';
+export * from './promotionHardGate';
 export * from './qualificationReleasePreflight';
 export * from './qualificationWindow';
 export * from './rating';
