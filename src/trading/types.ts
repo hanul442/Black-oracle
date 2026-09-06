@@ -37,6 +37,72 @@ export interface IndicatorSnapshot {
   volumeZScore: number;
 }
 
+export interface SwingPoint {
+  index: number;
+  timestamp: number;
+  confirmedAt: number;
+  price: number;
+  type: 'HIGH' | 'LOW';
+}
+
+export interface MarketStructureEvent {
+  type: 'BOS' | 'CHOCH';
+  direction: 'BULLISH' | 'BEARISH';
+  breakPrice: number;
+  brokenSwingPrice: number;
+  brokenSwingTimestamp: number;
+  confirmedAt: number;
+}
+
+export interface MarketStructureSnapshot {
+  bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  confidence: number;
+  lastSwingHigh: SwingPoint | null;
+  lastSwingLow: SwingPoint | null;
+  lastEvent: MarketStructureEvent | null;
+  recentEvents: MarketStructureEvent[];
+  location: {
+    zone: 'PREMIUM' | 'EQUILIBRIUM' | 'DISCOUNT';
+    percentile: number;
+    rangeLow: number;
+    rangeHigh: number;
+  };
+  liquiditySweep: null | {
+    direction: 'BULLISH' | 'BEARISH';
+    sweptPrice: number;
+    extremePrice: number;
+    confirmedAt: number;
+  };
+  reasons: string[];
+}
+
+export type TechnicalEvidenceFamily = 'STRUCTURE' | 'TREND' | 'MOMENTUM' | 'LOCATION' | 'VOLUME' | 'VOLATILITY';
+
+export interface TechnicalEvidenceItem {
+  id: string;
+  family: TechnicalEvidenceFamily;
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  strength: number;
+  confidence: number;
+  observedAt: number;
+  expiresAt: number;
+  sourceFields: string[];
+  reason: string;
+}
+
+export interface TechnicalEvidenceSnapshot {
+  items: TechnicalEvidenceItem[];
+  rawSignalCount: number;
+  independentFamilyCount: number;
+  correlatedSignalPenalty: number;
+  bullishFamilies: number;
+  bearishFamilies: number;
+  neutralFamilies: number;
+  directionalScore: number;
+  confidence: number;
+  reasons: string[];
+}
+
 export interface RegimeSnapshot {
   regime: MarketRegime;
   confidence: number;
@@ -206,6 +272,20 @@ export interface PaperPortfolioSnapshot {
   equityCurve: Array<{ timestamp: number; equity: number }>;
 }
 
+export interface MultiCycleSnapshot {
+  state: 'ALIGNED_BULLISH' | 'ALIGNED_BEARISH' | 'MIXED' | 'PULLBACK' | 'NEUTRAL';
+  directionalScore: number;
+  confidence: number;
+  aligned: boolean;
+  entryTiming: 'READY' | 'WAIT_PULLBACK' | 'WAIT_CONFIRMATION' | 'NO_EDGE';
+  frames: {
+    fourHour: number;
+    oneHour: number;
+    fifteenMinute: number;
+  };
+  reasons: string[];
+}
+
 export interface MultiTimeframeSnapshot {
   market: string;
   asOf: number;
@@ -220,6 +300,7 @@ export interface MultiTimeframeSnapshot {
     oneHour: TradingSnapshot;
     fifteenMinute: TradingSnapshot;
   };
+  cycle?: MultiCycleSnapshot;
   reasons: string[];
 }
 
@@ -233,6 +314,20 @@ export interface ExecutionDecision {
   takeProfitPrice: number | null;
   riskDisposition: RiskDisposition;
   riskReasons: string[];
+  reasons: string[];
+}
+
+export interface TradeMapSnapshot {
+  status: 'ACTIVE' | 'CANDIDATE' | 'NO_TRADE';
+  direction: 'LONG' | 'NONE';
+  entryPrice: number | null;
+  structuralInvalidationPrice: number | null;
+  stopLossPrice: number | null;
+  takeProfit1Price: number | null;
+  takeProfit2Price: number | null;
+  riskReward1: number | null;
+  riskReward2: number | null;
+  expectedRiskPct: number | null;
   reasons: string[];
 }
 
@@ -264,4 +359,6 @@ export interface TradingSnapshot {
   momentum: MomentumSignal;
   meanReversion: MeanReversionSignal;
   fusion: SignalFusionSnapshot;
+  structure?: MarketStructureSnapshot;
+  technicalEvidence?: TechnicalEvidenceSnapshot;
 }
