@@ -39,6 +39,7 @@ export * from './signalFusion';
 export * from './snapshot';
 export * from './strategyIntent';
 export * from './strategyReturnPanel';
+export * from './strategyVault';
 export * from './targetPipeline';
 export * from './trendMomentum';
 export * from './types';
