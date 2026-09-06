@@ -141,8 +141,19 @@ const strictItemTimestamp = (item: any) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const makeCandidateId = (market: string, index: number, source: string) =>
-  `${market}-${source}-${index}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+const shortHash = (value: string) => {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const makeCandidateId = (market: string, discriminator: string | number, source: string) =>
+  `${market}-${source}-${discriminator}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+
+const provenanceDiscriminator = (item: any) => shortHash(`${String(item?.link || '')}|${String(item?.title || '')}`);
 
 const collectCoinDesk = async (markets: string[], warnings: string[]) => {
   try {
@@ -152,10 +163,10 @@ const collectCoinDesk = async (markets: string[], warnings: string[]) => {
       const matching = (feed.items || [])
         .filter((item: any) => matchesMarket(`${item.title || ''} ${item.contentSnippet || ''}`, market))
         .slice(0, 2);
-      matching.forEach((item: any, index: number) => {
+      matching.forEach((item: any) => {
         if (!item.link || !item.title) return;
         result.push({
-          candidateId: makeCandidateId(market, index, 'coindesk'),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'coindesk'),
           market,
           title: String(item.title).trim(),
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
@@ -179,10 +190,10 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
   if (!markets.includes('KRW-ETH')) return [] as Candidate[];
   try {
     const feed = await parser.parseURL('https://blog.ethereum.org/feed.xml');
-    return (feed.items || []).slice(0, 3).flatMap((item: any, index: number): Candidate[] => {
+    return (feed.items || []).slice(0, 3).flatMap((item: any): Candidate[] => {
       if (!item.link || !item.title) return [];
       return [{
-        candidateId: makeCandidateId('KRW-ETH', index, 'ethereum-foundation'),
+        candidateId: makeCandidateId('KRW-ETH', provenanceDiscriminator(item), 'ethereum-foundation'),
         market: 'KRW-ETH',
         title: String(item.title).trim(),
         summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
@@ -213,7 +224,7 @@ const collectFscPrimary = async (markets: string[], warnings: string[]) => {
       for (const item of relevant) {
         const publishedAt = itemTimestamp(item);
         result.push({
-          candidateId: makeCandidateId(market, publishedAt, 'fsc-korea'),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'fsc-korea'),
           market,
           title: String(item.title).trim(),
           summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
@@ -252,7 +263,7 @@ const collectBokMacro = async (markets: string[], warnings: string[]) => {
     for (const market of markets) {
       for (const { item, publishedAt } of relevant) {
         result.push({
-          candidateId: makeCandidateId(market, publishedAt, 'bok-monetary-policy'),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'bok-monetary-policy'),
           market,
           title: String(item.title).trim(),
           summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
@@ -277,8 +288,7 @@ const collectGoogleNews = async (
   warnings: string[],
   language: NewsLanguage,
 ) => {
-  const result: Candidate[] = [];
-  for (const market of markets) {
+  const batches = await Promise.all(markets.map(async (market): Promise<Candidate[]> => {
     const symbol = market.replace(/^KRW-/, '');
     const suffix = language === 'KO' ? '가상자산 when:24h' : 'crypto when:24h';
     const query = `${assetTerms(market, language).slice(0, 2).join(' OR ')} ${suffix}`;
@@ -289,6 +299,7 @@ const collectGoogleNews = async (
 
     try {
       const feed = await parser.parseURL(url);
+      const result: Candidate[] = [];
       let accepted = 0;
       for (const item of feed.items || []) {
         if (accepted >= 2 || !item.title || !item.link) break;
@@ -296,7 +307,7 @@ const collectGoogleNews = async (
         const reliability = publisherReliability(parsed.publisher);
         if (reliability <= 0) continue;
         result.push({
-          candidateId: makeCandidateId(market, accepted, `gnews-${language.toLowerCase()}-${symbol}`),
+          candidateId: makeCandidateId(market, provenanceDiscriminator(item), `gnews-${language.toLowerCase()}-${symbol}`),
           market,
           title: parsed.title,
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
@@ -309,11 +320,13 @@ const collectGoogleNews = async (
         });
         accepted += 1;
       }
+      return result;
     } catch (error) {
       warnings.push(`Google News ${language} ${market}: ${errorMessage(error)}`);
+      return [];
     }
-  }
-  return result;
+  }));
+  return batches.flat();
 };
 
 const extractOutputText = (payload: any) => {
