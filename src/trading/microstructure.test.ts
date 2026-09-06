@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMicrostructureSnapshot, unavailableMicrostructure } from './microstructure';
 import { buildMicrostructureChallenger } from './microstructureChallenger';
+import { buildPaperPerformance, type ClosedPaperTrade } from './performance';
 import type { MultiTimeframeSnapshot } from './types';
 import { buildTradeVolumeProfile, type TradePrint } from './volumeProfile';
 
@@ -74,4 +75,45 @@ test('missing microstructure fails soft and leaves baseline score unchanged', ()
   assert.equal(challenger.alignment, 'UNAVAILABLE');
   assert.equal(challenger.shadowScoreAdjustment, 0);
   assert.equal(challenger.shadowOracleScore, baseline.oracleTradeScore);
+});
+
+test('closed Paper outcomes are bucketed by persisted challenger alignment', () => {
+  const baseTrade: ClosedPaperTrade = {
+    id: 'trade-1',
+    market: 'KRW-BTC',
+    openedAt: 1,
+    closedAt: 2,
+    entryPrice: 100,
+    exitPrice: 102,
+    quantity: 1,
+    grossPnl: 2,
+    fees: 0,
+    netPnl: 2,
+    returnPct: 0.02,
+    exitReason: 'fixture',
+    strategyVersion: 'fixture',
+    entryOracleTradeScore: 72,
+    exitOracleTradeScore: 60,
+    entryAudit: {
+      challenger: { alignment: 'SUPPORTS' },
+    } as ClosedPaperTrade['entryAudit'],
+  };
+  const conflictTrade: ClosedPaperTrade = {
+    ...baseTrade,
+    id: 'trade-2',
+    netPnl: -1,
+    returnPct: -0.01,
+    entryAudit: {
+      challenger: { alignment: 'CONFLICTS' },
+    } as ClosedPaperTrade['entryAudit'],
+  };
+  const performance = buildPaperPerformance(
+    [baseTrade, conflictTrade],
+    [{ timestamp: 1, equity: 100 }, { timestamp: 2, equity: 101 }],
+    100,
+    101,
+    0,
+  );
+  assert.equal(performance.microstructureBuckets.find((bucket) => bucket.alignment === 'SUPPORTS')?.trades, 1);
+  assert.equal(performance.microstructureBuckets.find((bucket) => bucket.alignment === 'CONFLICTS')?.trades, 1);
 });
