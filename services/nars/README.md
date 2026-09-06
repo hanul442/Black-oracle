@@ -114,9 +114,12 @@ Supported views:
 - `view=documents` — raw live wire / sightings
 - `view=stories` — near-duplicate Story clusters
 - `view=events` — Event clusters
-- `view=metrics` — shadow comparison metrics
+- `view=metrics` — shadow comparison + cluster health/compression metrics
+- `view=review` — low-margin Story/Event joins requiring audit visibility
 
 `view=events&event_id=<uuid>` returns Event detail plus its constituent Stories.
+
+`view=review&type=story_document|event_story` can narrow the audit queue by link type.
 
 Document filters include:
 
