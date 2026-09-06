@@ -13,6 +13,7 @@ import { paperLoopController } from './paperLoop';
 import { buildPaperReadinessSnapshotFromCheckpoint } from './paperReadinessSnapshot';
 import { paperTradingSession } from './paperSession';
 import { tradingCheckpointStore, type TradingRuntimeCheckpoint } from './persistence';
+import { runtimeStrategyVaultStore } from './strategyVaultStore';
 import { tradeCaseStore } from './tradeCaseStore';
 
 let autosaveTimer: NodeJS.Timeout | null = null;
@@ -68,6 +69,7 @@ export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpo
     // Optional schema-v1 extensions keep old checkpoints readable while adding auditable runtime history.
     integrity: runtimeIntegrityStore.snapshot(),
     experimentLedger: runtimeExperimentLedgerStore.snapshot(),
+    strategyVault: runtimeStrategyVaultStore.snapshot(),
     ...(nextQualificationWindow ? { qualificationWindow: nextQualificationWindow } : {}),
   };
   const readiness = buildPaperReadinessSnapshotFromCheckpoint(base, savedAt);
@@ -87,6 +89,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
     runtimeIntegrityStore.restore(null);
     runtimeIntegrityStore.ensureStarted();
     runtimeExperimentLedgerStore.restore([]);
+    runtimeStrategyVaultStore.restore(null);
     gradeSurveillance = normalizeGradeSurveillance(null);
     qualificationWindow = null;
     safeQualificationConfig();
@@ -106,6 +109,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   runtimeIntegrityStore.restore(checkpoint.integrity ?? null);
   runtimeIntegrityStore.ensureStarted();
   runtimeExperimentLedgerStore.restore(checkpoint.experimentLedger ?? []);
+  runtimeStrategyVaultStore.restore(checkpoint.strategyVault ?? null);
   gradeSurveillance = normalizeGradeSurveillance(checkpoint.gradeSurveillance);
   qualificationWindow = normalizeQualificationWindow(checkpoint.qualificationWindow);
   advanceRuntimeQualificationWindow();
@@ -146,6 +150,7 @@ export const runtimePersistenceStatus = () => ({
   integrity: runtimeIntegrityStore.summary(),
   gradeSurveillance: summarizeGradeSurveillance(gradeSurveillance),
   experimentLedger: runtimeExperimentLedgerStore.summary(),
+  strategyVault: runtimeStrategyVaultStore.summary(),
   qualificationWindow: {
     ...qualificationWindowSummary(qualificationWindow),
     configError: qualificationConfigError,

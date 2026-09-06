@@ -6,6 +6,7 @@ on:
       - feat/oracle-field-v2
       - main
       - sprint/6-empirical-paper-validation
+      - sprint/7-validation-integrity-target-contract
   pull_request:
     branches:
       - main

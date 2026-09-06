@@ -6,6 +6,7 @@ on:
       - feat/trading-core-v0.1
       - integration/black-oracle-v0.2
       - sprint/6-empirical-paper-validation
+      - sprint/7-validation-integrity-target-contract
   pull_request:
     branches:
       - feat/oracle-field-v2
@@ -51,6 +52,12 @@ jobs:
 
       - name: Serverless Trading-readiness bundle smoke
         run: npx esbuild api/trading-readiness.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-readiness.mjs
+
+      - name: Serverless Promotion-readiness bundle smoke
+        run: npx esbuild api/trading-promotion-readiness.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-promotion-readiness.mjs
+
+      - name: Serverless Strategy-vault bundle smoke
+        run: npx esbuild api/trading-strategy-vault.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-strategy-vault.mjs
 
       - name: Supabase scheduler Edge bundle smoke
         run: npx esbuild supabase/functions/black-oracle-paper-scheduler/index.ts --bundle --platform=neutral --format=esm --target=es2022 '--external:jsr:*' '--external:npm:*' --outfile=/tmp/black-oracle-paper-scheduler.mjs

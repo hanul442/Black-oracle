@@ -4,6 +4,7 @@ import type { TradingEvidence } from '../../src/trading/evidence';
 import type { ExperimentLedgerEvent } from '../../src/trading/experimentLedger';
 import type { GradeSurveillanceCheckpoint } from '../../src/trading/gradeSurveillance';
 import { normalizeQualificationWindow, type QualificationWindowCheckpoint } from '../../src/trading/qualificationWindow';
+import { StrategyVault, type StrategyVaultCheckpoint } from '../../src/trading/strategyVault';
 import type { TradeCaseRecord } from '../../src/trading/tradeCase';
 import type { PaperLoopCheckpoint } from './paperLoop';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
@@ -20,6 +21,8 @@ export interface TradingRuntimeCheckpoint {
   gradeSurveillance?: GradeSurveillanceCheckpoint;
   experimentLedger?: ExperimentLedgerEvent[];
   qualificationWindow?: QualificationWindowCheckpoint;
+  /** Optional schema-v1 governance extension; stored inside the existing checkpoint JSON column. */
+  strategyVault?: StrategyVaultCheckpoint;
 }
 
 export type PersistenceBackend = 'json' | 'supabase';
@@ -69,6 +72,10 @@ export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => 
   }
   if (checkpoint.qualificationWindow !== undefined) {
     normalizeQualificationWindow(checkpoint.qualificationWindow);
+  }
+  if (checkpoint.strategyVault !== undefined) {
+    // Full restore validation catches duplicate/unknown lineage references and malformed reviews.
+    StrategyVault.restore(checkpoint.strategyVault);
   }
   return checkpoint as TradingRuntimeCheckpoint;
 };

@@ -1,4 +1,5 @@
 import type { BlindValidationSample, HistoricalValidationVerdict } from './blindValidation';
+import type { InputValidationLedgerRecord } from './validationDataset';
 
 export interface ValidationLedgerSummary {
   verdict: HistoricalValidationVerdict;
@@ -27,6 +28,28 @@ export const mergeValidationSamples = (
   return Array.from(map.values())
     .sort((a, b) => a.decisionTimestamp - b.decisionTimestamp || a.market.localeCompare(b.market))
     .slice(-Math.max(100, Math.min(50_000, Math.trunc(maxSamples) || 10_000)));
+};
+
+/**
+ * Input-validation provenance is retained separately from outcome samples so data
+ * quality cannot be mistaken for alpha evidence. The same deterministic record ID
+ * is idempotent across repeated persistence attempts.
+ */
+export const mergeInputValidationRecords = (
+  existing: InputValidationLedgerRecord[],
+  incoming: InputValidationLedgerRecord[],
+  maxRecords = 5_000,
+): InputValidationLedgerRecord[] => {
+  const map = new Map<string, InputValidationLedgerRecord>();
+  for (const record of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (!record?.id || !Number.isFinite(record.evaluationCutoff) || record.evaluationCutoff <= 0) continue;
+    if (!record.dataset?.datasetId || !/^sha256:[0-9a-f]{64}$/.test(record.dataset.checksum)) continue;
+    if (record.executionAuthority !== false) continue;
+    map.set(record.id, record);
+  }
+  return Array.from(map.values())
+    .sort((a, b) => a.evaluationCutoff - b.evaluationCutoff || a.id.localeCompare(b.id))
+    .slice(-Math.max(100, Math.min(20_000, Math.trunc(maxRecords) || 5_000)));
 };
 
 const median = (values: number[]) => {
