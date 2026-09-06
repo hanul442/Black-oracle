@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - sprint/5r-terminal-ui-actual
+      - sprint/6-empirical-paper-validation
   pull_request:
     branches:
       - main
       - sprint/5-evidence-governed-validation-closure
+      - sprint/5r-terminal-ui-actual
 
 permissions:
   contents: read
@@ -40,6 +42,9 @@ jobs:
 
       - name: Research-validation API bundle smoke
         run: npx esbuild api/trading-research-validation.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-research-validation.mjs
+
+      - name: Empirical-validation API bundle smoke
+        run: npx esbuild api/trading-empirical-validation.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-empirical-validation.mjs
 
       - name: Paper-cycle bundle smoke
         run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
