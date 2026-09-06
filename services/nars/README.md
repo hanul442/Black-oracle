@@ -119,7 +119,7 @@ Current caps include:
 - traceability below 75 -> at most `A-`
 - contradictions >=25% -> at most `A-`
 - source reliability below 60 -> at most `BBB0`
-- no explicitly reviewed publisher profile -> at most `AA+`
+- no explicitly reviewed publisher profile -> at most `AA0`
 
 The final Grade is evidence quality, not truth certification and not execution authority.
 
