@@ -82,3 +82,11 @@ test('configuration mismatch invalidates qualification credit instead of shiftin
   assert.equal(window?.startedAt, null);
   assert.match(window?.invalidationReasons[0] ?? '', /does not match configured/);
 });
+
+test('persisted qualification window is invalidated when its explicit runtime pin disappears', () => {
+  const started = advanceQualificationWindow({ existing: createQualificationWindow(config), config, latestCycle: cycle, evidence: [evidence()] })!;
+  const frozen = advanceQualificationWindow({ existing: started, config: null, latestCycle: cycle, evidence: [evidence()] });
+  assert.equal(frozen?.status, 'INVALIDATED');
+  assert.equal(frozen?.startedAt, started.startedAt);
+  assert.match(frozen?.invalidationReasons[0] ?? '', /runtime id\/armedAt\/sourceRevision pin/);
+});
