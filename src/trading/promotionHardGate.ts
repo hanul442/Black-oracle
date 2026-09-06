@@ -105,7 +105,7 @@ const normalizeMarket = (market: unknown) => {
 };
 
 /** Summarize Sprint 7 shadow/runtime parity evidence from the immutable Trading Ledger. */
-export const summarizePromotionParityFromLedger = (events: TradingLedgerEvent[]): PromotionParitySummary => {
+export const summarizePromotionParityFromLedger = (events: readonly TradingLedgerEvent[]): PromotionParitySummary => {
   const summary: PromotionParitySummary = { policyObserved: 0, policyRejected: 0, targetObserved: 0, targetRejected: 0, adapterObserved: 0, adapterRejected: 0 };
   for (const event of events ?? []) {
     const payload = asRecord(event.payload);
