@@ -1,5 +1,6 @@
 import { SUPPORTED_UPBIT_MINUTE_UNITS, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
 import type { Candle } from '../../src/trading/types';
+import type { TradePrint } from '../../src/trading/volumeProfile';
 
 const UPBIT_API_BASE = 'https://api.upbit.com';
 
@@ -33,6 +34,15 @@ interface UpbitTickerResponse {
   acc_trade_price_24h: number;
   acc_trade_volume_24h: number;
   timestamp: number;
+}
+
+interface UpbitTradeResponse {
+  market: string;
+  timestamp: number;
+  trade_price: number;
+  trade_volume: number;
+  ask_bid: 'ASK' | 'BID';
+  sequential_id: number;
 }
 
 interface UpbitOrderbookResponse {
@@ -98,6 +108,28 @@ export const getKrwTickers = async () => {
   }));
 };
 
+export const getRecentTrades = async (market: string, count = 500): Promise<TradePrint[]> => {
+  const normalized = market.toUpperCase();
+  assertKrwMarket(normalized);
+  if (!Number.isInteger(count) || count < 1 || count > 500) throw new Error('Recent trade count must be an integer between 1 and 500.');
+
+  const url = new URL('/v1/trades/ticks', UPBIT_API_BASE);
+  url.searchParams.set('market', normalized);
+  url.searchParams.set('count', String(count));
+  const trades = await getJson<UpbitTradeResponse[]>(url);
+
+  return trades
+    .map((trade) => ({
+      market: trade.market,
+      timestamp: trade.timestamp,
+      price: trade.trade_price,
+      volume: trade.trade_volume,
+      side: trade.ask_bid,
+      sequentialId: String(trade.sequential_id),
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+};
+
 export const getOrderbooks = async (markets: string[]) => {
   const normalized = [...new Set(markets.map((market) => market.toUpperCase()))];
   if (normalized.length === 0) return [];
@@ -106,6 +138,7 @@ export const getOrderbooks = async (markets: string[]) => {
 
   const url = new URL('/v1/orderbook', UPBIT_API_BASE);
   url.searchParams.set('markets', normalized.join(','));
+  url.searchParams.set('count', '30');
   const orderbooks = await getJson<UpbitOrderbookResponse[]>(url);
 
   return orderbooks.map((book) => ({
