@@ -6,7 +6,7 @@ NARS is the upstream intelligence layer for collection, evidence and event proce
 
 Target runtime:
 
-`Cron -> RSS/API adapters -> Cloudflare Queue -> nars-ingest -> Supabase nars_* ledger -> Story/Event Intelligence -> intel_outbox -> Black Oracle`
+`Cron -> RSS/API adapters -> Cloudflare Queue -> nars-ingest -> Supabase nars_* ledger -> Story/Event Intelligence -> Evidence Scoring -> intel_outbox -> Black Oracle`
 
 The existing NARS v3 Google Apps Script/Sheets system remains the production baseline while v4 runs in shadow mode.
 
@@ -77,6 +77,82 @@ This is a baseline, not a semantic oracle. Embeddings and model-based challenger
 
 The lexical clustering engine does **not** assign `confirmed`. Confirmation belongs to the Evidence layer and must not be inferred from article count alone.
 
+## N4-04 Evidence + Intelligence Scoring
+
+N4-04 separates **trust** from **urgency**.
+
+```text
+Event
+  -> Evidence dimensions
+  -> weighted raw evidence score
+  -> Hard Gates
+  -> final evidence score
+  -> AAA+/AAA0/AAA- ... F+/F0/F-
+
+Event
+  -> legacy activity + breaking urgency + publisher breadth + recency
+  -> Priority Score 0-100
+  -> FLASH / HIGH / WATCH / ROUTINE
+```
+
+### Evidence dimensions
+
+`4.2.1-evidence-v1` uses a weighted 0-100 composite:
+
+- source reliability: 30%
+- canonical publisher independence: 25%
+- Story convergence: 15%
+- traceability: 15%
+- evidence relation quality: 10%
+- contradiction consistency: 5%
+
+The score is converted to a Grade only **after** the quantitative composite is calculated.
+
+### Hard Gates
+
+A high raw score cannot bypass minimum evidence requirements.
+
+Current caps include:
+
+- one canonical publisher -> at most `BBB+`
+- two canonical publishers -> at most `A+`
+- traceability below 75 -> at most `A-`
+- contradictions >=25% -> at most `A-`
+- source reliability below 60 -> at most `BBB0`
+- no explicitly reviewed publisher profile -> at most `AA0`
+
+The final Grade is evidence quality, not truth certification and not execution authority.
+
+### Source reliability profiles
+
+`nars_source_evidence_profiles` is intentionally empty until a publisher has been explicitly reviewed. Until then, NARS uses a conservative provisional score derived from source tier, runtime health and the `tier_unreviewed` penalty.
+
+A source profile can be `unreviewed`, `provisional`, `reviewed` or `suspended`. Reviewed source quality must be supported by explicit provenance rather than guessed from brand reputation.
+
+### Score Ledger
+
+Every material score state is recorded in `nars_event_score_ledger` with:
+
+- raw and final evidence score
+- Evidence Grade
+- Priority Score / band
+- dimension scores
+- Hard Gate state
+- input snapshot
+- scoring version
+- fingerprint
+- evaluation time
+
+Identical score states are deduplicated by fingerprint, so scheduled evaluation does not create unlimited duplicate ledger rows.
+
+### Legacy NARS continuity
+
+The v3 activity logic remains visible inside the v4 model as `legacy_activity_raw`:
+
+`ln(freq) * 12 + sqrt(freq) * 2 + urgent(+8)`
+
+In v4, activity contributes to Priority, but it does **not** directly determine Evidence Grade. Repetition is not treated as proof.
+
 ## Cluster observability
 
 `nars_cluster_metrics_v1` tracks:
@@ -102,8 +178,9 @@ During the current shadow phase:
 
 - `nars-shadow-poll-10m`: temporary direct RSS shadow collection every 10 minutes
 - `nars-cluster-5m`: clusters newly ingested documents every 5 minutes
+- `nars-score-5m`: scores Events at minute offset `2-59/5`, after the normal clustering boundary
 
-Both are temporary operational scaffolding. The collector scheduler should move to Cloudflare Workers/Queues once that deployment is available.
+The collector scheduler should move to Cloudflare Workers/Queues once that deployment is available.
 
 ## Live Wire API
 
@@ -113,11 +190,16 @@ Supported views:
 
 - `view=documents` — raw live wire / sightings
 - `view=stories` — near-duplicate Story clusters
-- `view=events` — Event clusters
+- `view=events` — scored Event clusters
+- `view=scores` — Evidence/Priority Score Ledger
 - `view=metrics` — shadow comparison + cluster health/compression metrics
 - `view=review` — low-margin Story/Event joins requiring audit visibility
 
-`view=events&event_id=<uuid>` returns Event detail plus its constituent Stories.
+`view=events&event_id=<uuid>` returns Event detail plus its constituent Stories and recent score history.
+
+`view=events` exposes `evidence_score`, `evidence_grade`, `priority_score`, `priority_band`, `score_version`, score dimensions and Hard Gates.
+
+`view=scores` supports `event_id`, `grade`, `band` and `limit` filters.
 
 `view=review&type=story_document|event_story` can narrow the audit queue by link type.
 
@@ -131,7 +213,7 @@ Document filters include:
 
 Story filters include status, language, Event ID and time.
 
-Event filters include status, language, time, minimum source count and minimum Story count.
+Event filters include status, language, time, Grade, Priority band, minimum source count and minimum Story count.
 
 ## Comparison semantics
 
@@ -153,6 +235,7 @@ The legacy v3 `datetime` field is treated as retrieval/feed time with unverified
 - `nars_intel_outbox` is the one-way boundary toward Black Oracle.
 - NARS tables use RLS with no public policies by design.
 - `anon` and `authenticated` access is revoked; data-plane APIs are service-role only.
+- Scoring functions use `SECURITY INVOKER` and pinned/empty search paths where appropriate.
 - The temporary scheduled poller does not expose the service-role key. It validates a dedicated cron token whose plaintext is stored in Supabase Vault and whose SHA-256 digest is stored in `nars_system_meta`.
 - Never commit `.dev.vars`, service-role keys or cron tokens.
 
@@ -180,6 +263,6 @@ After Cloudflare Worker/Queues are live and stable, disable `nars-shadow-poll-10
 
 ## Sprint boundary
 
-N4-03 covers deterministic near-duplicate Story clustering, conservative lexical Event clustering, canonical publisher counting, audit views and Terminal Event/Story read models.
+N4-04 covers deterministic Evidence Score, Hard Gates, Black Oracle-style Grade conversion, Priority Score/bands, source profile scaffolding, score audit ledger and Terminal score read models.
 
-Entity extraction, semantic embeddings, evidence grading, Intelligence Score and semantic challenger evaluation remain later work.
+Entity extraction, semantic embeddings, explicit source research/profiling, contradiction extraction from article content, Evidence confirmation and semantic/model challengers remain later work.

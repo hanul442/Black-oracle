@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const VERSION = "4.1.2-cluster";
+const VERSION = "4.2.1-evidence";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -66,10 +66,7 @@ Deno.serve(async (req: Request) => {
       version: VERSION,
       view,
       generatedAt: new Date().toISOString(),
-      metrics: {
-        shadow: shadow.rows[0] ?? null,
-        cluster: cluster.rows[0] ?? null,
-      },
+      metrics: { shadow: shadow.rows[0] ?? null, cluster: cluster.rows[0] ?? null },
     });
   }
 
@@ -86,14 +83,32 @@ Deno.serve(async (req: Request) => {
     const result = await restJson(supabaseUrl, headers, `nars_cluster_review_queue_v1?${params.toString()}`);
     if (!result.ok) return dbError("cluster_review_query_failed", result);
     return reply(200, {
-      ok: true,
-      service: "nars-live-wire",
-      version: VERSION,
-      view,
-      generatedAt: new Date().toISOString(),
-      count: result.rows.length,
-      filters: { limit, reviewType },
-      items: result.rows,
+      ok: true, service: "nars-live-wire", version: VERSION, view,
+      generatedAt: new Date().toISOString(), count: result.rows.length,
+      filters: { limit, reviewType }, items: result.rows,
+    });
+  }
+
+  if (view === "scores") {
+    const eventId = input.searchParams.get("event_id")?.trim() || null;
+    const grade = input.searchParams.get("grade")?.trim() || null;
+    const band = input.searchParams.get("band")?.trim().toUpperCase() || null;
+    if (band && !["FLASH", "HIGH", "WATCH", "ROUTINE"].includes(band)) {
+      return reply(400, { ok: false, error: "invalid_priority_band" });
+    }
+    const params = new URLSearchParams();
+    params.set("select", "id,event_id,score_version,raw_evidence_score,final_evidence_score,evidence_grade,priority_score,priority_band,dimensions,hard_gates,input_snapshot,evaluated_at");
+    params.set("order", "evaluated_at.desc");
+    params.set("limit", String(limit));
+    if (eventId) params.set("event_id", `eq.${eventId}`);
+    if (grade) params.set("evidence_grade", `eq.${grade}`);
+    if (band) params.set("priority_band", `eq.${band}`);
+    const result = await restJson(supabaseUrl, headers, `nars_event_score_ledger?${params.toString()}`);
+    if (!result.ok) return dbError("score_ledger_query_failed", result);
+    return reply(200, {
+      ok: true, service: "nars-live-wire", version: VERSION, view,
+      generatedAt: new Date().toISOString(), count: result.rows.length,
+      filters: { limit, eventId, grade, band }, items: result.rows,
     });
   }
 
@@ -117,14 +132,9 @@ Deno.serve(async (req: Request) => {
     const result = await restJson(supabaseUrl, headers, `nars_story_wire_v1?${params.toString()}`);
     if (!result.ok) return dbError("story_wire_query_failed", result);
     return reply(200, {
-      ok: true,
-      service: "nars-live-wire",
-      version: VERSION,
-      view,
-      generatedAt: new Date().toISOString(),
-      count: result.rows.length,
-      filters: { limit, status, language, eventId, since },
-      items: result.rows,
+      ok: true, service: "nars-live-wire", version: VERSION, view,
+      generatedAt: new Date().toISOString(), count: result.rows.length,
+      filters: { limit, status, language, eventId, since }, items: result.rows,
     });
   }
 
@@ -132,19 +142,26 @@ Deno.serve(async (req: Request) => {
     const status = input.searchParams.get("status")?.trim() || null;
     const language = input.searchParams.get("language")?.trim() || null;
     const eventId = input.searchParams.get("event_id")?.trim() || null;
+    const grade = input.searchParams.get("grade")?.trim() || null;
+    const band = input.searchParams.get("band")?.trim().toUpperCase() || null;
     const sinceRaw = input.searchParams.get("since")?.trim() || null;
     const since = validDate(sinceRaw);
     const minSources = Math.max(0, Number.parseInt(input.searchParams.get("min_sources") ?? "0", 10) || 0);
     const minStories = Math.max(0, Number.parseInt(input.searchParams.get("min_stories") ?? "0", 10) || 0);
     if (sinceRaw && !since) return reply(400, { ok: false, error: "invalid_since" });
+    if (band && !["FLASH", "HIGH", "WATCH", "ROUTINE"].includes(band)) {
+      return reply(400, { ok: false, error: "invalid_priority_band" });
+    }
 
     const params = new URLSearchParams();
-    params.set("select", "event_id,event_key,title,status,priority_score,evidence_grade,first_detected_at,last_updated_at,story_count,document_count,source_count,breaking_count,cluster_method,language");
-    params.set("order", "last_updated_at.desc");
+    params.set("select", "event_id,event_key,title,status,priority_score,evidence_grade,first_detected_at,last_updated_at,story_count,document_count,source_count,breaking_count,cluster_method,language,evidence_score,priority_band,score_version,score_dimensions,score_hard_gates");
+    params.set("order", "priority_score.desc,last_updated_at.desc");
     params.set("limit", String(limit));
     if (eventId) params.set("event_id", `eq.${eventId}`);
     if (status) params.set("status", `eq.${status}`);
     if (language) params.set("language", `eq.${language}`);
+    if (grade) params.set("evidence_grade", `eq.${grade}`);
+    if (band) params.set("priority_band", `eq.${band}`);
     if (since) params.set("last_updated_at", `gte.${since}`);
     if (minSources > 0) params.set("source_count", `gte.${minSources}`);
     if (minStories > 0) params.set("story_count", `gte.${minStories}`);
@@ -157,7 +174,15 @@ Deno.serve(async (req: Request) => {
       storyParams.set("select", "story_id,story_key,display_title,language,status,first_seen_at,last_seen_at,document_count,source_count,breaking_count,event_similarity,sources");
       storyParams.set("event_id", `eq.${eventId}`);
       storyParams.set("order", "first_seen_at.asc");
-      const stories = await restJson(supabaseUrl, headers, `nars_story_wire_v1?${storyParams.toString()}`);
+      const scoreParams = new URLSearchParams();
+      scoreParams.set("select", "score_version,raw_evidence_score,final_evidence_score,evidence_grade,priority_score,priority_band,dimensions,hard_gates,input_snapshot,evaluated_at");
+      scoreParams.set("event_id", `eq.${eventId}`);
+      scoreParams.set("order", "evaluated_at.desc");
+      scoreParams.set("limit", "10");
+      const [stories, scores] = await Promise.all([
+        restJson(supabaseUrl, headers, `nars_story_wire_v1?${storyParams.toString()}`),
+        restJson(supabaseUrl, headers, `nars_event_score_ledger?${scoreParams.toString()}`),
+      ]);
       return reply(200, {
         ok: true,
         service: "nars-live-wire",
@@ -165,19 +190,16 @@ Deno.serve(async (req: Request) => {
         view: "event_detail",
         event: result.rows[0],
         stories: stories.ok ? stories.rows : [],
+        scoreHistory: scores.ok ? scores.rows : [],
         storyQueryError: stories.ok ? null : { status: stories.status, detail: stories.detail },
+        scoreQueryError: scores.ok ? null : { status: scores.status, detail: scores.detail },
       });
     }
 
     return reply(200, {
-      ok: true,
-      service: "nars-live-wire",
-      version: VERSION,
-      view,
-      generatedAt: new Date().toISOString(),
-      count: result.rows.length,
-      filters: { limit, status, language, eventId, since, minSources, minStories },
-      items: result.rows,
+      ok: true, service: "nars-live-wire", version: VERSION, view,
+      generatedAt: new Date().toISOString(), count: result.rows.length,
+      filters: { limit, status, language, eventId, grade, band, since, minSources, minStories }, items: result.rows,
     });
   }
 
@@ -203,44 +225,26 @@ Deno.serve(async (req: Request) => {
   if (breaking !== null) params.set("is_breaking", `eq.${breaking}`);
   if (seenBy === "v3") params.set("v3_seen", "eq.true");
   if (seenBy === "collector") params.set("collector_seen", "eq.true");
-  if (seenBy === "both") {
-    params.set("v3_seen", "eq.true");
-    params.set("collector_seen", "eq.true");
-  }
-  if (seenBy === "v3_only") {
-    params.set("v3_seen", "eq.true");
-    params.set("collector_seen", "eq.false");
-  }
-  if (seenBy === "collector_only") {
-    params.set("v3_seen", "eq.false");
-    params.set("collector_seen", "eq.true");
-  }
+  if (seenBy === "both") { params.set("v3_seen", "eq.true"); params.set("collector_seen", "eq.true"); }
+  if (seenBy === "v3_only") { params.set("v3_seen", "eq.true"); params.set("collector_seen", "eq.false"); }
+  if (seenBy === "collector_only") { params.set("v3_seen", "eq.false"); params.set("collector_seen", "eq.true"); }
   if (since) params.set("last_seen_at", `gte.${since}`);
 
   const result = await restJson(supabaseUrl, headers, `nars_live_wire_v1?${params.toString()}`);
   if (!result.ok) return dbError("live_wire_query_failed", result);
 
   const rows = result.rows as Array<Record<string, unknown> & {
-    retrieved_at?: string;
-    last_seen_at?: string;
-    source_key?: string;
-    ingest_origin?: string;
-    v3_seen?: boolean;
-    collector_seen?: boolean;
-    collector_minus_v3_seconds?: number | string | null;
+    retrieved_at?: string; last_seen_at?: string; source_key?: string; ingest_origin?: string;
+    v3_seen?: boolean; collector_seen?: boolean; collector_minus_v3_seconds?: number | string | null;
   }>;
   const newestRaw = rows[0]?.last_seen_at ?? rows[0]?.retrieved_at;
   const newest = newestRaw ? new Date(String(newestRaw)) : null;
   const lagSeconds = newest && !Number.isNaN(newest.valueOf())
-    ? Math.max(0, Math.round((Date.now() - newest.valueOf()) / 1000))
-    : null;
+    ? Math.max(0, Math.round((Date.now() - newest.valueOf()) / 1000)) : null;
 
   const sourceCounts = new Map<string, number>();
   const originCounts = new Map<string, number>();
-  let v3Only = 0;
-  let collectorOnly = 0;
-  let both = 0;
-  let neither = 0;
+  let v3Only = 0; let collectorOnly = 0; let both = 0; let neither = 0;
   const deltas: number[] = [];
 
   for (const row of rows) {
@@ -250,19 +254,14 @@ Deno.serve(async (req: Request) => {
     originCounts.set(ingestOrigin, (originCounts.get(ingestOrigin) ?? 0) + 1);
     const v3 = row.v3_seen === true;
     const collector = row.collector_seen === true;
-    if (v3 && collector) both += 1;
-    else if (v3) v3Only += 1;
-    else if (collector) collectorOnly += 1;
-    else neither += 1;
+    if (v3 && collector) both += 1; else if (v3) v3Only += 1; else if (collector) collectorOnly += 1; else neither += 1;
     const delta = Number(row.collector_minus_v3_seconds);
     if (Number.isFinite(delta)) deltas.push(delta);
   }
 
   const compared = v3Only + collectorOnly + both;
   const overlapRate = compared > 0 ? Number((both / compared).toFixed(4)) : null;
-  const meanDeltaSeconds = deltas.length
-    ? Number((deltas.reduce((sum, value) => sum + value, 0) / deltas.length).toFixed(1))
-    : null;
+  const meanDeltaSeconds = deltas.length ? Number((deltas.reduce((sum, value) => sum + value, 0) / deltas.length).toFixed(1)) : null;
 
   return reply(200, {
     ok: true,
