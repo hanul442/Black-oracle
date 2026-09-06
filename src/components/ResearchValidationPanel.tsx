@@ -30,8 +30,12 @@ type ResearchPayload = {
       integrity: 'PASS' | 'CONSERVATIVE' | 'MISSING';
       trialCount: number;
       lowerBoundTrialCount: number;
+      canonicalTrialCount?: number;
+      crossSourceOverlap?: number;
       strategyFactoryTrials: number;
       experimentTrials: number;
+      unmappedStrategyTrials?: number;
+      unmappedExperimentTrials?: number;
       reasons: string[];
     };
   };
@@ -84,6 +88,7 @@ export const ResearchValidationPanel: React.FC = () => {
   const v1Cal = payload?.forecastCalibration?.v1;
   const v2Cal = payload?.forecastCalibration?.v2;
   const panel = pbo?.panel;
+  const unmapped = (lineage?.unmappedStrategyTrials ?? 0) + (lineage?.unmappedExperimentTrials ?? 0);
 
   return (
     <section className="mt-3 border border-white/[0.065] bg-[#070A0E]">
@@ -111,9 +116,11 @@ export const ResearchValidationPanel: React.FC = () => {
             <Mini label="Sharpe / obs" value={num(dsr?.sharpePerObservation, 4)} />
             <Mini label="Trials" value={dsr ? `${dsr.trialCount} · ${dsr.trialCountSource}` : '—'} />
             <Mini label="Lineage integrity" value={lineage?.integrity || 'MISSING'} />
+            <Mini label="Canonical total" value={String(lineage?.canonicalTrialCount ?? 0)} />
+            <Mini label="Cross-source overlap" value={String(lineage?.crossSourceOverlap ?? 0)} />
+            <Mini label="Unmapped" value={String(unmapped)} />
             <Mini label="Trial lower bound" value={String(lineage?.lowerBoundTrialCount ?? 0)} />
-            <Mini label="Factory tried" value={String(lineage?.strategyFactoryTrials ?? 0)} />
-            <Mini label="Experiment tried" value={String(lineage?.experimentTrials ?? 0)} />
+            <Mini label="Factory / Experiment" value={`${lineage?.strategyFactoryTrials ?? 0} / ${lineage?.experimentTrials ?? 0}`} />
             <Mini label="VaR 95" value={pct(payload?.expectedShortfall?.es95?.valueAtRisk)} />
             <Mini label="ES 99" value={pct(payload?.expectedShortfall?.es99?.expectedShortfall)} />
             <Mini label="PBO candidates" value={String(panel?.candidateCount ?? payload?.sampleBasis?.strategyCandidates ?? 0)} />
