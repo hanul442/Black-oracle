@@ -5,6 +5,12 @@ const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 
+type RestFailure = { ok: false; status: number; detail: string };
+
+function dbError(error: string, result: RestFailure): Response {
+  return reply(500, { ok: false, error, status: result.status, detail: result.detail });
+}
+
 function asBoolean(value: string | null): boolean | null {
   if (value == null) return null;
   if (/^(1|true|y|yes)$/i.test(value)) return true;
@@ -26,7 +32,7 @@ async function restJson(
   supabaseUrl: string,
   headers: Record<string, string>,
   path: string,
-): Promise<{ ok: true; rows: Array<Record<string, unknown>> } | { ok: false; status: number; detail: string }> {
+): Promise<{ ok: true; rows: Array<Record<string, unknown>> } | RestFailure> {
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { headers });
   if (!response.ok) return { ok: false, status: response.status, detail: (await response.text()).slice(0, 800) };
   return { ok: true, rows: await response.json() as Array<Record<string, unknown>> };
@@ -52,8 +58,8 @@ Deno.serve(async (req: Request) => {
       restJson(supabaseUrl, headers, "nars_shadow_metrics_v1?select=*"),
       restJson(supabaseUrl, headers, "nars_cluster_metrics_v1?select=*"),
     ]);
-    if (!shadow.ok) return reply(500, { ok: false, error: "shadow_metrics_query_failed", ...shadow });
-    if (!cluster.ok) return reply(500, { ok: false, error: "cluster_metrics_query_failed", ...cluster });
+    if (!shadow.ok) return dbError("shadow_metrics_query_failed", shadow);
+    if (!cluster.ok) return dbError("cluster_metrics_query_failed", cluster);
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
@@ -78,7 +84,7 @@ Deno.serve(async (req: Request) => {
     params.set("limit", String(limit));
     if (reviewType) params.set("review_type", `eq.${reviewType}`);
     const result = await restJson(supabaseUrl, headers, `nars_cluster_review_queue_v1?${params.toString()}`);
-    if (!result.ok) return reply(500, { ok: false, error: "cluster_review_query_failed", ...result });
+    if (!result.ok) return dbError("cluster_review_query_failed", result);
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
@@ -109,7 +115,7 @@ Deno.serve(async (req: Request) => {
     if (since) params.set("last_seen_at", `gte.${since}`);
 
     const result = await restJson(supabaseUrl, headers, `nars_story_wire_v1?${params.toString()}`);
-    if (!result.ok) return reply(500, { ok: false, error: "story_wire_query_failed", ...result });
+    if (!result.ok) return dbError("story_wire_query_failed", result);
     return reply(200, {
       ok: true,
       service: "nars-live-wire",
@@ -144,7 +150,7 @@ Deno.serve(async (req: Request) => {
     if (minStories > 0) params.set("story_count", `gte.${minStories}`);
 
     const result = await restJson(supabaseUrl, headers, `nars_event_wire_v1?${params.toString()}`);
-    if (!result.ok) return reply(500, { ok: false, error: "event_wire_query_failed", ...result });
+    if (!result.ok) return dbError("event_wire_query_failed", result);
 
     if (eventId && result.rows.length === 1) {
       const storyParams = new URLSearchParams();
@@ -212,7 +218,7 @@ Deno.serve(async (req: Request) => {
   if (since) params.set("last_seen_at", `gte.${since}`);
 
   const result = await restJson(supabaseUrl, headers, `nars_live_wire_v1?${params.toString()}`);
-  if (!result.ok) return reply(500, { ok: false, error: "live_wire_query_failed", ...result });
+  if (!result.ok) return dbError("live_wire_query_failed", result);
 
   const rows = result.rows as Array<Record<string, unknown> & {
     retrieved_at?: string;
