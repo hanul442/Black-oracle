@@ -7,17 +7,17 @@ import type { OracleRatingResult } from './rating';
 import type { TradingLedgerEvent } from './types';
 import type { InputValidationLedgerRecord } from './validationDataset';
 
-const inputValidation = (timeframeMinutes: 15 | 60 | 240): InputValidationLedgerRecord => ({
-  id: `input-validation:test:${timeframeMinutes}`, createdAt: 1_700_000_000_000, evaluationCutoff: 1_700_000_000_000,
+const inputValidation = (timeframeMinutes: 15 | 60 | 240, market = 'KRW-BTC'): InputValidationLedgerRecord => ({
+  id: `input-validation:test:${market}:${timeframeMinutes}`, createdAt: 1_700_000_000_000, evaluationCutoff: 1_700_000_000_000,
   policyVersion: 'S7_INPUT_VALIDATION_V1',
   dataset: {
-    datasetId: `candle-set:${String(timeframeMinutes).padStart(3, '0')}3456789abcdef01234567`, checksum: `sha256:${String(timeframeMinutes % 10).repeat(64)}`, checksumAlgorithm: 'SHA-256',
-    canonicalization: 'BLACK_ORACLE_CANDLE_DATASET_V1', candleCount: 400, market: 'KRW-BTC', timeframeMinutes,
+    datasetId: `candle-set:${market.replace('KRW-', '').toLowerCase()}-${timeframeMinutes}`, checksum: `sha256:${String(timeframeMinutes % 10).repeat(64)}`, checksumAlgorithm: 'SHA-256',
+    canonicalization: 'BLACK_ORACLE_CANDLE_DATASET_V1', candleCount: 400, market, timeframeMinutes,
     firstTimestamp: 1_699_640_900_000, lastTimestamp: 1_700_000_000_000,
   },
   integrity: {
     disposition: 'PASS', sampleCount: 400, firstTimestamp: 1_699_640_900_000, lastTimestamp: 1_700_000_000_000,
-    market: 'KRW-BTC', timeframeMinutes, issues: [],
+    market, timeframeMinutes, issues: [],
     provenance: { evaluationCutoffEnforced: true, futureCandlesBlocked: true, chronologyCheckedOnSuppliedOrder: true, duplicateTimestampsBlocked: true, ohlcChecked: true, warmupChecked: true },
   },
   warmup: {
@@ -55,6 +55,7 @@ const rating = (grade: OracleRatingResult['grade'] = 'A0'): OracleRatingResult =
 
 const passingInput = (): PromotionHardGateInput => ({
   stage: 'INCUBATOR_TO_CHALLENGER',
+  requiredMarkets: ['KRW-BTC'],
   inputValidation: [inputValidation(15), inputValidation(60), inputValidation(240)],
   blindValidation: blind(),
   walkForward: walkForward(),
@@ -66,7 +67,7 @@ const passingInput = (): PromotionHardGateInput => ({
   parity: { policyObserved: 25, policyRejected: 0, targetObserved: 25, targetRejected: 0, adapterObserved: 8, adapterRejected: 0 },
 });
 
-test('all multi-timeframe evidence gates PASS for a Challenger promotion candidate', () => {
+test('all market-by-timeframe evidence gates PASS for a Challenger promotion candidate', () => {
   const result = buildStrategyPromotionEligibility(passingInput());
   assert.equal(result.verdict, 'PASS');
   assert.equal(result.eligible, true);
@@ -116,6 +117,21 @@ test('missing one required timeframe is insufficient evidence rather than a fals
   assert.ok(result.insufficientEvidence.includes('INPUT_INTEGRITY'));
   assert.ok(result.insufficientEvidence.includes('WARMUP_STABILITY'));
   assert.ok(result.insufficientEvidence.includes('REPRODUCIBLE_LINEAGE'));
+});
+
+test('a second promoted market requires its own 15/60/240 provenance', () => {
+  const input = passingInput();
+  input.requiredMarkets = ['KRW-BTC', 'KRW-ETH'];
+  const result = buildStrategyPromotionEligibility(input);
+  assert.equal(result.verdict, 'INSUFFICIENT_DATA');
+  assert.ok(result.checks.find((item) => item.key === 'INPUT_INTEGRITY')?.reason.includes('KRW-ETH@15m'));
+
+  input.inputValidation = [
+    inputValidation(15), inputValidation(60), inputValidation(240),
+    inputValidation(15, 'KRW-ETH'), inputValidation(60, 'KRW-ETH'), inputValidation(240, 'KRW-ETH'),
+  ];
+  const complete = buildStrategyPromotionEligibility(input);
+  assert.equal(complete.verdict, 'PASS');
 });
 
 test('missing reproducible configuration lineage is insufficient evidence', () => {
