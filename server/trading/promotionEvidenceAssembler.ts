@@ -39,6 +39,11 @@ export interface PromotionEvidenceAssemblerOptions {
   costStressVerdict?: PromotionEvidenceVerdict | null;
 }
 
+const normalizeMarket = (market: unknown) => {
+  const normalized = String(market ?? '').toUpperCase();
+  return /^KRW-[A-Z0-9]+$/.test(normalized) ? normalized : null;
+};
+
 const inferUniqueResearchConfigurationId = (events: ExperimentLedgerEvent[]): string | null => {
   const ids = [...new Set((events ?? []).flatMap((event) => {
     const value = event.payload?.researchConfigurationId;
@@ -89,9 +94,17 @@ export const assembleStrategyPromotionEvidence = (
   options: PromotionEvidenceAssemblerOptions,
 ) => {
   const validationSamples = Array.isArray(checkpoint.loop.validationSamples) ? checkpoint.loop.validationSamples : [];
+  const closedTrades = checkpoint.session.closedTrades ?? [];
+  const requiredMarkets = [...new Set([
+    ...validationSamples.map((sample) => sample.market),
+    ...closedTrades.map((trade) => trade.market),
+  ].flatMap((market) => {
+    const normalized = normalizeMarket(market);
+    return normalized ? [normalized] : [];
+  }))].sort();
   const blindValidation = rebuildBlindValidation(validationSamples);
   const walkForward = runWalkForwardValidation(validationSamples);
-  const closedReturns = (checkpoint.session.closedTrades ?? []).map((trade) => trade.returnPct);
+  const closedReturns = closedTrades.map((trade) => trade.returnPct);
   const monteCarlo = buildMonteCarloValidation(closedReturns);
   const costStress = buildCostStressValidation(closedReturns);
   const effectiveCostStressVerdict = options.costStressVerdict ?? costStress.verdict;
@@ -106,6 +119,7 @@ export const assembleStrategyPromotionEvidence = (
   const eligibility = buildStrategyPromotionEligibility({
     stage: options.stage,
     inputValidation: options.inputValidation ?? null,
+    requiredMarkets,
     blindValidation,
     walkForward,
     monteCarlo,
@@ -122,6 +136,7 @@ export const assembleStrategyPromotionEvidence = (
     sourceCheckpointSavedAt: checkpoint.savedAt,
     stage: options.stage,
     evidence: {
+      requiredMarkets,
       inputValidationRecords: options.inputValidation?.length ?? 0,
       blindValidation,
       walkForward,
