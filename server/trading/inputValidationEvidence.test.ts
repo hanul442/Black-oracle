@@ -78,6 +78,21 @@ test('strategy-level validation covers every unique market across every required
   assert.deepEqual(calls.sort(), ['KRW-BTC@15', 'KRW-BTC@60', 'KRW-BTC@240', 'KRW-ETH@15', 'KRW-ETH@60', 'KRW-ETH@240'].sort());
 });
 
+test('strategy-level validation completes one market before starting the next market batch', async () => {
+  const completed = new Map<string, number>();
+  const reader: HistoricalCandleReader = async (market, unit, count) => {
+    if (market === 'KRW-ETH') assert.equal(completed.get('KRW-BTC') ?? 0, 3);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    completed.set(market, (completed.get(market) ?? 0) + 1);
+    return candlesFor(unit, count, market);
+  };
+
+  const evidence = await buildStrategyInputValidationEvidence(['KRW-BTC', 'KRW-ETH'], { evaluationCutoff: CUTOFF, reader });
+  assert.equal(evidence.disposition, 'PASS');
+  assert.equal(completed.get('KRW-BTC'), 3);
+  assert.equal(completed.get('KRW-ETH'), 3);
+});
+
 test('strategy-level validation fails closed when requested market scope exceeds its bound', async () => {
   const markets = Array.from({ length: 13 }, (_, index) => `KRW-T${index}`);
   await assert.rejects(
