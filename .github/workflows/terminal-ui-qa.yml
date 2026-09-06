@@ -4,13 +4,14 @@ on:
   pull_request:
     branches:
       - main
+      - sprint/5r-terminal-ui-actual
 
 permissions:
   contents: read
 
 jobs:
   terminal-ui-qa:
-    if: startsWith(github.event.pull_request.head.ref, 'sprint/5r-')
+    if: startsWith(github.event.pull_request.head.ref, 'sprint/5r-') || startsWith(github.event.pull_request.head.ref, 'sprint/6-')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
