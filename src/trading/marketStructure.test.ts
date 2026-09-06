@@ -25,7 +25,8 @@ test('market structure only uses pivots after right-side confirmation and emits 
   assert.ok(result.lastEvent);
   assert.equal(result.lastEvent.direction, 'BULLISH');
   assert.equal(result.lastEvent.type, 'BOS');
-  assert.ok(result.lastEvent.confirmedAt > result.lastSwingHigh.timestamp);
+  assert.ok(result.lastEvent.confirmedAt > result.lastEvent.brokenSwingTimestamp);
+  assert.ok(result.lastEvent.breakPrice > result.lastEvent.brokenSwingPrice);
 });
 
 test('intrabar sweep without a close beyond the swing is not promoted to BOS', () => {
