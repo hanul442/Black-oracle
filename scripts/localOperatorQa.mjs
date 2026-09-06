@@ -17,7 +17,9 @@ const result = {
 const operatorApiPaths = [
   '/api/operator-log',
   '/api/trade-cases',
+  '/api/trading-grade',
   '/api/trading-readiness',
+  '/api/trading-research-validation',
   '/api/trading-status',
 ];
 
@@ -80,7 +82,7 @@ const ensureNoHorizontalOverflow = async (page, label) => {
 
 const ensureNoParserFailureBanner = async (page, label) => {
   const bodyText = await page.locator('body').innerText();
-  if (/Unexpected token\s+['"]?</i.test(bodyText) && /not valid JSON/i.test(bodyText)) {
+  if (/Unexpected token\s+['"]?/i.test(bodyText) && /not valid JSON/i.test(bodyText)) {
     throw new Error(`${label}: operator surface exposed an invalid-JSON parser failure.`);
   }
 };
