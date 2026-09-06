@@ -13,11 +13,13 @@ export default async function handler(request: any, response: any) {
     const [
       { tradingCheckpointStore },
       { buildEmpiricalAccumulationHealth, buildDailyEmpiricalPaperReport, scopeEmpiricalInputToQualificationWindow },
+      { filterQualifiedExperimentEvents },
       { normalizeQualificationWindow, qualificationWindowConfigFromEnv, qualificationWindowSummary },
       { normalizeStrategyReturnPanel, summarizeStrategyReturnPanel },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/empiricalValidation.js'),
+      import('../src/trading/experimentQualification.js'),
       import('../src/trading/qualificationWindow.js'),
       import('../src/trading/strategyReturnPanel.js'),
     ]);
@@ -78,7 +80,15 @@ export default async function handler(request: any, response: any) {
       && !runtimePinError,
     );
     const qualificationStartedAt = creditActive ? qualificationWindow?.startedAt ?? null : null;
-    const qualifiedInput = scopeEmpiricalInputToQualificationWindow(empiricalInput, qualificationStartedAt);
+    const qualifiedExperimentEvents = creditActive
+      ? filterQualifiedExperimentEvents(experimentEvents, qualificationWindow)
+      : [];
+    const qualifiedInput = scopeEmpiricalInputToQualificationWindow(
+      { ...empiricalInput, experimentEvents: qualifiedExperimentEvents },
+      qualificationStartedAt,
+    );
+    const rawTriedExperimentEvents = experimentEvents.filter((event) => event.type === 'EXPERIMENT_STARTED' || event.type === 'EXPERIMENT_COMPLETED').length;
+    const qualifiedTriedExperimentEvents = qualifiedExperimentEvents.filter((event) => event.type === 'EXPERIMENT_STARTED' || event.type === 'EXPERIMENT_COMPLETED').length;
 
     return response.status(200).json({
       success: true,
@@ -95,6 +105,12 @@ export default async function handler(request: any, response: any) {
           armedAt: runtimePin?.armedAt ?? null,
           sourceRevision: runtimePin?.sourceRevision ?? null,
           error: runtimePinError,
+        },
+        experimentBinding: {
+          rawTriedEvents: rawTriedExperimentEvents,
+          qualifiedTriedEvents: qualifiedTriedExperimentEvents,
+          requiresExactWindowBinding: true,
+          requiresResearchConfigurationId: true,
         },
         creditActive,
         accumulation: buildEmpiricalAccumulationHealth(qualifiedInput),
