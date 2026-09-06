@@ -4,13 +4,28 @@ import { Activity, GitCompareArrows, ShieldAlert } from 'lucide-react';
 type Verdict = 'PASS' | 'WATCH' | 'REJECT' | 'INSUFFICIENT_DATA';
 type ResearchPayload = {
   available?: boolean;
-  sampleBasis?: { closedTrades: number; blindValidationSamples: number; councilComparisonSamples: number; resolvedCouncilComparisons: number };
+  sampleBasis?: {
+    closedTrades: number;
+    blindValidationSamples: number;
+    councilComparisonSamples: number;
+    resolvedCouncilComparisons: number;
+    strategyCandidates?: number;
+    strategyPanelObservations?: number;
+    alignedStrategyObservations?: number;
+  };
   expectedShortfall?: {
     es95?: { available: boolean; valueAtRisk: number | null; expectedShortfall: number | null };
     es99?: { available: boolean; valueAtRisk: number | null; expectedShortfall: number | null };
   };
   deflatedSharpe?: { verdict: Verdict; probability: number | null; sharpePerObservation: number | null; trialCount: number; trialCountSource: string };
-  probabilityBacktestOverfitting?: { verdict: Verdict; pbo: number | null; strategyCount: number; source?: string; note?: string };
+  probabilityBacktestOverfitting?: {
+    verdict: Verdict;
+    pbo: number | null;
+    strategyCount: number;
+    source?: string;
+    note?: string;
+    panel?: { candidateCount: number; observations: number; resolved: number; alignedObservations: number; minimumPboObservations: number; pboEligible: boolean; evaluatorVersion: string };
+  };
   blockRegimeMonteCarlo?: { verdict: Verdict; survivalProbability: number | null; drawdownP95: number | null; expectedShortfall95: number | null; regimeCount: number; sampleCount: number };
   councilComparison?: { resolved: number; disagreements: number; v1FavorableRate: number | null; v2FavorableRate: number | null; v1DirectionalBrierProxy: number | null; v2DirectionalBrierProxy: number | null; v2WinRateOnDisagreement: number | null; recommendation: string };
   forecastCalibration?: {
@@ -50,6 +65,7 @@ export const ResearchValidationPanel: React.FC = () => {
   const pbo = payload?.probabilityBacktestOverfitting;
   const v1Cal = payload?.forecastCalibration?.v1;
   const v2Cal = payload?.forecastCalibration?.v2;
+  const panel = pbo?.panel;
 
   return (
     <section className="mt-3 border border-white/[0.065] bg-[#070A0E]">
@@ -78,8 +94,10 @@ export const ResearchValidationPanel: React.FC = () => {
             <Mini label="Trials" value={dsr ? `${dsr.trialCount} · ${dsr.trialCountSource}` : '—'} />
             <Mini label="VaR 95" value={pct(payload?.expectedShortfall?.es95?.valueAtRisk)} />
             <Mini label="ES 99" value={pct(payload?.expectedShortfall?.es99?.expectedShortfall)} />
+            <Mini label="Factory candidates" value={String(panel?.candidateCount ?? payload?.sampleBasis?.strategyCandidates ?? 0)} />
+            <Mini label="PBO aligned" value={panel ? `${panel.alignedObservations}/${panel.minimumPboObservations}` : String(payload?.sampleBasis?.alignedStrategyObservations ?? 0)} />
           </div>
-          <div className="mt-2 flex items-start gap-2 text-[8px] leading-relaxed text-[#56616B]"><ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" /><span>{pbo?.note || 'PBO activates only when aligned return panels for multiple strategy candidates exist.'}</span></div>
+          <div className="mt-2 flex items-start gap-2 text-[8px] leading-relaxed text-[#56616B]"><ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" /><span>{pbo?.note || 'PBO activates only when aligned prospective return panels for multiple strategy candidates exist.'}</span></div>
         </div>
 
         <div className="bg-[#070A0E] p-3">
@@ -110,11 +128,11 @@ export const ResearchValidationPanel: React.FC = () => {
       </div>
 
       <div className="border-t border-white/[0.05] px-3 py-2 font-mono text-[6px] uppercase tracking-[0.09em] text-[#46515B]">
-        closed trades {payload?.sampleBasis?.closedTrades ?? 0} · blind samples {payload?.sampleBasis?.blindValidationSamples ?? 0} · council observations {payload?.sampleBasis?.councilComparisonSamples ?? 0} · resolved {payload?.sampleBasis?.resolvedCouncilComparisons ?? 0}
+        closed trades {payload?.sampleBasis?.closedTrades ?? 0} · blind {payload?.sampleBasis?.blindValidationSamples ?? 0} · council {payload?.sampleBasis?.councilComparisonSamples ?? 0} · strategy panel {payload?.sampleBasis?.strategyPanelObservations ?? 0} · aligned {payload?.sampleBasis?.alignedStrategyObservations ?? 0}
       </div>
     </section>
   );
 };
 
 const RMetric = ({ label, value, tone, danger = false }: { label: string; value: string; tone?: string; danger?: boolean }) => <div className="bg-[#070A0E] p-2.5"><div className="font-mono text-[6px] uppercase tracking-[0.1em] text-[#4F5963]">{label}</div><div className={`mt-1 font-mono text-[9px] ${tone || (danger ? 'text-[#D66565]' : 'text-[#AAB3BC]')}`}>{value}</div></div>;
-const Mini = ({ label, value }: { label: string; value: string }) => <div className="bg-[#05080C] p-2"><div className="font-mono text-[5.5px] uppercase tracking-[0.09em] text-[#46515B]">{label}</div><div className="mt-1 font-mono text-[8px] text-[#909AA2]">{value}</div></div>;
+const Mini = ({ label, value }: { label: string; value: string }) => <div className="bg-[#05080C] p-2"><div className="font-mono text-[5.5px] uppercase tracking-[0.09em] text-[#46515B]">{label}</div><div className="mt-1 break-words font-mono text-[8px] text-[#909AA2]">{value}</div></div>;
