@@ -21,7 +21,7 @@ Sprint 7 sequencing:
 1. Validation integrity before strategy evaluation
 2. Reproducible historical data identity and warm-up evidence
 3. Standardized portfolio target contract
-4. Shadow StrategyIntent -> Target -> post-risk Target parity
+4. Independent StrategyIntent + shadow risk/target parity
 5. Replay/PAPER execution-adapter parity
 6. Validation Hard Gate integration
 7. Only then expand Vault, drift, allocation and lifecycle automation
@@ -50,7 +50,7 @@ The following foundations remain strategically valid:
 1. `executionPolicy.ts`
    - Signal, sizing, risk and execution-command semantics remain compressed into one `ExecutionDecision`.
    - Target architecture is `Strategy Intent -> Portfolio Target -> Risk Overlay -> Execution Adapter`.
-   - Authority is not moved until shadow parity is demonstrated.
+   - Sprint 7 now has an independent shadow Strategy Intent/risk seam, but authority is not moved until observation parity is sufficient.
 
 2. `blindValidation.ts`
    - `noLookahead: true` describes post-decision outcome anchoring.
@@ -102,15 +102,7 @@ The following foundations remain strategically valid:
 
 ### S7-01C — shadow Portfolio Target contract
 
-`portfolioTargetContract.ts` expresses desired target state with:
-
-- current/target weight
-- current/target notional
-- delta notional
-- target intent (`INCREASE_LONG`, `FLAT`, `MAINTAIN`)
-- risk disposition
-- strategy version
-- immutable `executionAuthority: false`
+`portfolioTargetContract.ts` expresses desired target state with current/target weight, notionals, delta, target intent, risk disposition, strategy version and immutable `executionAuthority: false`.
 
 The PAPER session records this target and links PAPER order audit events to `portfolioTargetId`. The legacy decision remains the only order authority.
 
@@ -122,33 +114,60 @@ Implemented:
 - explicit exclusive `to` cursor handling
 - duplicate page-boundary detection that fails closed
 - deterministic candle canonicalization
-- SHA-256 dataset checksum
-- stable `datasetId`
+- SHA-256 dataset checksum and stable `datasetId`
 - default 400-candle input-validation policy with 200/250/300/400 recursive warm-up windows
 - explicit `InputValidationLedgerRecord`
 - separation of input-quality evidence from outcome/alpha samples
 - idempotent input-validation ledger merge
 - tests for pagination boundaries, checksum reproducibility, material data mutation, 400-candle warm-up evidence and insufficient-history rejection
 
-Important boundary: the current real-time PAPER multi-timeframe reader still requests the existing 200 candles per timeframe. The >200-candle reader is a validation/research primitive in this increment so API load, latency and PAPER behavior do not change silently.
+Important boundary: the current real-time PAPER multi-timeframe reader still requests the existing 200 candles per timeframe. The >200-candle reader is a validation/research primitive so API load, latency and PAPER behavior do not change silently.
 
-### S7-03A — shadow target pipeline + legacy parity evidence
+### S7-03A — post-legacy shadow target pipeline parity
 
 Implemented:
 
 `Legacy ExecutionDecision -> StrategyIntent(shadow) -> PortfolioTarget(shadow) -> RiskAdjustedTarget(shadow) -> ParityReport`
 
-Properties:
-
-- `StrategyIntentContract` has no execution authority
-- `RiskAdjustedTargetContract` records the already-applied legacy risk result without rerunning or changing risk
 - ENTER/HOLD/RISK-REJECT/EXIT semantics are parity-tested
 - notional delta and BUY/SELL/null side semantics are compared against the authoritative legacy decision
 - PAPER `SIGNAL` ledger records Intent, Target, post-risk Target and parity evidence
-- submitted PAPER orders retain the target/parity provenance IDs
-- a shadow parity failure is audit evidence only in S7-03A; it cannot create, cancel or resize an order
+- submitted PAPER orders retain target/parity provenance IDs
+- all objects have `executionAuthority: false`
 
-This is intentionally a transition seam, not the final architecture. Strategy Intent is still derived from the legacy decision until parity coverage is sufficient to split the upstream policy safely.
+### S7-03B — independent pre-risk Strategy Intent seam
+
+Implemented:
+
+`Signal/Position/Liquidity state -> IndependentStrategyIntent -> Independent risk projection -> Legacy ExecutionDecision comparator`
+
+The independent seam does not call the legacy policy to determine its intent or risk result. It derives the candidate from the same raw policy inputs and then compares its projection against the current authoritative `ExecutionDecision`.
+
+Coverage includes:
+
+- approved new long entry
+- weak-signal HOLD
+- portfolio-level entry block
+- deterministic risk rejection
+- protective stop-loss exit
+- healthy existing-position HOLD
+- deliberate notional tampering that must produce parity REJECT
+
+PAPER integration:
+
+- each PAPER step computes the existing legacy decision exactly as before
+- an independent shadow Intent/risk projection is computed from the same policy inputs
+- parity is written to the `SIGNAL` ledger
+- order audit events retain `independentPolicyParityId`
+- the independent seam cannot create, cancel, resize or promote an order
+- governance still acts after the authoritative legacy base decision; the post-governance target pipeline remains a separate shadow comparison layer
+
+This creates two explicit observation boundaries:
+
+1. **pre-governance policy parity** — independent Strategy Intent/risk projection vs legacy `ExecutionDecision`
+2. **post-governance target parity** — final legacy decision vs StrategyIntent/PortfolioTarget/post-risk Target representation
+
+Neither boundary has execution authority in Sprint 7.
 
 ## 4. Validation / branch integrity
 
@@ -157,8 +176,9 @@ On 2026-09-06:
 - the stale/diverged Sprint 7 stack was detected before further expansion
 - the original head was backed up to `backup/sprint-7-pre-rebase-20260906`
 - Sprint 7 was replayed onto the latest Sprint 6 safety/security baseline
-- the rebased S7-02 checkpoint passed both main validation workflows
-- Vercel commit status remained an independent failed external deployment check; the connected Vercel API did not expose the project needed to retrieve the detailed deployment failure
+- the rebased S7-02 and S7-03A checkpoints passed both main GitHub validation workflows
+- S7-03B unit/type/serverless bundle validation passed before PAPER ledger integration; the final integrated head must also pass both workflows before the increment is treated as complete
+- Vercel commit status remains an independent external deployment QA blocker; the connected Vercel API does not expose the project required to retrieve the detailed deployment failure
 
 Interpretation:
 
@@ -188,29 +208,13 @@ No production table, scheduler configuration, Edge Function, risk limit or tradi
 
 ## 6. Next code increments
 
-### S7-03B — independent Strategy Intent seam
-
-Goal: split signal intent from execution/risk semantics without behavior change.
-
-Planned sequence:
-
-`Signal/Strategy -> StrategyIntent -> PortfolioTarget -> RiskAdjustedTarget -> Legacy ExecutionDecision comparator`
-
-Requirements:
-
-- independent intent type created before risk evaluation
-- deterministic mapper from current signals/position state
-- shadow comparison against the current `ExecutionDecision`
-- mismatch ledger and fail-closed promotion status
-- no broker authority transfer
-
 ### S7-04 — Replay / PAPER adapter parity
 
-- common execution adapter interface
+- common execution-adapter request/result contract
 - deterministic historical replay adapter
-- existing PAPER broker adapter
+- existing PAPER broker adapter wrapper
 - parity report for requested target, expected order, fill assumptions, fees, slippage and resulting position state
-- no Live adapter with order authority in this sprint
+- replay/PAPER adapters remain non-LIVE; no Live adapter with order authority in this sprint
 
 ### S7-05 — Validation Hard Gate integration
 
@@ -226,7 +230,7 @@ Promotion requires all of:
 - evidence/audit coverage
 - grade confidence and Hard Gate compliance
 - reproducible dataset/configuration lineage
-- required parity evidence
+- required policy/target/adapter parity evidence
 
 ## 7. Non-negotiable safety rules
 
