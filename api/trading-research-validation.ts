@@ -14,16 +14,17 @@ export default async function handler(request: any, response: any) {
       { tradingCheckpointStore },
       {
         buildExpectedShortfall,
-        buildDeflatedSharpe,
         buildProbabilityBacktestOverfitting,
         buildCalibration,
         buildBlockRegimeMonteCarlo,
       },
+      { buildResearchTrialLineage, buildLineageAwareDeflatedSharpe },
       { summarizeCouncilComparison },
       { normalizeStrategyReturnPanel, buildAlignedStrategyReturnSeries, summarizeStrategyReturnPanel },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/researchValidation.js'),
+      import('../src/trading/researchTrialLineage.js'),
       import('../src/trading/councilComparison.js'),
       import('../src/trading/strategyReturnPanel.js'),
     ]);
@@ -32,9 +33,6 @@ export default async function handler(request: any, response: any) {
     if (!checkpoint) return response.status(200).json({ success: true, available: false, now: Date.now() });
 
     const closedReturns = checkpoint.session.closedTrades.map((trade) => trade.returnPct);
-    const configuredTrialCount = Number(process.env.TRADING_RESEARCH_TRIAL_COUNT ?? '');
-    const trialCount = Number.isInteger(configuredTrialCount) && configuredTrialCount > 0 ? configuredTrialCount : 1;
-    const trialCountSource = trialCount > 1 ? 'ENV_CONFIGURED' : 'UNSPECIFIED_DEFAULT_1';
     const validationSamples = Array.isArray(checkpoint.loop.validationSamples) ? checkpoint.loop.validationSamples : [];
     const blockSamples = validationSamples.map((item) => ({ returnPct: item.directionalReturn, regime: item.regime || 'UNKNOWN' }));
     const comparisons = Array.isArray(checkpoint.loop.councilComparisons) ? checkpoint.loop.councilComparisons : [];
@@ -60,6 +58,13 @@ export default async function handler(request: any, response: any) {
         ? `Prospective Strategy Factory cohort is collecting aligned observations; ${strategyPanelSummary.alignedObservations}/${strategyPanelSummary.minimumPboObservations} required observations are currently resolved.`
         : 'Strategy Factory prospective return-panel collection has not yet appeared in the persisted runtime checkpoint.';
 
+    const experimentLedgerEvents = Array.isArray(checkpoint.experimentLedger) ? checkpoint.experimentLedger : [];
+    const trialLineage = buildResearchTrialLineage({
+      strategyReturnPanel: strategyPanelPersisted ? checkpoint.loop.strategyReturnPanel : null,
+      experimentLedgerEvents,
+    });
+    const deflatedSharpe = buildLineageAwareDeflatedSharpe(closedReturns, trialLineage);
+
     return response.status(200).json({
       success: true,
       available: true,
@@ -72,15 +77,13 @@ export default async function handler(request: any, response: any) {
         strategyCandidates: strategyPanelSummary.candidateCount,
         strategyPanelObservations: strategyPanelSummary.observations,
         alignedStrategyObservations: strategyPanelSummary.alignedObservations,
+        experimentLedgerEvents: experimentLedgerEvents.length,
       },
       expectedShortfall: {
         es95: buildExpectedShortfall(closedReturns, 0.95),
         es99: buildExpectedShortfall(closedReturns, 0.99),
       },
-      deflatedSharpe: {
-        ...buildDeflatedSharpe(closedReturns, trialCount),
-        trialCountSource,
-      },
+      deflatedSharpe,
       probabilityBacktestOverfitting: {
         ...pbo,
         source: pboSource,

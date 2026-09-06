@@ -1,5 +1,6 @@
 import { appendGradeSnapshot, normalizeGradeSurveillance, summarizeGradeSurveillance, type GradeSurveillanceCheckpoint } from '../../src/trading/gradeSurveillance';
 import { tradingEvidenceStore } from './evidenceStore';
+import { runtimeExperimentLedgerStore } from './experimentLedgerStore';
 import { runtimeIntegrityStore } from './integrityStore';
 import { paperLoopController } from './paperLoop';
 import { buildPaperReadinessSnapshotFromCheckpoint } from './paperReadinessSnapshot';
@@ -32,8 +33,9 @@ export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpo
     evidence: tradingEvidenceStore.list(undefined, true),
     loop: paperLoopController.checkpoint(),
     tradeCases: tradeCaseStore.list(),
-    // Optional schema-v1 extension: old checkpoints remain readable and begin observability only after upgrade.
+    // Optional schema-v1 extensions keep old checkpoints readable while adding auditable runtime history.
     integrity: runtimeIntegrityStore.snapshot(),
+    experimentLedger: runtimeExperimentLedgerStore.snapshot(),
   };
   const readiness = buildPaperReadinessSnapshotFromCheckpoint(base, savedAt);
   gradeSurveillance = appendGradeSnapshot(gradeSurveillance, readiness.snapshot);
@@ -51,6 +53,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   if (!checkpoint) {
     runtimeIntegrityStore.restore(null);
     runtimeIntegrityStore.ensureStarted();
+    runtimeExperimentLedgerStore.restore([]);
     gradeSurveillance = normalizeGradeSurveillance(null);
     restoreSummary = {
       restored: false,
@@ -67,6 +70,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   paperLoopController.restore(checkpoint.loop, resumeLoop);
   runtimeIntegrityStore.restore(checkpoint.integrity ?? null);
   runtimeIntegrityStore.ensureStarted();
+  runtimeExperimentLedgerStore.restore(checkpoint.experimentLedger ?? []);
   gradeSurveillance = normalizeGradeSurveillance(checkpoint.gradeSurveillance);
 
   restoreSummary = {
@@ -104,4 +108,5 @@ export const runtimePersistenceStatus = () => ({
   restore: runtimeRestoreSummary(),
   integrity: runtimeIntegrityStore.summary(),
   gradeSurveillance: summarizeGradeSurveillance(gradeSurveillance),
+  experimentLedger: runtimeExperimentLedgerStore.summary(),
 });

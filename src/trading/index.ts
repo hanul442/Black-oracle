@@ -22,6 +22,7 @@ export * from './performance';
 export * from './portfolioExposure';
 export * from './rating';
 export * from './regime';
+export * from './researchTrialLineage';
 export * from './researchValidation';
 export * from './risk';
 export * from './riskProfiles';

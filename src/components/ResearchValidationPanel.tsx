@@ -12,12 +12,29 @@ type ResearchPayload = {
     strategyCandidates?: number;
     strategyPanelObservations?: number;
     alignedStrategyObservations?: number;
+    experimentLedgerEvents?: number;
   };
   expectedShortfall?: {
     es95?: { available: boolean; valueAtRisk: number | null; expectedShortfall: number | null };
     es99?: { available: boolean; valueAtRisk: number | null; expectedShortfall: number | null };
   };
-  deflatedSharpe?: { verdict: Verdict; probability: number | null; sharpePerObservation: number | null; trialCount: number; trialCountSource: string };
+  deflatedSharpe?: {
+    verdict: Verdict;
+    probability: number | null;
+    sharpePerObservation: number | null;
+    trialCount: number;
+    trialCountSource: string;
+    lineage?: {
+      available: boolean;
+      source: string;
+      integrity: 'PASS' | 'CONSERVATIVE' | 'MISSING';
+      trialCount: number;
+      lowerBoundTrialCount: number;
+      strategyFactoryTrials: number;
+      experimentTrials: number;
+      reasons: string[];
+    };
+  };
   probabilityBacktestOverfitting?: {
     verdict: Verdict;
     pbo: number | null;
@@ -62,6 +79,7 @@ export const ResearchValidationPanel: React.FC = () => {
   const comparison = payload?.councilComparison;
   const block = payload?.blockRegimeMonteCarlo;
   const dsr = payload?.deflatedSharpe;
+  const lineage = dsr?.lineage;
   const pbo = payload?.probabilityBacktestOverfitting;
   const v1Cal = payload?.forecastCalibration?.v1;
   const v2Cal = payload?.forecastCalibration?.v2;
@@ -92,12 +110,17 @@ export const ResearchValidationPanel: React.FC = () => {
           <div className="mt-2 grid grid-cols-2 gap-px bg-white/[0.04]">
             <Mini label="Sharpe / obs" value={num(dsr?.sharpePerObservation, 4)} />
             <Mini label="Trials" value={dsr ? `${dsr.trialCount} · ${dsr.trialCountSource}` : '—'} />
+            <Mini label="Lineage integrity" value={lineage?.integrity || 'MISSING'} />
+            <Mini label="Trial lower bound" value={String(lineage?.lowerBoundTrialCount ?? 0)} />
+            <Mini label="Factory tried" value={String(lineage?.strategyFactoryTrials ?? 0)} />
+            <Mini label="Experiment tried" value={String(lineage?.experimentTrials ?? 0)} />
             <Mini label="VaR 95" value={pct(payload?.expectedShortfall?.es95?.valueAtRisk)} />
             <Mini label="ES 99" value={pct(payload?.expectedShortfall?.es99?.expectedShortfall)} />
-            <Mini label="Factory candidates" value={String(panel?.candidateCount ?? payload?.sampleBasis?.strategyCandidates ?? 0)} />
+            <Mini label="PBO candidates" value={String(panel?.candidateCount ?? payload?.sampleBasis?.strategyCandidates ?? 0)} />
             <Mini label="PBO aligned" value={panel ? `${panel.alignedObservations}/${panel.minimumPboObservations}` : String(payload?.sampleBasis?.alignedStrategyObservations ?? 0)} />
           </div>
-          <div className="mt-2 flex items-start gap-2 text-[8px] leading-relaxed text-[#56616B]"><ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" /><span>{pbo?.note || 'PBO activates only when aligned prospective return panels for multiple strategy candidates exist.'}</span></div>
+          <div className="mt-2 flex items-start gap-2 text-[8px] leading-relaxed text-[#56616B]"><ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" /><span>{lineage?.reasons?.[0] || 'DSR remains unavailable until persisted, actually tried configuration lineage exists. Planned-only experiments do not count.'}</span></div>
+          <div className="mt-2 text-[8px] leading-relaxed text-[#56616B]">{pbo?.note || 'PBO activates only when aligned prospective return panels for multiple strategy candidates exist.'}</div>
         </div>
 
         <div className="bg-[#070A0E] p-3">
@@ -128,7 +151,7 @@ export const ResearchValidationPanel: React.FC = () => {
       </div>
 
       <div className="border-t border-white/[0.05] px-3 py-2 font-mono text-[6px] uppercase tracking-[0.09em] text-[#46515B]">
-        closed trades {payload?.sampleBasis?.closedTrades ?? 0} · blind {payload?.sampleBasis?.blindValidationSamples ?? 0} · council {payload?.sampleBasis?.councilComparisonSamples ?? 0} · strategy panel {payload?.sampleBasis?.strategyPanelObservations ?? 0} · aligned {payload?.sampleBasis?.alignedStrategyObservations ?? 0}
+        closed trades {payload?.sampleBasis?.closedTrades ?? 0} · blind {payload?.sampleBasis?.blindValidationSamples ?? 0} · council {payload?.sampleBasis?.councilComparisonSamples ?? 0} · strategy panel {payload?.sampleBasis?.strategyPanelObservations ?? 0} · aligned {payload?.sampleBasis?.alignedStrategyObservations ?? 0} · experiment events {payload?.sampleBasis?.experimentLedgerEvents ?? 0}
       </div>
     </section>
   );
