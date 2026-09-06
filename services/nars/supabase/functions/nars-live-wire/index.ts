@@ -22,6 +22,28 @@ Deno.serve(async (req: Request) => {
   if (bearer !== serviceRole) return reply(403, { ok: false, error: "service_role_required" });
 
   const input = new URL(req.url);
+  const headers = { authorization: `Bearer ${serviceRole}`, apikey: serviceRole };
+
+  if (input.searchParams.get("view") === "metrics") {
+    const metricsRes = await fetch(`${supabaseUrl}/rest/v1/nars_shadow_metrics_v1?select=*`, { headers });
+    if (!metricsRes.ok) {
+      return reply(500, {
+        ok: false,
+        error: "shadow_metrics_query_failed",
+        status: metricsRes.status,
+        detail: (await metricsRes.text()).slice(0, 800),
+      });
+    }
+    const rows = await metricsRes.json() as Array<Record<string, unknown>>;
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: "4.0.2-shadow",
+      view: "metrics",
+      metrics: rows[0] ?? null,
+    });
+  }
+
   const limit = Math.min(200, Math.max(1, Number.parseInt(input.searchParams.get("limit") ?? "50", 10) || 50));
   const origin = input.searchParams.get("origin")?.trim() || null;
   const source = input.searchParams.get("source")?.trim() || null;
@@ -34,7 +56,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const params = new URLSearchParams();
-  params.set("select", "id,published_at,retrieved_at,title,canonical_url,language,is_breaking,ingest_origin,legacy_ref,source_key,source_name,source_type,source_tier,source_health,sighting_origins,v3_seen,collector_seen,first_seen_at,last_seen_at,event_id,event_title,event_status,priority_score,evidence_grade");
+  params.set("select", "id,published_at,retrieved_at,title,canonical_url,language,is_breaking,ingest_origin,legacy_ref,source_key,source_name,source_type,source_tier,source_health,sighting_origins,v3_seen,collector_seen,first_seen_at,last_seen_at,v3_first_seen_at,collector_first_seen_at,collector_minus_v3_seconds,event_id,event_title,event_status,priority_score,evidence_grade");
   params.set("order", "last_seen_at.desc.nullslast,retrieved_at.desc");
   params.set("limit", String(limit));
   if (origin) params.set("ingest_origin", `eq.${origin}`);
@@ -60,7 +82,6 @@ Deno.serve(async (req: Request) => {
     params.set("last_seen_at", `gte.${date.toISOString()}`);
   }
 
-  const headers = { authorization: `Bearer ${serviceRole}`, apikey: serviceRole };
   const response = await fetch(`${supabaseUrl}/rest/v1/nars_live_wire_v1?${params.toString()}`, { headers });
   if (!response.ok) {
     return reply(500, {
@@ -78,6 +99,7 @@ Deno.serve(async (req: Request) => {
     ingest_origin?: string;
     v3_seen?: boolean;
     collector_seen?: boolean;
+    collector_minus_v3_seconds?: number | string | null;
   }>;
 
   const newestRaw = rows[0]?.last_seen_at ?? rows[0]?.retrieved_at;
@@ -92,6 +114,7 @@ Deno.serve(async (req: Request) => {
   let collectorOnly = 0;
   let both = 0;
   let neither = 0;
+  const deltas: number[] = [];
 
   for (const row of rows) {
     const sourceKey = String(row.source_key ?? "unknown");
@@ -105,15 +128,21 @@ Deno.serve(async (req: Request) => {
     else if (v3) v3Only += 1;
     else if (collector) collectorOnly += 1;
     else neither += 1;
+
+    const delta = Number(row.collector_minus_v3_seconds);
+    if (Number.isFinite(delta)) deltas.push(delta);
   }
 
   const compared = v3Only + collectorOnly + both;
   const overlapRate = compared > 0 ? Number((both / compared).toFixed(4)) : null;
+  const meanDeltaSeconds = deltas.length
+    ? Number((deltas.reduce((sum, value) => sum + value, 0) / deltas.length).toFixed(1))
+    : null;
 
   return reply(200, {
     ok: true,
     service: "nars-live-wire",
-    version: "4.0.1-shadow",
+    version: "4.0.2-shadow",
     generatedAt: new Date().toISOString(),
     count: rows.length,
     lagSeconds,
@@ -127,6 +156,7 @@ Deno.serve(async (req: Request) => {
         both,
         neither,
         overlapRate,
+        meanCollectorMinusV3Seconds: meanDeltaSeconds,
       },
     },
     items: rows,
