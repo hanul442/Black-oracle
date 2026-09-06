@@ -33,6 +33,12 @@ test('replaces duplicate timestamp instead of creating ambiguous history', () =>
   assert.equal(checkpoint.history[0].rating.rawScore, 40);
 });
 
+test('coalesces insignificant same-grade autosave snapshots inside fifteen minutes', () => {
+  let checkpoint = appendGradeSnapshot(undefined, snapshot(1_000_000, 90));
+  checkpoint = appendGradeSnapshot(checkpoint, snapshot(1_060_000, 91));
+  assert.equal(checkpoint.history.length, 1);
+});
+
 test('upgrade resets consecutive downgrade count', () => {
   let checkpoint = appendGradeSnapshot(undefined, snapshot(1000, 70));
   checkpoint = appendGradeSnapshot(checkpoint, snapshot(2000, 60));
