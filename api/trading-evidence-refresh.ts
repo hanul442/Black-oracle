@@ -1,4 +1,5 @@
 import Parser from 'rss-parser';
+import { selectDiverseEvidenceCandidates } from '../src/trading/evidenceCandidateSelection.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
@@ -315,16 +316,6 @@ const collectGoogleNews = async (
   return result;
 };
 
-const dedupeCandidates = (items: Candidate[]) => {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = `${item.market}|${item.sourceUrl}|${item.title.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, MAX_CANDIDATES);
-};
-
 const extractOutputText = (payload: any) => {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text;
   for (const item of payload?.output ?? []) {
@@ -480,14 +471,18 @@ export default async function handler(request: any, response: any) {
       collectGoogleNews(markets, warnings, 'EN'),
       collectGoogleNews(markets, warnings, 'KO'),
     ]);
-    const candidates = dedupeCandidates([
-      ...ethereumPrimary,
-      ...fscPrimary,
-      ...bokMacro,
-      ...coinDesk,
-      ...googleNewsEn,
-      ...googleNewsKo,
-    ]);
+    const candidates = selectDiverseEvidenceCandidates<Candidate>(
+      markets,
+      [
+        { id: 'ethereum-primary', items: ethereumPrimary },
+        { id: 'fsc-primary', items: fscPrimary },
+        { id: 'bok-macro', items: bokMacro },
+        { id: 'coindesk', items: coinDesk },
+        { id: 'google-news-ko', items: googleNewsKo },
+        { id: 'google-news-en', items: googleNewsEn },
+      ],
+      MAX_CANDIDATES,
+    );
     const existingEvidence = runtime.tradingEvidenceStore.list(undefined, false);
     const classifications = await classifyCandidates(candidates, existingEvidence);
     const classificationById = new Map(classifications.map((item) => [item.candidateId, item]));
@@ -519,6 +514,7 @@ export default async function handler(request: any, response: any) {
       runtimeId,
       markets,
       candidates: candidates.length,
+      selectionPolicy: 'MARKET_SOURCE_DIVERSITY_V1',
       candidateBreakdown: {
         primary: ethereumPrimary.length + fscPrimary.length,
         macro: bokMacro.length,
