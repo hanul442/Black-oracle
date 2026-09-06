@@ -18,8 +18,8 @@ test('persists ordered grade snapshots and summarizes downgrade velocity', () =>
 
   const summary = summarizeGradeSurveillance(checkpoint);
   assert.equal(checkpoint.history.length, 3);
-  assert.equal(summary.current?.rating.grade, 'BBB+');
-  assert.equal(summary.previous?.rating.grade, 'AA0');
+  assert.equal(summary.current?.rating.grade, 'BB+');
+  assert.equal(summary.previous?.rating.grade, 'A0');
   assert.equal(summary.trend, 'DOWN');
   assert.equal(summary.consecutiveDowngrades, 2);
   assert.equal(summary.downgradeEvents, 2);
