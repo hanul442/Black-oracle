@@ -1,5 +1,6 @@
 import { probePaperDeploymentPreflight } from '../server/trading/deploymentPreflight.js';
 import { buildEvidenceRefreshReadiness } from '../server/trading/evidenceReadiness.js';
+import { buildQualificationReleaseReadiness } from '../src/trading/qualificationReleasePreflight.js';
 import {
   EVIDENCE_REFRESH_TIMEOUT_MS,
   MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS,
@@ -18,6 +19,7 @@ export default async function handler(request: any, response: any) {
   const env = process.env as Record<string, string | undefined>;
   const evidenceRefresh = buildEvidenceRefreshReadiness(env);
   const deploymentPreflight = await probePaperDeploymentPreflight(env);
+  const qualificationRelease = buildQualificationReleaseReadiness(env);
 
   return response.status(200).json({
     success: true,
@@ -28,6 +30,7 @@ export default async function handler(request: any, response: any) {
     },
     evidenceRefresh,
     deploymentPreflight,
+    qualificationRelease,
     scheduler: {
       expectedOrder: ['EVIDENCE_REFRESH', 'PAPER_CYCLE'],
       protectiveExitAuthority: true,
