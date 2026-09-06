@@ -47,10 +47,11 @@ test('PBO computes combinatorial overfit estimate for comparable candidates', ()
 });
 
 test('calibration returns Brier, log loss and ECE after enough observations', () => {
-  const observations = Array.from({ length: 100 }, (_, i) => ({ probability: i % 2 ? 0.8 : 0.2, outcome: Boolean(i % 2) }));
+  const observations = Array.from({ length: 100 }, (_, i) => ({ probability: i % 2 ? 0.98 : 0.02, outcome: Boolean(i % 2) }));
   const result = buildCalibration(observations);
   assert.equal(result.available, true);
-  assert.ok((result.brierScore ?? 1) < 0.1);
+  assert.ok((result.brierScore ?? 1) < 0.01);
+  assert.ok((result.logLoss ?? 1) < 0.05);
   assert.ok((result.expectedCalibrationError ?? 1) < 0.05);
 });
 
