@@ -6,6 +6,10 @@ type Source = {
   endpoint: string;
   language: string;
   country: string;
+  tier: number;
+  sourceClass: string;
+  authorityKey?: string;
+  tierUnreviewed: boolean;
 };
 
 type FeedItem = {
@@ -18,13 +22,16 @@ type FeedItem = {
 };
 
 const SOURCES: Source[] = [
-  { key: "direct:khan:all", name: "경향신문", endpoint: "https://www.khan.co.kr/rss/rssdata/total_news.xml", language: "ko", country: "KR" },
-  { key: "direct:mk:all", name: "매일경제", endpoint: "https://www.mk.co.kr/rss/40300001/", language: "ko", country: "KR" },
-  { key: "direct:donga:all", name: "동아일보", endpoint: "https://rss.donga.com/total.xml", language: "ko", country: "KR" },
+  { key: "direct:khan:all", name: "경향신문", endpoint: "https://www.khan.co.kr/rss/rssdata/total_news.xml", language: "ko", country: "KR", tier: 2, sourceClass: "general_news", tierUnreviewed: true },
+  { key: "direct:mk:all", name: "매일경제", endpoint: "https://www.mk.co.kr/rss/40300001/", language: "ko", country: "KR", tier: 2, sourceClass: "financial_media", tierUnreviewed: true },
+  { key: "direct:donga:all", name: "동아일보", endpoint: "https://rss.donga.com/total.xml", language: "ko", country: "KR", tier: 2, sourceClass: "general_news", tierUnreviewed: true },
+  { key: "official:fed:press", name: "Federal Reserve Board", endpoint: "https://www.federalreserve.gov/feeds/press_all.xml", language: "en", country: "US", tier: 1, sourceClass: "primary_official", authorityKey: "us:federal-reserve", tierUnreviewed: false },
+  { key: "official:ecb:press", name: "European Central Bank", endpoint: "https://www.ecb.europa.eu/rss/press.html", language: "en", country: "EU", tier: 1, sourceClass: "primary_official", authorityKey: "eu:ecb", tierUnreviewed: false },
+  { key: "official:bis:press", name: "Bank for International Settlements", endpoint: "https://www.bis.org/doclist/all_pressrels.rss", language: "en", country: "INT", tier: 1, sourceClass: "research_institution", authorityKey: "int:bis", tierUnreviewed: false },
 ];
 
 const MAX_ITEMS_PER_SOURCE = 8;
-const USER_AGENT = "NARS-v4-shadow/4.0.1 (+https://github.com/hanul442/Black-oracle)";
+const USER_AGENT = "NARS-v4-shadow/4.5.0 (+https://github.com/hanul442/Black-oracle)";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 
@@ -119,6 +126,26 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
   }
 }
 
+function sourcePayload(source: Source) {
+  return {
+    key: source.key,
+    name: source.name,
+    type: "rss",
+    endpoint: source.endpoint,
+    country: source.country,
+    language: source.language,
+    tier: source.tier,
+    metadata: {
+      shadow_direct: true,
+      temporary_runner: "supabase",
+      tier_unreviewed: source.tierUnreviewed,
+      source_class: source.sourceClass,
+      authority_key: source.authorityKey ?? null,
+      diversified_feed: true,
+    },
+  };
+}
+
 async function getExpectedTokenHash(supabaseUrl: string, serviceRole: string): Promise<string | null> {
   const response = await fetch(`${supabaseUrl}/rest/v1/nars_system_meta?key=eq.shadow_poller_token_hash&select=value&limit=1`, {
     headers: { authorization: `Bearer ${serviceRole}`, apikey: serviceRole },
@@ -132,11 +159,7 @@ async function reportSourceStatus(supabaseUrl: string, serviceRole: string, sour
   await fetch(`${supabaseUrl}/functions/v1/nars-source-status`, {
     method: "POST",
     headers: { authorization: `Bearer ${serviceRole}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      source: { key: source.key, name: source.name, type: "rss", endpoint: source.endpoint, country: source.country, language: source.language, tier: 2, metadata: { shadow_direct: true, temporary_runner: "supabase", tier_unreviewed: true } },
-      ok,
-      error: error?.slice(0, 1000),
-    }),
+    body: JSON.stringify({ source: sourcePayload(source), ok, error: error?.slice(0, 1000) }),
   });
 }
 
@@ -159,7 +182,7 @@ Deno.serve(async (req: Request) => {
     const jobRes = await fetch(`${supabaseUrl}/rest/v1/nars_job_runs`, {
       method: "POST",
       headers: { ...headers, prefer: "return=representation" },
-      body: JSON.stringify({ job_type: "shadow_direct_poll", job_key: `shadow-poll:${startedAt}`, status: "running", started_at: startedAt, attempt: 1, items_in: 0, metadata: { runner: "supabase_fallback", source_count: SOURCES.length } }),
+      body: JSON.stringify({ job_type: "shadow_direct_poll", job_key: `shadow-poll:${startedAt}`, status: "running", started_at: startedAt, attempt: 1, items_in: 0, metadata: { runner: "supabase_fallback", source_count: SOURCES.length, diversified: true } }),
     });
     if (jobRes.ok) {
       const jobs = await jobRes.json() as Array<{ id: string }>;
@@ -185,19 +208,28 @@ Deno.serve(async (req: Request) => {
           method: "POST",
           headers: { authorization: `Bearer ${serviceRole}`, "content-type": "application/json" },
           body: JSON.stringify({
-            source: { key: source.key, name: source.name, type: "rss", endpoint: source.endpoint, country: source.country, language: source.language, tier: 2, metadata: { shadow_direct: true, temporary_runner: "supabase", tier_unreviewed: true } },
-            document: { externalId: item.externalId, publishedAt: item.publishedAt, title: item.title, url: item.url, language: source.language, isBreaking: item.isBreaking, excerpt: item.excerpt, metadata: { feed: source.key, shadow_direct: true } },
+            source: sourcePayload(source),
+            document: {
+              externalId: item.externalId,
+              publishedAt: item.publishedAt,
+              title: item.title,
+              url: item.url,
+              language: source.language,
+              isBreaking: item.isBreaking,
+              excerpt: item.excerpt,
+              metadata: { feed: source.key, shadow_direct: true, source_class: source.sourceClass, authority_key: source.authorityKey ?? null },
+            },
           }),
         });
         if (ingestRes.ok) ingestSuccess += 1;
         else { ingestFailure += 1; sourceIngestFailures += 1; }
       }
       await reportSourceStatus(supabaseUrl, serviceRole, source, true);
-      sourceResults.push({ source: source.key, ok: true, items: items.length, ingestFailures: sourceIngestFailures });
+      sourceResults.push({ source: source.key, class: source.sourceClass, authority: source.authorityKey ?? null, ok: true, items: items.length, ingestFailures: sourceIngestFailures });
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown";
       await reportSourceStatus(supabaseUrl, serviceRole, source, false, message);
-      sourceResults.push({ source: source.key, ok: false, error: message.slice(0, 300) });
+      sourceResults.push({ source: source.key, class: source.sourceClass, authority: source.authorityKey ?? null, ok: false, error: message.slice(0, 300) });
     }
   }
 
@@ -207,7 +239,7 @@ Deno.serve(async (req: Request) => {
       await fetch(`${supabaseUrl}/rest/v1/nars_job_runs?id=eq.${jobId}`, {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ status: sourceFailures === SOURCES.length ? "failed" : "succeeded", finished_at: new Date().toISOString(), items_in: fetchedItems, items_out: ingestSuccess, error_count: ingestFailure + sourceFailures, metadata: { runner: "supabase_fallback", fetched_items: fetchedItems, ingest_success: ingestSuccess, ingest_failure: ingestFailure, source_failures: sourceFailures, sources: sourceResults } }),
+        body: JSON.stringify({ status: sourceFailures === SOURCES.length ? "failed" : "succeeded", finished_at: new Date().toISOString(), items_in: fetchedItems, items_out: ingestSuccess, error_count: ingestFailure + sourceFailures, metadata: { runner: "supabase_fallback", diversified: true, fetched_items: fetchedItems, ingest_success: ingestSuccess, ingest_failure: ingestFailure, source_failures: sourceFailures, sources: sourceResults } }),
       });
     } catch {}
   }
@@ -215,6 +247,7 @@ Deno.serve(async (req: Request) => {
   return reply(sourceFailures === SOURCES.length ? 503 : 200, {
     ok: sourceFailures < SOURCES.length,
     runner: "supabase_fallback",
+    version: "4.5.0-source-diversification",
     startedAt,
     finishedAt: new Date().toISOString(),
     fetchedItems,
