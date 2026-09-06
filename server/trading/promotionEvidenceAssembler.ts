@@ -1,4 +1,5 @@
 import { runWalkForwardValidation, type BlindValidationResult, type BlindValidationSample } from '../../src/trading/blindValidation';
+import { buildCostStressValidation } from '../../src/trading/costStress';
 import type { ExperimentLedgerEvent } from '../../src/trading/experimentLedger';
 import type { GradeSurveillanceCheckpoint } from '../../src/trading/gradeSurveillance';
 import { summarizeGradeSurveillance } from '../../src/trading/gradeSurveillance';
@@ -34,6 +35,7 @@ export interface PromotionEvidenceAssemblerOptions {
   stage: StrategyPromotionStage;
   inputValidation?: InputValidationLedgerRecord[] | null;
   researchConfigurationId?: string | null;
+  /** Optional external override for controlled research comparisons. Default is deterministic closed-trade cost stress. */
   costStressVerdict?: PromotionEvidenceVerdict | null;
 }
 
@@ -79,8 +81,8 @@ const rebuildBlindValidation = (samples: BlindValidationSample[]): BlindValidati
 
 /**
  * Assemble only evidence that can be traced to the persisted PAPER checkpoint plus
- * explicitly supplied input-validation/cost-stress evidence. Ambiguous research
- * configuration lineage is intentionally returned as missing rather than guessed.
+ * explicitly supplied input-validation evidence. Ambiguous research configuration
+ * lineage is intentionally returned as missing rather than guessed.
  */
 export const assembleStrategyPromotionEvidence = (
   checkpoint: PromotionEvidenceCheckpointLike,
@@ -91,6 +93,8 @@ export const assembleStrategyPromotionEvidence = (
   const walkForward = runWalkForwardValidation(validationSamples);
   const closedReturns = (checkpoint.session.closedTrades ?? []).map((trade) => trade.returnPct);
   const monteCarlo = buildMonteCarloValidation(closedReturns);
+  const costStress = buildCostStressValidation(closedReturns);
+  const effectiveCostStressVerdict = options.costStressVerdict ?? costStress.verdict;
   const auditCoverage = buildAuditCoverage(checkpoint.loop.cycleHistory);
   const grade = summarizeGradeSurveillance(checkpoint.gradeSurveillance).current?.rating ?? null;
   const experimentEvents = Array.isArray(checkpoint.experimentLedger) ? checkpoint.experimentLedger : [];
@@ -105,7 +109,7 @@ export const assembleStrategyPromotionEvidence = (
     blindValidation,
     walkForward,
     monteCarlo,
-    costStressVerdict: options.costStressVerdict ?? null,
+    costStressVerdict: effectiveCostStressVerdict,
     auditCoverage,
     rating: grade,
     researchConfigurationId,
@@ -122,7 +126,9 @@ export const assembleStrategyPromotionEvidence = (
       blindValidation,
       walkForward,
       monteCarlo,
-      costStressVerdict: options.costStressVerdict ?? null,
+      costStress,
+      costStressVerdict: effectiveCostStressVerdict,
+      costStressSource: options.costStressVerdict ? 'EXPLICIT_OVERRIDE' as const : 'DETERMINISTIC_CLOSED_TRADE_STRESS' as const,
       auditCoverage,
       rating: grade,
       researchConfigurationId,
