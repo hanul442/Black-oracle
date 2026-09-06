@@ -13,10 +13,18 @@ const inputValidation = (): InputValidationLedgerRecord => ({
   dataset: {
     datasetId: 'candle-set:0123456789abcdef01234567', checksum: `sha256:${'a'.repeat(64)}`, checksumAlgorithm: 'SHA-256',
     canonicalization: 'BLACK_ORACLE_CANDLE_DATASET_V1', candleCount: 400, market: 'KRW-BTC', timeframeMinutes: 15,
-    firstTimestamp: 1_699_000_000_000, lastTimestamp: 1_700_000_000_000,
+    firstTimestamp: 1_699_640_900_000, lastTimestamp: 1_700_000_000_000,
   },
-  integrity: { disposition: 'PASS', issues: [], candleCount: 400, expectedIntervalMs: 900_000, maxObservedGapMs: 900_000 } as InputValidationLedgerRecord['integrity'],
-  warmup: { disposition: 'PASS', baselineCandles: 400, comparisons: [], reasons: [] } as InputValidationLedgerRecord['warmup'],
+  integrity: {
+    disposition: 'PASS', sampleCount: 400, firstTimestamp: 1_699_640_900_000, lastTimestamp: 1_700_000_000_000,
+    market: 'KRW-BTC', timeframeMinutes: 15, issues: [],
+    provenance: { evaluationCutoffEnforced: true, futureCandlesBlocked: true, chronologyCheckedOnSuppliedOrder: true, duplicateTimestampsBlocked: true, ohlcChecked: true, warmupChecked: true },
+  },
+  warmup: {
+    disposition: 'PASS', baselineCandles: 400,
+    comparedWindows: [{ candles: 200, maxNormalizedDrift: 0, indicatorDrift: {} }], maxNormalizedDrift: 0, reasons: [],
+    provenance: { method: 'SAME_TERMINAL_CANDLE_VARYING_WARMUP', minimumIndicatorCandles: 200, terminalTimestampHeldConstant: true, futureDataUsed: false },
+  },
   disposition: 'PASS', reasons: [], executionAuthority: false,
 });
 
