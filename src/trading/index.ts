@@ -37,6 +37,7 @@ export * from './risk';
 export * from './riskProfiles';
 export * from './signalFusion';
 export * from './snapshot';
+export * from './strategyDrift';
 export * from './strategyIntent';
 export * from './strategyReturnPanel';
 export * from './strategyVault';
