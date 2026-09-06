@@ -1,4 +1,4 @@
-import type { Env, SourceRecord } from './types';
+import type { Env, SourceRecord } from './types.ts';
 
 function isSource(value: unknown): value is SourceRecord {
   if (!value || typeof value !== 'object') return false;
