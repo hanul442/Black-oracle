@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlaskConical, GitCompareArrows, ShieldCheck, TrendingDown, Zap } from 'lucide-react';
+import { ResearchValidationPanel } from './ResearchValidationPanel';
 
 type MonteCarloValidation = {
   verdict: 'PASS' | 'WATCH' | 'REJECT' | 'INSUFFICIENT_DATA';
@@ -181,6 +182,8 @@ export const RiskLabPanel: React.FC = () => {
             <div className="col-span-full border border-dashed border-white/[0.07] p-6 text-center font-mono text-[7px] uppercase tracking-[0.13em] text-[#46515B]">Risk Lab data unavailable.</div>
           )}
         </div>
+
+        <ResearchValidationPanel />
       </div>
     </section>
   );
