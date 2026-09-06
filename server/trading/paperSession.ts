@@ -7,6 +7,7 @@ import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
+import { summarizePromotionParityFromLedger } from '../../src/trading/promotionHardGate';
 import { buildIndependentPolicyShadow } from '../../src/trading/strategyIntent';
 import { buildShadowTargetPipeline } from '../../src/trading/targetPipeline';
 import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, PaperOrderRequest, TradingLedgerEvent } from '../../src/trading/types';
@@ -57,7 +58,23 @@ export class PaperTradingSession {
 
   reset(initialCash = 1_000_000) { this.portfolio = new PaperPortfolio(initialCash); this.broker = new PaperBroker(PAPER_EXECUTION_ASSUMPTIONS); this.ledger = new TradingLedger(); this.markPrices.clear(); this.entryMetadata.clear(); this.closedTrades.splice(0, this.closedTrades.length); return this.state(); }
   performance(timestamp = Date.now()) { const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp); return buildPaperPerformance(this.closedTrades, portfolio.equityCurve, portfolio.initialEquity, portfolio.equity, portfolio.drawdownPct); }
-  state() { const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices)); return { mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, portfolio, performance: buildPaperPerformance(this.closedTrades, portfolio.equityCurve, portfolio.initialEquity, portfolio.equity, portfolio.drawdownPct), closedTrades: this.closedTrades.slice(-100), ledger: this.ledger.snapshot() }; }
+  state() {
+    const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices));
+    const ledger = this.ledger.snapshot();
+    return {
+      mode: 'PAPER' as const,
+      strategyVersion: TRADING_STRATEGY_VERSION,
+      portfolio,
+      performance: buildPaperPerformance(this.closedTrades, portfolio.equityCurve, portfolio.initialEquity, portfolio.equity, portfolio.drawdownPct),
+      closedTrades: this.closedTrades.slice(-100),
+      ledger,
+      promotionEvidence: {
+        parity: summarizePromotionParityFromLedger(ledger),
+        promotionAuthority: false as const,
+        executionAuthority: false as const,
+      },
+    };
+  }
 
   async step(market: string, eventScore?: number, precomputedLiquidity?: LiquiditySnapshot, newEntryAllowed = true, governanceEvaluator?: PaperGovernanceEvaluator, newEntryBlockReasons: string[] = []) {
     const normalized = market.toUpperCase();
