@@ -1,4 +1,11 @@
 import { buildBlindValidationSamples, type BlindValidationSample } from '../../src/trading/blindValidation';
+import {
+  createCouncilComparisonObservation,
+  resolveCouncilComparisonObservations,
+  summarizeCouncilComparison,
+  type CouncilComparisonObservation,
+} from '../../src/trading/councilComparison';
+import { buildCouncilV2Challenger } from '../../src/trading/councilV2';
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import { buildDeterministicGovernancePackage } from '../../src/trading/governanceCore';
 import { buildFinalDecision } from '../../src/trading/intelligencePipeline';
@@ -21,12 +28,14 @@ export interface PaperLoopCycleResult {
 export interface PaperLoopCheckpoint {
   schemaVersion: 1; running: boolean; config: PaperLoopConfig; cycleCount: number; lastCycle: PaperLoopCycleResult | null;
   marketHistory?: MarketPriceSnapshot[]; cycleHistory?: PaperLoopCycleResult[]; validationSamples?: BlindValidationSample[];
+  councilComparisons?: CouncilComparisonObservation[];
 }
 
 const DEFAULT_CONFIG: PaperLoopConfig = { intervalMs: 15 * 60 * 1000, maxMarkets: 6, maxOpenPositions: 4 };
 const MAX_MARKET_HISTORY_POINTS = 384;
 const MAX_CYCLE_HISTORY = 96;
 const MAX_VALIDATION_SAMPLES = 10_000;
+const MAX_COUNCIL_COMPARISONS = 5_000;
 const VALIDATION_HORIZON_MS = 4 * 60 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const validateConfig = (config: PaperLoopConfig) => {
@@ -36,6 +45,7 @@ const validateConfig = (config: PaperLoopConfig) => {
 };
 const cloneHistory = (history: MarketPriceSnapshot[]) => history.map((snapshot) => ({ timestamp: snapshot.timestamp, prices: snapshot.prices.map(([market, price]) => [market, price] as [string, number]) }));
 const cloneValidationSample = (sample: BlindValidationSample): BlindValidationSample => ({ ...sample });
+const cloneCouncilComparison = (item: CouncilComparisonObservation): CouncilComparisonObservation => ({ ...item, v1: { ...item.v1 }, v2: { ...item.v2 }, executionAuthority: false, promotionAuthority: false });
 const cloneCycle = (cycle: PaperLoopCycleResult): PaperLoopCycleResult => ({
   ...cycle,
   errors: cycle.errors.map((item) => ({ ...item })),
@@ -83,6 +93,30 @@ const normalizeValidationSamples = (samples: unknown): BlindValidationSample[] =
     }];
   }), MAX_VALIDATION_SAMPLES);
 };
+const normalizeCouncilComparisons = (items: unknown): CouncilComparisonObservation[] => {
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((candidate: any) => {
+    if (!candidate || typeof candidate.id !== 'string' || !/^KRW-[A-Z0-9]+$/.test(String(candidate.market ?? '').toUpperCase())) return [];
+    if (!Number.isFinite(candidate.generatedAt) || !Number.isFinite(candidate.targetTimestamp) || !Number.isFinite(candidate.anchorPrice) || candidate.anchorPrice <= 0) return [];
+    if (!candidate.v1 || !candidate.v2) return [];
+    return [cloneCouncilComparison({
+      ...candidate,
+      market: String(candidate.market).toUpperCase(),
+      generatedAt: Number(candidate.generatedAt),
+      targetTimestamp: Number(candidate.targetTimestamp),
+      anchorPrice: Number(candidate.anchorPrice),
+      resolvedAt: Number.isFinite(candidate.resolvedAt) ? Number(candidate.resolvedAt) : null,
+      targetPrice: Number.isFinite(candidate.targetPrice) ? Number(candidate.targetPrice) : null,
+      rawReturn: Number.isFinite(candidate.rawReturn) ? Number(candidate.rawReturn) : null,
+      v1DirectionalUtility: Number.isFinite(candidate.v1DirectionalUtility) ? Number(candidate.v1DirectionalUtility) : null,
+      v2DirectionalUtility: Number.isFinite(candidate.v2DirectionalUtility) ? Number(candidate.v2DirectionalUtility) : null,
+      v1Favorable: typeof candidate.v1Favorable === 'boolean' ? candidate.v1Favorable : null,
+      v2Favorable: typeof candidate.v2Favorable === 'boolean' ? candidate.v2Favorable : null,
+      executionAuthority: false,
+      promotionAuthority: false,
+    } as CouncilComparisonObservation)];
+  }).sort((a, b) => a.generatedAt - b.generatedAt).slice(-MAX_COUNCIL_COMPARISONS);
+};
 const normalizeCycleHistory = (history: unknown, fallback: PaperLoopCycleResult | null): PaperLoopCycleResult[] => {
   const source = Array.isArray(history) ? history : fallback ? [fallback] : [];
   return source.filter((candidate: any) => Number.isFinite(candidate?.startedAt) && Number.isFinite(candidate?.finishedAt)).map((candidate: any) => cloneCycle({
@@ -102,12 +136,14 @@ export class PaperLoopController {
   private marketHistory: MarketPriceSnapshot[] = [];
   private cycleHistory: PaperLoopCycleResult[] = [];
   private validationSamples: BlindValidationSample[] = [];
+  private councilComparisons: CouncilComparisonObservation[] = [];
 
   checkpoint(): PaperLoopCheckpoint {
     return {
       schemaVersion: 1, running: this.timer !== null, config: { ...this.config }, cycleCount: this.cycleCount,
       lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, marketHistory: cloneHistory(this.marketHistory),
       cycleHistory: this.cycleHistory.map(cloneCycle), validationSamples: this.validationSamples.map(cloneValidationSample),
+      councilComparisons: this.councilComparisons.map(cloneCouncilComparison),
     };
   }
   restore(checkpoint: PaperLoopCheckpoint, resume = false) {
@@ -116,6 +152,7 @@ export class PaperLoopController {
     this.lastCycle = checkpoint.lastCycle ? cloneCycle({ ...checkpoint.lastCycle, noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0, errors: Array.isArray(checkpoint.lastCycle.errors) ? checkpoint.lastCycle.errors : [], markets: Array.isArray(checkpoint.lastCycle.markets) ? checkpoint.lastCycle.markets : [] }) : null;
     this.marketHistory = normalizeHistory(checkpoint.marketHistory); this.cycleHistory = normalizeCycleHistory(checkpoint.cycleHistory, this.lastCycle);
     this.validationSamples = normalizeValidationSamples(checkpoint.validationSamples);
+    this.councilComparisons = normalizeCouncilComparisons(checkpoint.councilComparisons);
     if (!this.lastCycle && this.cycleHistory.length) this.lastCycle = cloneCycle(this.cycleHistory[this.cycleHistory.length - 1]);
     if (checkpoint.running && resume) this.start(this.config); return this.status();
   }
@@ -129,12 +166,19 @@ export class PaperLoopController {
         entryRule: 'New ENTER requires source-backed Evidence + deterministic Scenario/Council support + deterministic Risk approval.',
         correlationPolicy: 'New concurrent crypto exposure fails closed when aligned correlation history is insufficient; >1 existing market above 0.82 correlation rejects the candidate.',
         protectiveExitAuthority: true,
+        challenger: {
+          engine: 'COUNCIL-V2-CHALLENGER-0.1' as const,
+          executionAuthority: false as const,
+          promotionAuthority: false as const,
+          comparison: summarizeCouncilComparison(this.councilComparisons),
+        },
       },
       validationRetention: {
         horizonMs: VALIDATION_HORIZON_MS,
         retainedSamples: this.validationSamples.length,
         maxSamples: MAX_VALIDATION_SAMPLES,
         noLookahead: true as const,
+        councilComparisonSamples: this.councilComparisons.length,
       },
     };
   }
@@ -167,15 +211,24 @@ export class PaperLoopController {
         try {
           let liquidity: LiquiditySnapshot | undefined = liquidityByMarket.get(market); if (!liquidity) liquidity = await getMarketLiquidity(market);
           const evidence = tradingEvidenceStore.aggregate(market);
+          let councilComparison: CouncilComparisonObservation | null = null;
           const step = await paperTradingSession.step(
             market, evidence.activeCount > 0 ? evidence.score : undefined, liquidity, newEntryAllowed,
             (context) => {
-              const intelligence = buildDeterministicGovernancePackage({ market, evidence, multiTimeframe: context.multiTimeframe, liquidity: context.liquidity, scope: context.hasOpenPositionBefore ? 'HELD' : 'CANDIDATE', now: Date.now() });
+              const governanceNow = Date.now();
+              const governanceInput = { market, evidence, multiTimeframe: context.multiTimeframe, liquidity: context.liquidity, scope: context.hasOpenPositionBefore ? 'HELD' as const : 'CANDIDATE' as const, now: governanceNow };
+              const intelligence = buildDeterministicGovernancePackage(governanceInput);
+              const challenger = buildCouncilV2Challenger(governanceInput);
+              councilComparison = createCouncilComparisonObservation({ base: intelligence, challenger: challenger.challenger }, context.liquidity.tradePrice, VALIDATION_HORIZON_MS);
               const finalDecision = buildFinalDecision({ market, executionDecision: context.executionDecision, hasOpenPositionBefore: context.hasOpenPositionBefore, intelligence, mode: 'ENFORCE', policy: 'STRICT_CONSENSUS', now: intelligence.generatedAt });
               return { intelligence, finalDecision };
             },
             newEntryBlockReasons,
           );
+          if (councilComparison && !this.councilComparisons.some((item) => item.id === councilComparison!.id)) {
+            this.councilComparisons.push(cloneCouncilComparison(councilComparison));
+            if (this.councilComparisons.length > MAX_COUNCIL_COMPARISONS) this.councilComparisons.splice(0, this.councilComparisons.length - MAX_COUNCIL_COMPARISONS);
+          }
           const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
           const trace = buildDecisionTrace({
             timestamp: Date.now(), market, decision: step.decision, multiTimeframe: step.multiTimeframe, evidence, hasOpenPositionAfterStep,
@@ -208,6 +261,7 @@ export class PaperLoopController {
       const recentDecisions = this.cycleHistory.flatMap((cycle) => cycle.markets);
       const newlyEvaluable = buildBlindValidationSamples(recentDecisions, this.marketHistory, VALIDATION_HORIZON_MS);
       this.validationSamples = mergeValidationSamples(this.validationSamples, newlyEvaluable, MAX_VALIDATION_SAMPLES);
+      this.councilComparisons = resolveCouncilComparisonObservations(this.councilComparisons, this.marketHistory).slice(-MAX_COUNCIL_COMPARISONS);
       this.cycleCount += 1; return result;
     } finally { this.cycleInProgress = false; }
   }
