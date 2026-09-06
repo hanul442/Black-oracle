@@ -1,0 +1,48 @@
+name: Black Oracle Research Validation CI
+
+on:
+  push:
+    branches:
+      - sprint/5r-terminal-ui-actual
+  pull_request:
+    branches:
+      - main
+      - sprint/5-evidence-governed-validation-closure
+
+permissions:
+  contents: read
+
+jobs:
+  research-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Trading and research tests
+        run: npm run test:trading
+
+      - name: Grade API bundle smoke
+        run: npx esbuild api/trading-grade.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-grade.mjs
+
+      - name: Research-validation API bundle smoke
+        run: npx esbuild api/trading-research-validation.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-research-validation.mjs
+
+      - name: Paper-cycle bundle smoke
+        run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
+
+      - name: Production build
+        run: npm run build
