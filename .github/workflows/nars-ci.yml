@@ -42,4 +42,4 @@ jobs:
         run: |
           find supabase/functions -name index.ts -print0 \
             | sort -z \
-            | xargs -0 -n1 deno check
+            | xargs -0 -n1 deno check --config deno.json
