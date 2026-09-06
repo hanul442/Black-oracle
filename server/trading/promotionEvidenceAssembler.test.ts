@@ -51,7 +51,7 @@ const validationSamples = (): BlindValidationSample[] => Array.from({ length: 60
   };
 });
 
-const closedTrades = (): ClosedPaperTrade[] => Array.from({ length: 25 }, (_, index) => ({
+const closedTrades = (count = 25): ClosedPaperTrade[] => Array.from({ length: count }, (_, index) => ({
   id: `trade-${index}`, market: 'KRW-BTC', openedAt: START + index * 12 * HOUR, closedAt: START + index * 12 * HOUR + 4 * HOUR,
   entryPrice: 100, exitPrice: 101, quantity: 1, grossPnl: 1, fees: 0.1, netPnl: 0.9, returnPct: 0.01,
   exitReason: 'test', strategyVersion: 'BO-TEST', entryOracleTradeScore: 75, exitOracleTradeScore: 70,
@@ -90,27 +90,28 @@ const experimentLedger = (ids = ['rcfg-v1-0123456789abcdef']): ExperimentLedgerE
   payload: { researchConfigurationId: id },
 }));
 
-const checkpoint = (configIds?: string[]): PromotionEvidenceCheckpointLike => ({
+const checkpoint = (options: { configIds?: string[]; tradeCount?: number } = {}): PromotionEvidenceCheckpointLike => ({
   savedAt: START + 30 * 24 * HOUR,
-  session: { ledger: ledger(), closedTrades: closedTrades() },
+  session: { ledger: ledger(), closedTrades: closedTrades(options.tradeCount ?? 25) },
   loop: {
     validationSamples: validationSamples(),
     cycleHistory: Array.from({ length: 20 }, (_, index) => ({ markets: [{ evidenceIds: [`evidence-${index}`] }] })),
   },
   gradeSurveillance: gradeCheckpoint(),
-  experimentLedger: experimentLedger(configIds),
+  experimentLedger: experimentLedger(options.configIds),
 });
 
-test('assembles persisted evidence into a PASS hard-gate result when all explicit gates are satisfied', () => {
+test('assembles persisted evidence into a PASS hard-gate result when all gates are satisfied', () => {
   const result = assembleStrategyPromotionEvidence(checkpoint(), {
     stage: 'INCUBATOR_TO_CHALLENGER',
     inputValidation: [inputValidation(15), inputValidation(60), inputValidation(240)],
-    costStressVerdict: 'PASS',
   });
 
   assert.equal(result.evidence.blindValidation.verdict, 'PASS');
   assert.equal(result.evidence.walkForward.verdict, 'PASS');
   assert.equal(result.evidence.monteCarlo.verdict, 'PASS');
+  assert.equal(result.evidence.costStress.verdict, 'PASS');
+  assert.equal(result.evidence.costStressSource, 'DETERMINISTIC_CLOSED_TRADE_STRESS');
   assert.equal(result.evidence.auditCoverage, 1);
   assert.equal(result.evidence.researchConfigurationId, 'rcfg-v1-0123456789abcdef');
   assert.equal(result.evidence.researchConfigurationSource, 'UNIQUE_EXPERIMENT_LINEAGE');
@@ -123,10 +124,9 @@ test('assembles persisted evidence into a PASS hard-gate result when all explici
 });
 
 test('ambiguous experiment lineage is not guessed and blocks promotion as insufficient evidence', () => {
-  const result = assembleStrategyPromotionEvidence(checkpoint(['rcfg-v1-0123456789abcdef', 'rcfg-v1-fedcba9876543210']), {
+  const result = assembleStrategyPromotionEvidence(checkpoint({ configIds: ['rcfg-v1-0123456789abcdef', 'rcfg-v1-fedcba9876543210'] }), {
     stage: 'INCUBATOR_TO_CHALLENGER',
     inputValidation: [inputValidation(15), inputValidation(60), inputValidation(240)],
-    costStressVerdict: 'PASS',
   });
 
   assert.equal(result.evidence.researchConfigurationId, null);
@@ -135,11 +135,14 @@ test('ambiguous experiment lineage is not guessed and blocks promotion as insuff
   assert.ok(result.eligibility.insufficientEvidence.includes('REPRODUCIBLE_LINEAGE'));
 });
 
-test('missing cost-stress evidence remains insufficient even when all other evidence is healthy', () => {
-  const result = assembleStrategyPromotionEvidence(checkpoint(), {
+test('insufficient closed trades automatically keep Monte Carlo and cost stress from passing', () => {
+  const result = assembleStrategyPromotionEvidence(checkpoint({ tradeCount: 10 }), {
     stage: 'INCUBATOR_TO_CHALLENGER',
     inputValidation: [inputValidation(15), inputValidation(60), inputValidation(240)],
   });
+  assert.equal(result.evidence.monteCarlo.verdict, 'INSUFFICIENT_DATA');
+  assert.equal(result.evidence.costStress.verdict, 'INSUFFICIENT_DATA');
   assert.equal(result.eligibility.verdict, 'INSUFFICIENT_DATA');
+  assert.ok(result.eligibility.insufficientEvidence.includes('MONTE_CARLO_SURVIVAL'));
   assert.ok(result.eligibility.insufficientEvidence.includes('COST_STRESS'));
 });
