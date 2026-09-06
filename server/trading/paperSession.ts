@@ -1,11 +1,12 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
-import { buildExecutionDecision } from '../../src/trading/executionPolicy';
+import { buildExecutionDecision, type ExecutionPolicyInput } from '../../src/trading/executionPolicy';
 import type { GovernedTradingIntelligencePackage } from '../../src/trading/governanceCore';
 import type { FinalDecision } from '../../src/trading/intelligencePipeline';
 import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
+import { buildIndependentPolicyShadow } from '../../src/trading/strategyIntent';
 import { buildShadowTargetPipeline } from '../../src/trading/targetPipeline';
 import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
@@ -61,10 +62,12 @@ export class PaperTradingSession {
     this.markPrices.set(normalized, liquidity.tradePrice);
     const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
     const position = this.portfolio.getPosition(normalized);
-    const baseDecision = buildExecutionDecision({
+    const executionPolicyInput: ExecutionPolicyInput = {
       liquidity, multiTimeframe, oneHour: multiTimeframe.frames.oneHour, portfolio: before, position,
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf), newEntryAllowed, newEntryBlockReasons,
-    });
+    };
+    const baseDecision = buildExecutionDecision(executionPolicyInput);
+    const independentPolicyShadow = buildIndependentPolicyShadow(executionPolicyInput, baseDecision);
 
     let governance: PaperGovernanceEvaluation | null = null; let governanceError: string | null = null;
     if (governanceEvaluator) {
@@ -77,9 +80,9 @@ export class PaperTradingSession {
       else if (governance?.finalDecision.action !== 'ENTER') decision = governanceVetoDecision(baseDecision, governance?.finalDecision.reasons ?? ['Governance evaluation was unavailable; new entry failed closed.']);
     }
 
-    // Sprint 7 bridge: the legacy decision remains authoritative. The shadow pipeline
-    // makes Intent -> Target -> post-risk Target explicit and proves notional/side parity.
-    // A parity REJECT is audit evidence only in S7-03; it cannot create or cancel orders.
+    // Sprint 7 bridge: the legacy decision remains authoritative. The independent
+    // pre-risk intent seam and post-governance target pipeline are both observation-only.
+    // Neither parity report can create, cancel, resize or promote an order.
     const targetPipeline = buildShadowTargetPipeline({
       market: normalized,
       strategyVersion: TRADING_STRATEGY_VERSION,
@@ -97,6 +100,23 @@ export class PaperTradingSession {
       governancePolicy: governance?.finalDecision.policy ?? null, intelligenceDisposition: governance?.finalDecision.intelligenceDisposition ?? null,
       intelligencePackageId: governance?.intelligence.id ?? null, scenarioSetId: governance?.intelligence.scenarios.id ?? null, councilRunId: governance?.intelligence.council.id ?? null,
       portfolioEntryBlockReasons: newEntryAllowed ? [] : newEntryBlockReasons, governanceError,
+      independentStrategyIntent: {
+        id: independentPolicyShadow.intent.id,
+        action: independentPolicyShadow.intent.action,
+        gate: independentPolicyShadow.intent.gate,
+        requestedNotional: independentPolicyShadow.intent.requestedNotional,
+        executionAuthority: independentPolicyShadow.intent.executionAuthority,
+      },
+      independentPolicyParity: {
+        id: independentPolicyShadow.parity.id,
+        status: independentPolicyShadow.parity.status,
+        actionParity: independentPolicyShadow.parity.actionParity,
+        sideParity: independentPolicyShadow.parity.sideParity,
+        notionalParity: independentPolicyShadow.parity.notionalParity,
+        protectionParity: independentPolicyShadow.parity.protectionParity,
+        riskDispositionParity: independentPolicyShadow.parity.riskDispositionParity,
+        executionAuthority: independentPolicyShadow.parity.executionAuthority,
+      },
       strategyIntent: {
         id: targetPipeline.intent.id,
         action: targetPipeline.intent.action,
@@ -135,13 +155,13 @@ export class PaperTradingSession {
 
     let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
-      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
+      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'BUY', notional: decision.notional, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       this.portfolio.applyFill(fill); this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
       if (decision.stopLossPrice && decision.takeProfitPrice) this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
-      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
+      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'SELL', quantity: position.quantity, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       const entry = this.entryMetadata.get(normalized); const costBasis = position.averageCost * fill.quantity; const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
       const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity; const netPnl = fill.notional - fill.fee - costBasis;
@@ -150,7 +170,7 @@ export class PaperTradingSession {
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
     }
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now()); const performance = buildPaperPerformance(this.closedTrades, after.equityCurve, after.initialEquity, after.equity, after.drawdownPct);
-    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, decision, targetPipeline, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
+    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, independentPolicyShadow, decision, targetPipeline, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
   }
 }
 
