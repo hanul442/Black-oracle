@@ -8,8 +8,8 @@ import { CollectionWorkflow } from './components/CollectionWorkflow';
 import { LoginView } from './views/LoginView';
 import { TerminalMonitorView } from './views/TerminalMonitorView';
 import { TerminalPositionsView } from './views/TerminalPositionsView';
-import { LedgerView } from './views/LedgerView';
-import { LabView } from './views/LabView';
+import { TerminalAuditView } from './views/TerminalAuditView';
+import { TerminalLabView } from './views/TerminalLabView';
 import { SettingsView } from './views/SettingsView';
 import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 
@@ -40,10 +40,7 @@ const AppContent: React.FC = () => {
         });
         const data = await response.json();
         if (data.success && (data.count > 0 || data.mergedCount > 0)) {
-          addNotification(
-            `Evidence updated: ${data.count || 0} new, ${data.mergedCount || 0} merged.`,
-            'success',
-          );
+          addNotification(`Evidence updated: ${data.count || 0} new, ${data.mergedCount || 0} merged.`, 'success');
         }
       } catch {
         // Collection failures remain non-blocking for the operator shell.
@@ -73,9 +70,9 @@ const AppContent: React.FC = () => {
         return <TerminalPositionsView />;
       case 'ledger':
       case 'hypothesis-summary':
-        return <LedgerView />;
+        return <TerminalAuditView />;
       case 'lab':
-        return <LabView />;
+        return <TerminalLabView />;
       case 'settings':
         return <SettingsView />;
       default:
@@ -123,10 +120,7 @@ const AppContent: React.FC = () => {
 
           <div className="pointer-events-none absolute right-2 top-2 z-[150] flex flex-col gap-1">
             {(notifications || []).map((notification: any) => (
-              <div
-                key={notification.id}
-                className="pointer-events-auto flex w-[min(360px,calc(100vw-16px))] items-start gap-2 border border-[#2b3035] bg-[#090a0b] px-2.5 py-2 font-mono shadow-xl"
-              >
+              <div key={notification.id} className="pointer-events-auto flex w-[min(360px,calc(100vw-16px))] items-start gap-2 border border-[#2b3035] bg-[#090a0b] px-2.5 py-2 font-mono shadow-xl">
                 {notification.type === 'error' ? (
                   <XCircle className="mt-0.5 h-3.5 w-3.5 text-[#ff6262]" />
                 ) : notification.type === 'success' ? (
