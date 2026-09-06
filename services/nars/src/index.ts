@@ -1,6 +1,6 @@
-import { parseFeed } from './rss';
-import { readSourceConfig } from './sourceConfig';
-import type { Env, QueueMessage, SourceRecord } from './types';
+import { parseFeed } from './rss.ts';
+import { readSourceConfig } from './sourceConfig.ts';
+import type { Env, QueueMessage, SourceRecord } from './types.ts';
 
 const USER_AGENT = 'NARS-v4/4.0 (+https://github.com/hanul442/Black-oracle)';
 
