@@ -205,7 +205,19 @@ Research metrics are evidence for review, not execution instructions.
 
 ### Deflated Sharpe Ratio
 
-DSR adjusts a strategy's observed Sharpe for sample size, skewness, kurtosis and the number of tried configurations. `TRADING_RESEARCH_TRIAL_COUNT` must represent a defensible search-space lineage. If it is not configured, the API marks the source as `UNSPECIFIED_DEFAULT_1`; that default must not be interpreted as proof that only one strategy was tried.
+DSR adjusts a strategy's observed Sharpe for sample size, skewness, kurtosis and the number of configurations actually tried. Sprint 5R no longer accepts a manually configured/default trial count as validation evidence.
+
+The persisted search-space lineage is derived from two auditable sources:
+- unique Strategy Factory fingerprints that have actually appeared in persisted PAPER shadow observations;
+- unique Experiment Ledger configurations whose experiments reached `STARTED` or `COMPLETED` state.
+
+`EXPERIMENT_PLANNED` alone is not a tried configuration. Experiment configuration identity is canonicalized from strategy/model version, markets, regimes and experiment variables so repeated experiment ids with the same effective configuration do not inflate the count.
+
+The Experiment Ledger is persisted as a backward-compatible optional extension of the runtime checkpoint. When no actually tried configuration lineage exists, DSR fails closed as `INSUFFICIENT_DATA`; raw Sharpe may remain descriptive, but DSR probability is withheld.
+
+When Strategy Factory and Experiment Ledger lineages both exist, Sprint 5R does not assume they are disjoint. Until a canonical cross-source identity map exists, DSR uses their sum as a conservative upper trial count and exposes `lowerBoundTrialCount = max(strategyFactoryTrials, experimentTrials)`, source `COMBINED_CONSERVATIVE`, and lineage integrity `CONSERVATIVE`. This deliberately penalizes selection bias rather than understating the search space.
+
+No DSR result grants execution or promotion authority.
 
 ### Probability of Backtest Overfitting
 
@@ -237,7 +249,7 @@ Current preferred topology:
 
 - GitHub: source control, CI, heavy research/validation jobs
 - Vercel: web/operator UI and API façade
-- Supabase Postgres: persistent PAPER runtime, ledgers, grade history and challenger observations
+- Supabase Postgres: persistent PAPER runtime, ledgers, grade history, experiment lineage and challenger observations
 - Supabase Cron + Edge Function: PAPER orchestration
 
 Do not migrate infrastructure simply for novelty. A replacement must demonstrate measurable benefit in reliability, cost, latency or operational capability.
@@ -263,6 +275,7 @@ Sprint 5R is complete only when all of the following are true:
 - Lab terminal works on desktop/mobile
 - server-side Grade Surveillance is visible
 - Research Validation v2 is visible without inventing unavailable metrics
+- DSR tried-configuration lineage/integrity is visible and fails closed when missing
 - Strategy Factory PBO panel progress is visible
 - no document-level horizontal overflow
 - no synthetic values or hidden missing links
@@ -294,8 +307,9 @@ No automatic production merge or scheduler rollout is authorized by this documen
 - accumulate Grade Surveillance history
 - accumulate Council v1/v2 prospective observations
 - accumulate at least 60 aligned Strategy Factory cohort observations so PBO becomes empirically available
+- accumulate persisted Experiment Ledger and Strategy Factory trial lineage for empirical DSR
+- reconcile cross-source Strategy/Experiment identities so conservative upper-bound trial counting can eventually become canonical deduplication
 - review whether `PROSPECTIVE_GENOME_PROXY_V1` should be replaced by deeper candidate execution simulation
-- calibrate DSR search-space lineage from Experiment / Strategy Factory history
 - extend execution-cost/slippage distributions
 
 ### Sprint 7 — Strategy Factory & empirical Council evaluation
