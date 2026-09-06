@@ -5,6 +5,9 @@ const DEFAULT_MODEL = 'gpt-5.4-mini';
 const MAX_MARKETS = 6;
 const MAX_CANDIDATES = 36;
 export const FSC_PRESS_RELEASE_RSS = 'https://www.fsc.go.kr/about/fsc_bbs_rss/?fid=0111';
+export const BOK_MONETARY_POLICY_RSS = 'https://www.bok.or.kr/portal/bbs/P0000559/news.rss?menuNo=200690';
+const BOK_MAX_AGE_MS = 48 * 60 * 60_000;
+const BOK_MAX_FUTURE_SKEW_MS = 5 * 60_000;
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -131,6 +134,12 @@ const itemTimestamp = (item: any) => {
   return Number.isFinite(parsed) ? parsed : Date.now();
 };
 
+const strictItemTimestamp = (item: any) => {
+  const value = item.isoDate || item.pubDate || item.published || item.updated;
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const makeCandidateId = (market: string, index: number, source: string) =>
   `${market}-${source}-${index}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
 
@@ -219,6 +228,45 @@ const collectFscPrimary = async (markets: string[], warnings: string[]) => {
     return result;
   } catch (error) {
     warnings.push(`금융위원회 RSS: ${errorMessage(error)}`);
+    return [];
+  }
+};
+
+const collectBokMacro = async (markets: string[], warnings: string[]) => {
+  try {
+    const feed = await parser.parseURL(BOK_MONETARY_POLICY_RSS);
+    const now = Date.now();
+    const relevant = (feed.items || [])
+      .flatMap((item: any) => {
+        if (!item?.title || !item?.link) return [];
+        const publishedAt = strictItemTimestamp(item);
+        if (publishedAt == null) return [];
+        const ageMs = now - publishedAt;
+        if (ageMs < -BOK_MAX_FUTURE_SKEW_MS || ageMs > BOK_MAX_AGE_MS) return [];
+        return [{ item, publishedAt }];
+      })
+      .slice(0, 2);
+
+    const result: Candidate[] = [];
+    for (const market of markets) {
+      for (const { item, publishedAt } of relevant) {
+        result.push({
+          candidateId: makeCandidateId(market, publishedAt, 'bok-monetary-policy'),
+          market,
+          title: String(item.title).trim(),
+          summary: String(item.contentSnippet || item.content || '').trim().slice(0, 1200) || undefined,
+          publisher: '한국은행',
+          sourceUrl: String(item.link),
+          publishedAt,
+          sourceType: 'MACRO',
+          reliability: 0.96,
+          tags: ['official', 'bok-korea', 'macro', 'monetary-policy', 'language:ko', market.replace(/^KRW-/, '').toLowerCase()],
+        });
+      }
+    }
+    return result;
+  } catch (error) {
+    warnings.push(`한국은행 통화정책 RSS: ${errorMessage(error)}`);
     return [];
   }
 };
@@ -424,16 +472,18 @@ export default async function handler(request: any, response: any) {
       return json(response, 200, { success: true, runtimeId, markets: [], candidates: 0, accepted: 0, warnings });
     }
 
-    const [coinDesk, ethereumPrimary, fscPrimary, googleNewsEn, googleNewsKo] = await Promise.all([
+    const [coinDesk, ethereumPrimary, fscPrimary, bokMacro, googleNewsEn, googleNewsKo] = await Promise.all([
       collectCoinDesk(markets, warnings),
       collectEthereumPrimary(markets, warnings),
       collectFscPrimary(markets, warnings),
+      collectBokMacro(markets, warnings),
       collectGoogleNews(markets, warnings, 'EN'),
       collectGoogleNews(markets, warnings, 'KO'),
     ]);
     const candidates = dedupeCandidates([
       ...ethereumPrimary,
       ...fscPrimary,
+      ...bokMacro,
       ...coinDesk,
       ...googleNewsEn,
       ...googleNewsKo,
@@ -471,8 +521,10 @@ export default async function handler(request: any, response: any) {
       candidates: candidates.length,
       candidateBreakdown: {
         primary: ethereumPrimary.length + fscPrimary.length,
+        macro: bokMacro.length,
         ethereumPrimary: ethereumPrimary.length,
         fscPrimary: fscPrimary.length,
+        bokMacro: bokMacro.length,
         coindesk: coinDesk.length,
         english: googleNewsEn.length,
         korean: googleNewsKo.length,
