@@ -42,7 +42,10 @@ const inputValidation = (timeframeMinutes: 15 | 60 | 240): InputValidationLedger
   disposition: 'PASS', reasons: [], executionAuthority: false,
 });
 
-const validationSamples = (): BlindValidationSample[] => Array.from({ length: 60 }, (_, index) => {
+// Four chronological walk-forward folds with a 10-sample minimum require
+// more depth than the 60-sample Blind/OOS floor. Keep this fixture explicitly
+// above both gates rather than weakening either validation policy.
+const validationSamples = (): BlindValidationSample[] => Array.from({ length: 72 }, (_, index) => {
   const decisionTimestamp = START + index * 8 * HOUR;
   return {
     market: 'KRW-BTC', decisionTimestamp, anchorTimestamp: decisionTimestamp + HOUR,
