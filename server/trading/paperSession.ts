@@ -1,11 +1,13 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
+import { buildMicrostructureChallenger } from '../../src/trading/microstructureChallenger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade, type PaperEntryAuditSnapshot } from '../../src/trading/performance';
 import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
+import { buildMarketMicrostructure } from './microstructure';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
 
@@ -20,6 +22,8 @@ const cloneAudit = (audit?: PaperEntryAuditSnapshot): PaperEntryAuditSnapshot | 
   structure: audit.structure ? { ...audit.structure } : null,
   cycle: audit.cycle ? { ...audit.cycle, frames: { ...audit.cycle.frames }, reasons: audit.cycle.reasons.slice() } : null,
   technicalEvidence: audit.technicalEvidence ? { ...audit.technicalEvidence } : null,
+  microstructure: audit.microstructure ? { ...audit.microstructure } : null,
+  challenger: audit.challenger ? { ...audit.challenger, reasons: audit.challenger.reasons.slice() } : null,
   tradeMap: { ...audit.tradeMap, reasons: audit.tradeMap.reasons.slice() },
 } : undefined;
 
@@ -143,6 +147,8 @@ export class PaperTradingSession {
       precomputedLiquidity ? Promise.resolve(precomputedLiquidity) : getMarketLiquidity(normalized),
       buildMarketMultiTimeframe(normalized, eventScore),
     ]);
+    const microstructure = await buildMarketMicrostructure(normalized, liquidity.tradePrice);
+    const challenger = buildMicrostructureChallenger(multiTimeframe, microstructure);
     this.markPrices.set(normalized, liquidity.tradePrice);
 
     const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
@@ -193,6 +199,24 @@ export class PaperTradingSession {
         bearishFamilies: technical.bearishFamilies,
         neutralFamilies: technical.neutralFamilies,
       } : null,
+      microstructure: {
+        available: microstructure.available,
+        sampleTrades: microstructure.sampleTrades,
+        sampleCoverageMs: microstructure.sampleCoverageMs,
+        takerImbalance: microstructure.takerImbalance,
+        orderbookImbalanceTop5: microstructure.orderbookImbalanceTop5,
+        orderbookImbalanceTop15: microstructure.orderbookImbalanceTop15,
+        orderbookImbalanceTop30: microstructure.orderbookImbalanceTop30,
+        weightedOrderbookImbalance: microstructure.weightedOrderbookImbalance,
+        pressureScore: microstructure.pressureScore,
+        direction: microstructure.direction,
+        confidence: microstructure.confidence,
+        pointOfControl: microstructure.profile.pointOfControl,
+        valueAreaLow: microstructure.profile.valueAreaLow,
+        valueAreaHigh: microstructure.profile.valueAreaHigh,
+        profileLocation: microstructure.profile.currentLocation,
+      },
+      challenger: { ...challenger, reasons: challenger.reasons.slice() },
       tradeMap: { ...tradeMap, reasons: tradeMap.reasons.slice() },
     };
 
@@ -204,6 +228,8 @@ export class PaperTradingSession {
       eventScore: eventScore ?? null,
       structure: entryAudit.structure,
       cycle: entryAudit.cycle,
+      microstructure: entryAudit.microstructure,
+      challenger: entryAudit.challenger,
     });
     this.ledger.append('SIGNAL', {
       market: normalized,
@@ -214,6 +240,8 @@ export class PaperTradingSession {
       confidence: decision.confidence,
       technicalEvidence: entryAudit.technicalEvidence,
       tradeMap,
+      microstructure: entryAudit.microstructure,
+      challenger: entryAudit.challenger,
     });
 
     let fill: PaperFill | null = null;
@@ -297,6 +325,8 @@ export class PaperTradingSession {
       strategyVersion: TRADING_STRATEGY_VERSION,
       liquidity,
       multiTimeframe,
+      microstructure,
+      challenger,
       eventScore: eventScore ?? null,
       decision,
       tradeMap,
