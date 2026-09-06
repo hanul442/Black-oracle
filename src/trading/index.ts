@@ -21,6 +21,7 @@ export * from './paperPortfolio';
 export * from './paperReadinessRating';
 export * from './performance';
 export * from './portfolioExposure';
+export * from './qualificationWindow';
 export * from './rating';
 export * from './regime';
 export * from './researchConfiguration';
