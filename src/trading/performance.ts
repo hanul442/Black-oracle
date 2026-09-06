@@ -1,4 +1,23 @@
 import type { MultiCycleSnapshot, TradeMapSnapshot } from './types';
+import type { MicrostructureAlignment, MicrostructureChallengerSnapshot } from './microstructureChallenger';
+
+export interface MicrostructureAuditSnapshot {
+  available: boolean;
+  sampleTrades: number;
+  sampleCoverageMs: number | null;
+  takerImbalance: number | null;
+  orderbookImbalanceTop5: number | null;
+  orderbookImbalanceTop15: number | null;
+  orderbookImbalanceTop30: number | null;
+  weightedOrderbookImbalance: number | null;
+  pressureScore: number | null;
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'UNAVAILABLE';
+  confidence: number;
+  pointOfControl: number | null;
+  valueAreaLow: number | null;
+  valueAreaHigh: number | null;
+  profileLocation: 'ABOVE_VALUE' | 'IN_VALUE' | 'BELOW_VALUE' | 'AT_POC' | 'UNAVAILABLE';
+}
 
 export interface PaperEntryAuditSnapshot {
   timestamp: number;
@@ -24,6 +43,8 @@ export interface PaperEntryAuditSnapshot {
     bearishFamilies: number;
     neutralFamilies: number;
   };
+  microstructure: MicrostructureAuditSnapshot | null;
+  challenger: MicrostructureChallengerSnapshot | null;
   tradeMap: TradeMapSnapshot;
 }
 
@@ -57,6 +78,15 @@ export interface PerformanceBucket {
   netPnl: number;
 }
 
+export interface MicrostructureOutcomeBucket {
+  alignment: MicrostructureAlignment;
+  trades: number;
+  wins: number;
+  winRate: number;
+  avgReturnPct: number;
+  netPnl: number;
+}
+
 export interface PaperPerformanceSnapshot {
   trades: number;
   wins: number;
@@ -76,6 +106,7 @@ export interface PaperPerformanceSnapshot {
   maxDrawdownPct: number;
   currentDrawdownPct: number;
   buckets: PerformanceBucket[];
+  microstructureBuckets: MicrostructureOutcomeBucket[];
 }
 
 const bucketDefinitions = [
@@ -131,6 +162,20 @@ export const buildPaperPerformance = (
     };
   });
 
+  const alignments: MicrostructureAlignment[] = ['SUPPORTS', 'CONFLICTS', 'NEUTRAL', 'UNAVAILABLE'];
+  const microstructureBuckets = alignments.map((alignment) => {
+    const bucketTrades = trades.filter((trade) => (trade.entryAudit?.challenger?.alignment ?? 'UNAVAILABLE') === alignment);
+    const bucketWins = bucketTrades.filter((trade) => trade.netPnl > 0);
+    return {
+      alignment,
+      trades: bucketTrades.length,
+      wins: bucketWins.length,
+      winRate: bucketTrades.length > 0 ? bucketWins.length / bucketTrades.length : 0,
+      avgReturnPct: safeAverage(bucketTrades.map((trade) => trade.returnPct)),
+      netPnl: bucketTrades.reduce((sum, trade) => sum + trade.netPnl, 0),
+    };
+  });
+
   return {
     trades: trades.length,
     wins: wins.length,
@@ -150,5 +195,6 @@ export const buildPaperPerformance = (
     maxDrawdownPct: calculateMaxDrawdown(equityCurve),
     currentDrawdownPct,
     buckets,
+    microstructureBuckets,
   };
 };
