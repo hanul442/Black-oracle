@@ -73,6 +73,9 @@ export const buildMarketInputValidationEvidence = async (
   const candlesPerTimeframe = Math.max(400, Math.min(1_000, Math.trunc(options.candlesPerTimeframe ?? 400)));
   const reader = options.reader ?? getMinuteCandleHistory;
 
+  // A single market uses only three bounded research reads, so the timeframe set can
+  // execute together. Strategy-level orchestration below intentionally serializes
+  // markets to avoid multiplying Upbit request bursts by the full universe size.
   const records = await Promise.all(REQUIRED_PROMOTION_TIMEFRAMES.map(async (unit) => {
     const candles = await reader(normalized, unit, candlesPerTimeframe);
     return buildInputValidationRecord(candles, evaluationCutoff, {
@@ -106,7 +109,9 @@ export const buildMarketInputValidationEvidence = async (
 /**
  * Orchestrate promotion input validation across every market represented by the
  * strategy evidence. The same evaluation cutoff and policy are held constant across
- * markets so resulting checksums can be audited as one validation run.
+ * markets so resulting checksums can be audited as one validation run. Markets are
+ * deliberately processed sequentially: this endpoint is promotion/research work,
+ * not latency-sensitive execution, and bounded request pressure is more important.
  */
 export const buildStrategyInputValidationEvidence = async (
   markets: string[],
@@ -123,12 +128,17 @@ export const buildStrategyInputValidationEvidence = async (
   if (!normalizedMarkets.length) throw new Error('Strategy input validation requires at least one market.');
   if (normalizedMarkets.length > maxMarkets) throw new Error(`Strategy input validation is limited to ${maxMarkets} market(s) per bounded run.`);
   const evaluationCutoff = options.evaluationCutoff ?? Date.now();
-  const marketEvidence = await Promise.all(normalizedMarkets.map((market) => buildMarketInputValidationEvidence(market, {
-    evaluationCutoff,
-    candlesPerTimeframe: options.candlesPerTimeframe,
-    policy: options.policy,
-    reader: options.reader,
-  })));
+  const marketEvidence: MarketInputValidationEvidence[] = [];
+
+  for (const market of normalizedMarkets) {
+    marketEvidence.push(await buildMarketInputValidationEvidence(market, {
+      evaluationCutoff,
+      candlesPerTimeframe: options.candlesPerTimeframe,
+      policy: options.policy,
+      reader: options.reader,
+    }));
+  }
+
   const records = marketEvidence.flatMap((evidence) => evidence.records);
   const expectedRecords = normalizedMarkets.length * REQUIRED_PROMOTION_TIMEFRAMES.length;
   const disposition = overallDisposition(records, expectedRecords);
