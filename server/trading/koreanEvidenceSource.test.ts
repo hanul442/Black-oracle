@@ -48,6 +48,19 @@ test('Bank of Korea evidence is recent-only MACRO context and remains non-execut
   assert.match(source, /executionAuthority:\s*false/);
 });
 
+test('all external RSS candidates require parseable fresh timestamps before classification', async () => {
+  const sourceUrl = new URL('../../api/trading-evidence-refresh.ts', import.meta.url);
+  const source = await readFile(sourceUrl, 'utf-8');
+
+  assert.match(source, /const validatedItemTimestamp =/);
+  assert.match(source, /if \(!Number\.isFinite\(parsed\)\) return null/);
+  assert.match(source, /ageMs < -MAX_SOURCE_FUTURE_SKEW_MS \|\| ageMs > maxAgeMs/);
+  assert.doesNotMatch(source, /Number\.isFinite\(parsed\) \? parsed : Date\.now\(\)/);
+  assert.match(source, /validatedItemTimestamp\(item, NEWS_MAX_AGE_MS, now\)/);
+  assert.match(source, /validatedItemTimestamp\(item, PRIMARY_MAX_AGE_MS, now\)/);
+  assert.match(source, /validatedItemTimestamp\(item, BOK_MAX_AGE_MS, now\)/);
+});
+
 test('Google News market fetches run concurrently so feed collection fits the scheduler budget', async () => {
   const sourceUrl = new URL('../../api/trading-evidence-refresh.ts', import.meta.url);
   const source = await readFile(sourceUrl, 'utf-8');
