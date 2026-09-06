@@ -5,6 +5,7 @@ export * from './councilV2';
 export * from './empiricalValidation';
 export * from './evidence';
 export * from './evidenceSourcePolicy';
+export * from './executionAdapterParity';
 export * from './executionPolicy';
 export * from './experiment';
 export * from './experimentLedger';
