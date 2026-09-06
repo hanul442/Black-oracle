@@ -112,7 +112,20 @@ export const advanceQualificationWindow = (input: {
 }): QualificationWindowCheckpoint | null => {
   const config = input.config ?? null;
   const existing = normalizeQualificationWindow(input.existing);
-  if (!config) return existing;
+  if (!config) {
+    if (!existing) return null;
+    if (existing.status === 'INVALIDATED') return existing;
+    return {
+      ...existing,
+      status: 'INVALIDATED',
+      invalidationReasons: unique([
+        ...existing.invalidationReasons,
+        'Persisted qualification window lost its explicit runtime id/armedAt/sourceRevision pin; qualification credit is frozen.',
+      ]),
+      executionAuthority: false,
+      promotionAuthority: false,
+    };
+  }
 
   const current = existing ?? createQualificationWindow(config);
   if (current.id !== config.id || current.sourceRevision !== config.sourceRevision || current.armedAt !== config.armedAt) {
