@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - nars-v4-foundation
+      - nars-v4-shadow-data-plane
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
@@ -32,5 +33,13 @@ jobs:
         run: npm install --ignore-scripts
       - name: Unit tests
         run: npm test
-      - name: Type check
+      - name: Worker type check
         run: npm run check
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Supabase Edge Function type check
+        run: |
+          find supabase/functions -name index.ts -print0 \
+            | sort -z \
+            | xargs -0 -n1 deno check
