@@ -1,5 +1,5 @@
-import { looksBreaking } from './normalize';
-import type { IngestDocument, SourceRecord } from './types';
+import { looksBreaking } from './normalize.ts';
+import type { IngestDocument, SourceRecord } from './types.ts';
 
 function decodeXml(value: string): string {
   return value
