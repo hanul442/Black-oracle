@@ -2,6 +2,7 @@ import React from 'react';
 import { LogOut, RefreshCw, Settings } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, useAppContext } from '../store';
+import { PaperReadinessGrade } from './PaperReadinessGrade';
 
 const viewLabel: Record<string, string> = {
   command: 'MONITOR',
@@ -54,6 +55,7 @@ export const TopBar: React.FC = () => {
       <span className="text-[7px] uppercase tracking-[0.08em] text-[#b9c0c6]">{viewLabel[currentView] || 'MONITOR'}</span>
       <span className="mx-3 hidden text-[#2d3338] sm:inline">|</span>
       <span className="hidden text-[6px] uppercase tracking-[0.08em] text-[#4f585f] sm:inline">PERSISTED DATA ONLY</span>
+      <PaperReadinessGrade />
 
       <div className="ml-auto flex h-full items-center gap-px border-l border-[#202429]">
         <button
