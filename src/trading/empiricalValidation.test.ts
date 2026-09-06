@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDailyEmpiricalPaperReport, buildEmpiricalAccumulationHealth } from './empiricalValidation.ts';
+import { buildDailyEmpiricalPaperReport, buildEmpiricalAccumulationHealth, type EmpiricalAccumulationInput } from './empiricalValidation.ts';
 
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 const INTERVAL = 15 * 60_000;
+const HOUR = 60 * 60_000;
 
 const cycle = (finishedAt: number, errors = 0) => ({
   startedAt: finishedAt - 60_000,
@@ -17,7 +18,7 @@ const cycle = (finishedAt: number, errors = 0) => ({
   markets: Array.from({ length: 6 }, (_, index) => ({ evidenceIds: index < 5 ? [`ev-${index}`] : [] })),
 });
 
-const baseInput = () => ({
+const baseInput = (): EmpiricalAccumulationInput => ({
   now: NOW,
   intervalMs: INTERVAL,
   cycleHistory: Array.from({ length: 16 }, (_, index) => cycle(NOW - (15 - index) * INTERVAL)),
@@ -30,8 +31,6 @@ const baseInput = () => ({
   gradeHistory: Array.from({ length: 10 }, (_, index) => ({ timestamp: NOW - index * INTERVAL, rating: { grade: 'BBB0', rawScore: 72, appliedGateKeys: ['OOS'] } })),
   closedTrades: Array.from({ length: 10 }, (_, index) => ({ closedAt: NOW - index * INTERVAL, returnPct: 0.01, netPnl: 100 })),
 });
-
-const HOUR = 60 * 60_000;
 
 test('empirical health fails closed when there is no runtime history', () => {
   const input = baseInput();
