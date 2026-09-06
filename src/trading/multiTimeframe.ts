@@ -1,3 +1,4 @@
+import { buildMultiCycleResonance } from './multiCycle';
 import type { MultiTimeframeSnapshot, TradingSnapshot } from './types';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -31,6 +32,7 @@ export const buildMultiTimeframeConsensus = (
         ? fourHour.fusion.directionalScore >= 15 || oneHour.fusion.directionalScore >= 15
         : false;
 
+  const cycle = buildMultiCycleResonance(fourHour, oneHour, fifteenMinute);
   const confidence = clamp(
     weightedConfidence + (aligned ? 0.08 : 0) - (oppositeHigherTimeframe ? 0.16 : 0),
     0,
@@ -57,6 +59,7 @@ export const buildMultiTimeframeConsensus = (
   const reasons = [
     `4H/1H/15M directional scores: ${fourHour.fusion.directionalScore}/${oneHour.fusion.directionalScore}/${fifteenMinute.fusion.directionalScore}.`,
     'Consensus weights are 45% / 35% / 20%, giving higher timeframes most of the authority.',
+    `Multi-cycle state is ${cycle.state} with ${cycle.entryTiming} timing guidance; cycle analysis is observational and does not bypass execution gates.`,
   ];
   if (aligned) reasons.push('At least two meaningful timeframe signals are directionally aligned.');
   if (oppositeHigherTimeframe) reasons.push('A higher timeframe opposes the aggregate direction, so new entries are blocked.');
@@ -75,6 +78,7 @@ export const buildMultiTimeframeConsensus = (
       oneHour,
       fifteenMinute,
     },
+    cycle,
     reasons,
   };
 };

@@ -4,8 +4,10 @@ import { buildStrategyRouterDecision, type StrategyRouterDecision } from './stra
 import type {
   ExecutionDecision,
   MarketRegime,
+  MultiCycleSnapshot,
   MultiTimeframeSnapshot,
   RiskDisposition,
+  TradeMapSnapshot,
 } from './types';
 
 export type DecisionTraceAction = 'ENTER' | 'EXIT' | 'HOLD' | 'NO_TRADE';
@@ -26,6 +28,27 @@ export interface DecisionTrace {
   evidenceActiveCount: number;
   evidenceContradictionCount: number;
   evidenceIds: string[];
+  technicalEvidence: null | {
+    rawSignalCount: number;
+    independentFamilyCount: number;
+    correlatedSignalPenalty: number;
+    directionalScore: number;
+    confidence: number;
+    bullishFamilies: number;
+    bearishFamilies: number;
+    neutralFamilies: number;
+  };
+  structure: null | {
+    bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+    confidence: number;
+    eventType: 'BOS' | 'CHOCH' | null;
+    eventDirection: 'BULLISH' | 'BEARISH' | null;
+    location: 'PREMIUM' | 'EQUILIBRIUM' | 'DISCOUNT';
+    percentile: number;
+    liquiditySweep: 'BULLISH' | 'BEARISH' | null;
+  };
+  cycle: MultiCycleSnapshot | null;
+  tradeMap: TradeMapSnapshot | null;
   primaryReason: string;
   reasons: string[];
   riskReasons: string[];
@@ -37,6 +60,7 @@ export interface DecisionTraceInput {
   decision: ExecutionDecision;
   multiTimeframe: MultiTimeframeSnapshot;
   evidence: EvidenceAggregate;
+  tradeMap?: TradeMapSnapshot | null;
   hasOpenPositionAfterStep: boolean;
 }
 
@@ -51,10 +75,13 @@ export const classifyDecisionTraceAction = (
 export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => {
   const { decision, multiTimeframe, evidence } = input;
   const action = classifyDecisionTraceAction(decision.action, input.hasOpenPositionAfterStep);
-  const oneHourRegime = multiTimeframe.frames.oneHour.regime;
+  const oneHour = multiTimeframe.frames.oneHour;
+  const oneHourRegime = oneHour.regime;
   const primaryReason = decision.reasons[0] ?? 'No explicit decision reason was recorded.';
   const forecast = buildEvidenceForecast(evidence);
   const router = buildStrategyRouterDecision(multiTimeframe, forecast);
+  const technical = oneHour.technicalEvidence;
+  const structure = oneHour.structure;
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -72,6 +99,31 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     evidenceActiveCount: evidence.activeCount,
     evidenceContradictionCount: evidence.contradictionCount,
     evidenceIds: evidence.evidenceIds.slice(),
+    technicalEvidence: technical ? {
+      rawSignalCount: technical.rawSignalCount,
+      independentFamilyCount: technical.independentFamilyCount,
+      correlatedSignalPenalty: technical.correlatedSignalPenalty,
+      directionalScore: technical.directionalScore,
+      confidence: technical.confidence,
+      bullishFamilies: technical.bullishFamilies,
+      bearishFamilies: technical.bearishFamilies,
+      neutralFamilies: technical.neutralFamilies,
+    } : null,
+    structure: structure ? {
+      bias: structure.bias,
+      confidence: structure.confidence,
+      eventType: structure.lastEvent?.type ?? null,
+      eventDirection: structure.lastEvent?.direction ?? null,
+      location: structure.location.zone,
+      percentile: structure.location.percentile,
+      liquiditySweep: structure.liquiditySweep?.direction ?? null,
+    } : null,
+    cycle: multiTimeframe.cycle ? {
+      ...multiTimeframe.cycle,
+      frames: { ...multiTimeframe.cycle.frames },
+      reasons: multiTimeframe.cycle.reasons.slice(),
+    } : null,
+    tradeMap: input.tradeMap ? { ...input.tradeMap, reasons: input.tradeMap.reasons.slice() } : null,
     primaryReason,
     reasons: decision.reasons.slice(),
     riskReasons: decision.riskReasons.slice(),

@@ -1,3 +1,32 @@
+import type { MultiCycleSnapshot, TradeMapSnapshot } from './types';
+
+export interface PaperEntryAuditSnapshot {
+  timestamp: number;
+  eventScore: number | null;
+  regime: string;
+  regimeConfidence: number;
+  structure: null | {
+    bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+    confidence: number;
+    eventType: 'BOS' | 'CHOCH' | null;
+    eventDirection: 'BULLISH' | 'BEARISH' | null;
+    location: 'PREMIUM' | 'EQUILIBRIUM' | 'DISCOUNT';
+    percentile: number;
+  };
+  cycle: MultiCycleSnapshot | null;
+  technicalEvidence: null | {
+    rawSignalCount: number;
+    independentFamilyCount: number;
+    correlatedSignalPenalty: number;
+    directionalScore: number;
+    confidence: number;
+    bullishFamilies: number;
+    bearishFamilies: number;
+    neutralFamilies: number;
+  };
+  tradeMap: TradeMapSnapshot;
+}
+
 export interface ClosedPaperTrade {
   id: string;
   market: string;
@@ -14,6 +43,7 @@ export interface ClosedPaperTrade {
   strategyVersion: string;
   entryOracleTradeScore: number;
   exitOracleTradeScore: number;
+  entryAudit?: PaperEntryAuditSnapshot;
 }
 
 export interface PerformanceBucket {

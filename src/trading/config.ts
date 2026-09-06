@@ -1,6 +1,6 @@
 import type { RiskLimits } from './types';
 
-export const TRADING_STRATEGY_VERSION = 'BO-CRYPTO-v0.1.6';
+export const TRADING_STRATEGY_VERSION = 'BO-CRYPTO-v0.1.7';
 
 export const DEFAULT_RISK_LIMITS: RiskLimits = {
   maxPositionPct: 0.02,

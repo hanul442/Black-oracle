@@ -3,7 +3,8 @@ import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
-import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
+import { buildPaperPerformance, type ClosedPaperTrade, type PaperEntryAuditSnapshot } from '../../src/trading/performance';
+import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
@@ -11,7 +12,16 @@ import { getMarketLiquidity } from './universe';
 interface EntryMetadata {
   fill: PaperFill;
   oracleTradeScore: number;
+  audit?: PaperEntryAuditSnapshot;
 }
+
+const cloneAudit = (audit?: PaperEntryAuditSnapshot): PaperEntryAuditSnapshot | undefined => audit ? {
+  ...audit,
+  structure: audit.structure ? { ...audit.structure } : null,
+  cycle: audit.cycle ? { ...audit.cycle, frames: { ...audit.cycle.frames }, reasons: audit.cycle.reasons.slice() } : null,
+  technicalEvidence: audit.technicalEvidence ? { ...audit.technicalEvidence } : null,
+  tradeMap: { ...audit.tradeMap, reasons: audit.tradeMap.reasons.slice() },
+} : undefined;
 
 export interface PaperTradingSessionCheckpoint {
   schemaVersion: 1;
@@ -45,8 +55,9 @@ export class PaperTradingSession {
       entryMetadata: Array.from(this.entryMetadata.entries()).map(([market, metadata]) => [market, {
         fill: { ...metadata.fill },
         oracleTradeScore: metadata.oracleTradeScore,
+        audit: cloneAudit(metadata.audit),
       }]),
-      closedTrades: this.closedTrades.map((trade) => ({ ...trade })),
+      closedTrades: this.closedTrades.map((trade) => ({ ...trade, entryAudit: cloneAudit(trade.entryAudit) })),
       ledger: this.ledger.snapshot().map((event) => ({ ...event, payload: { ...event.payload } })),
       processedOrderIds: this.broker.processedOrderIdsSnapshot(),
     };
@@ -70,10 +81,15 @@ export class PaperTradingSession {
       this.entryMetadata.set(market, {
         fill: { ...metadata.fill },
         oracleTradeScore: metadata.oracleTradeScore,
+        audit: cloneAudit(metadata.audit),
       });
     }
 
-    this.closedTrades.splice(0, this.closedTrades.length, ...(checkpoint.closedTrades ?? []).slice(-5_000).map((trade) => ({ ...trade })));
+    this.closedTrades.splice(
+      0,
+      this.closedTrades.length,
+      ...(checkpoint.closedTrades ?? []).slice(-5_000).map((trade) => ({ ...trade, entryAudit: cloneAudit(trade.entryAudit) })),
+    );
     return this.state();
   }
 
@@ -111,7 +127,7 @@ export class PaperTradingSession {
         portfolio.equity,
         portfolio.drawdownPct,
       ),
-      closedTrades: this.closedTrades.slice(-100),
+      closedTrades: this.closedTrades.slice(-100).map((trade) => ({ ...trade, entryAudit: cloneAudit(trade.entryAudit) })),
       ledger: this.ledger.snapshot(),
     };
   }
@@ -140,6 +156,45 @@ export class PaperTradingSession {
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
       newEntryAllowed,
     });
+    const tradeMap = buildTradeMap({
+      currentPrice: liquidity.tradePrice,
+      decision,
+      multiTimeframe,
+      oneHour: multiTimeframe.frames.oneHour,
+    });
+    const oneHour = multiTimeframe.frames.oneHour;
+    const technical = oneHour.technicalEvidence;
+    const structure = oneHour.structure;
+    const entryAudit: PaperEntryAuditSnapshot = {
+      timestamp: multiTimeframe.asOf,
+      eventScore: eventScore ?? null,
+      regime: oneHour.regime.regime,
+      regimeConfidence: oneHour.regime.confidence,
+      structure: structure ? {
+        bias: structure.bias,
+        confidence: structure.confidence,
+        eventType: structure.lastEvent?.type ?? null,
+        eventDirection: structure.lastEvent?.direction ?? null,
+        location: structure.location.zone,
+        percentile: structure.location.percentile,
+      } : null,
+      cycle: multiTimeframe.cycle ? {
+        ...multiTimeframe.cycle,
+        frames: { ...multiTimeframe.cycle.frames },
+        reasons: multiTimeframe.cycle.reasons.slice(),
+      } : null,
+      technicalEvidence: technical ? {
+        rawSignalCount: technical.rawSignalCount,
+        independentFamilyCount: technical.independentFamilyCount,
+        correlatedSignalPenalty: technical.correlatedSignalPenalty,
+        directionalScore: technical.directionalScore,
+        confidence: technical.confidence,
+        bullishFamilies: technical.bullishFamilies,
+        bearishFamilies: technical.bearishFamilies,
+        neutralFamilies: technical.neutralFamilies,
+      } : null,
+      tradeMap: { ...tradeMap, reasons: tradeMap.reasons.slice() },
+    };
 
     this.ledger.append('MARKET_SNAPSHOT', {
       market: normalized,
@@ -147,6 +202,8 @@ export class PaperTradingSession {
       liquidityScore: liquidity.score,
       multiTimeframeScore: multiTimeframe.oracleTradeScore,
       eventScore: eventScore ?? null,
+      structure: entryAudit.structure,
+      cycle: entryAudit.cycle,
     });
     this.ledger.append('SIGNAL', {
       market: normalized,
@@ -155,6 +212,8 @@ export class PaperTradingSession {
       directionalScore: multiTimeframe.directionalScore,
       oracleTradeScore: multiTimeframe.oracleTradeScore,
       confidence: decision.confidence,
+      technicalEvidence: entryAudit.technicalEvidence,
+      tradeMap,
     });
 
     let fill: PaperFill | null = null;
@@ -172,7 +231,7 @@ export class PaperTradingSession {
         strategyVersion: TRADING_STRATEGY_VERSION,
       });
       this.portfolio.applyFill(fill);
-      this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
+      this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore, audit: cloneAudit(entryAudit) });
       if (decision.stopLossPrice && decision.takeProfitPrice) {
         this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       }
@@ -212,6 +271,7 @@ export class PaperTradingSession {
         strategyVersion: TRADING_STRATEGY_VERSION,
         entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
         exitOracleTradeScore: multiTimeframe.oracleTradeScore,
+        entryAudit: cloneAudit(entry?.audit),
       };
 
       this.portfolio.applyFill(fill);
@@ -239,6 +299,7 @@ export class PaperTradingSession {
       multiTimeframe,
       eventScore: eventScore ?? null,
       decision,
+      tradeMap,
       fill,
       closedTrade,
       portfolio: after,
