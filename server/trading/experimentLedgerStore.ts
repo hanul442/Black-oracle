@@ -1,5 +1,7 @@
 import type { ExperimentResult, ExperimentRun, ExperimentSpec } from '../../src/trading/experiment';
 import { ExperimentLedger, type ExperimentLedgerEvent } from '../../src/trading/experimentLedger';
+import { bindExperimentSpecToStrategyGenome } from '../../src/trading/researchConfiguration';
+import type { StrategyGenome } from '../../src/trading/strategyGenome';
 
 export interface RuntimeExperimentLedgerSummary {
   events: number;
@@ -23,6 +25,10 @@ class RuntimeExperimentLedgerStore {
 
   plan(spec: ExperimentSpec, timestamp = Date.now()) {
     return this.ledger.plan(spec, timestamp);
+  }
+
+  planForStrategyGenome(spec: ExperimentSpec, genome: StrategyGenome, timestamp = Date.now()) {
+    return this.ledger.plan(bindExperimentSpecToStrategyGenome(spec, genome), timestamp);
   }
 
   start(run: ExperimentRun, timestamp = Date.now()) {
