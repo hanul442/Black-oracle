@@ -151,6 +151,7 @@ Deno.serve(async (req: Request) => {
           language: row.lang?.trim() || null,
           tier: 2,
           enabled: true,
+          health_status: "unknown",
           metadata: {
             shadow_bridge: true,
             legacy_system: "NARS v3.0.1",
@@ -167,22 +168,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const documents = [] as Array<Record<string, unknown>>;
+    const sightings = [] as Array<Record<string, unknown>>;
     let invalidTimeCount = 0;
+
     for (const row of payload.rows) {
       const canonicalUrl = canonicalizeUrl(row.link);
       const normalizedTitle = normalizeTitle(row.title);
       const dedupKey = await sha256(`${canonicalUrl}\n${normalizedTitle}`);
       const legacyTime = parseLegacyTime(row.datetime);
       if (!legacyTime) invalidTimeCount += 1;
+      const seenAt = legacyTime ?? now;
       const key = sourceKey(row.source);
       const sourceId = sourceIds.get(key);
       if (!sourceId) throw new Error(`missing_source_id:${key}`);
+      const legacyRef = Number.isInteger(row.rowNumber) ? `NARS_v3:NEWS:${row.rowNumber}` : null;
 
       documents.push({
         source_id: sourceId,
         external_id: null,
         published_at: null,
-        retrieved_at: legacyTime ?? now,
+        retrieved_at: seenAt,
         title: row.title.trim(),
         canonical_url: canonicalUrl,
         normalized_title: normalizedTitle,
@@ -200,9 +205,21 @@ Deno.serve(async (req: Request) => {
           legacy_norm_link: row.norm_link ?? null,
           shadow_batch_id: batchId,
         },
-        ingest_version: "4.0.0-shadow",
+        ingest_version: "4.0.1-shadow",
         ingest_origin: "v3_shadow",
-        legacy_ref: Number.isInteger(row.rowNumber) ? `NARS_v3:NEWS:${row.rowNumber}` : null,
+        legacy_ref: legacyRef,
+      });
+
+      sightings.push({
+        dedup_key: dedupKey,
+        origin: "v3_shadow",
+        seen_at: seenAt,
+        legacy_ref: legacyRef,
+        metadata: {
+          batch_id: batchId,
+          legacy_system: "NARS v3.0.1",
+          source_key: key,
+        },
       });
     }
 
@@ -215,6 +232,14 @@ Deno.serve(async (req: Request) => {
     const inserted = await docRes.json() as Array<{ id: string; dedup_key: string }>;
     const insertedCount = inserted.length;
     const duplicateCount = payload.rows.length - insertedCount;
+
+    const sightingRes = await fetch(`${supabaseUrl}/rest/v1/rpc/nars_record_sightings_by_dedup`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ p_items: sightings }),
+    });
+    if (!sightingRes.ok) throw new Error(`sighting_batch_${sightingRes.status}:${(await sightingRes.text()).slice(0, 800)}`);
+    const sightingsRecorded = Number(await sightingRes.json()) || 0;
 
     if (jobId) {
       await fetch(`${supabaseUrl}/rest/v1/nars_job_runs?id=eq.${jobId}`, {
@@ -230,6 +255,7 @@ Deno.serve(async (req: Request) => {
             batch_id: batchId,
             inserted: insertedCount,
             duplicates: duplicateCount,
+            sightings_recorded: sightingsRecorded,
             source_count: uniqueSources.size,
             invalid_time_count: invalidTimeCount,
           },
@@ -244,6 +270,7 @@ Deno.serve(async (req: Request) => {
       sources: uniqueSources.size,
       inserted: insertedCount,
       duplicates: duplicateCount,
+      sightingsRecorded,
       invalidTimeCount,
       jobId,
     });
