@@ -7,6 +7,7 @@ export * from './executionPolicy';
 export * from './experiment';
 export * from './experimentLedger';
 export * from './experimentRouter';
+export * from './gradeSurveillance';
 export * from './indicators';
 export * from './ledger';
 export * from './liquidity';
