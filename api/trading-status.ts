@@ -85,6 +85,8 @@ export default async function handler(request: any, response: any) {
       technicalEvidence: item.technicalEvidence ?? null,
       structure: item.structure ?? null,
       cycle: item.cycle ?? null,
+      microstructure: item.microstructure ?? null,
+      challenger: item.challenger ?? null,
       tradeMap: item.tradeMap ?? null,
       primaryReason: item.primaryReason ?? null,
       reasons: Array.isArray(item.reasons) ? item.reasons : [],
