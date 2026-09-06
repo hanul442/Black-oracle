@@ -10,6 +10,7 @@ on:
       - nars-v4-foundation
       - nars-v4-shadow-data-plane
       - nars-v4-event-clustering
+      - nars-v4-evidence-scoring
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
