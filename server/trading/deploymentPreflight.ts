@@ -1,4 +1,5 @@
 import { buildEvidenceRefreshReadiness, type EvidenceRefreshReadiness } from './evidenceReadiness.ts';
+import { isAllowedProductionSchedulerTarget } from '../../supabase/functions/_shared/paperSchedulerPolicy.ts';
 
 export type PaperDeploymentPreflightBlocker =
   | 'ENVIRONMENT_NOT_READY'
@@ -39,7 +40,6 @@ type SchedulerRow = {
 
 const RUNTIME_TABLE = 'black_oracle_trading_runtime';
 const SCHEDULER_TABLE = 'black_oracle_trading_scheduler_config';
-const PRODUCTION_TARGET = 'https://black-oracle.vercel.app';
 const PROBE_TIMEOUT_MS = 5_000;
 
 const endpoint = (baseUrl: string, table: string, runtimeId: string, select: string) => {
@@ -125,7 +125,7 @@ export const probePaperDeploymentPreflight = async (
     try {
       const target = new URL(scheduler.target_base_url.trim());
       schedulerTargetVercel = target.protocol === 'https:' && target.hostname.endsWith('.vercel.app');
-      schedulerTargetProduction = target.origin === PRODUCTION_TARGET;
+      schedulerTargetProduction = isAllowedProductionSchedulerTarget(scheduler.target_base_url.trim());
     } catch {
       schedulerTargetVercel = false;
       schedulerTargetProduction = false;
@@ -142,13 +142,9 @@ export const probePaperDeploymentPreflight = async (
   else if (!schedulerConfigPresent) blockers.push('SCHEDULER_CONFIG_MISSING');
   if (schedulerConfigPresent && schedulerEnabled !== true) blockers.push('SCHEDULER_DISABLED');
   if (schedulerConfigPresent && schedulerTargetVercel !== true) blockers.push('SCHEDULER_TARGET_INVALID');
+  else if (schedulerConfigPresent && schedulerTargetProduction !== true) blockers.push('SCHEDULER_TARGET_NOT_PRODUCTION');
 
-  const readyForPaperPreview = blockers.length === 0;
-  const productionBlockers = [...blockers];
-  if (schedulerConfigPresent && schedulerTargetVercel === true && schedulerTargetProduction !== true) {
-    productionBlockers.push('SCHEDULER_TARGET_NOT_PRODUCTION');
-  }
-
+  const ready = blockers.length === 0;
   return {
     attempted: true,
     environmentReady: true,
@@ -160,8 +156,8 @@ export const probePaperDeploymentPreflight = async (
     schedulerTargetVercel,
     schedulerTargetProduction,
     schedulerLastOk,
-    readyForPaperPreview,
-    readyForProductionPaperRollout: productionBlockers.length === 0,
-    blockers: productionBlockers,
+    readyForPaperPreview: ready,
+    readyForProductionPaperRollout: ready,
+    blockers,
   };
 };
