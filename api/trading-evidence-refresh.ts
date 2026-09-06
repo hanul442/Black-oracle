@@ -7,8 +7,10 @@ const MAX_MARKETS = 6;
 const MAX_CANDIDATES = 36;
 export const FSC_PRESS_RELEASE_RSS = 'https://www.fsc.go.kr/about/fsc_bbs_rss/?fid=0111';
 export const BOK_MONETARY_POLICY_RSS = 'https://www.bok.or.kr/portal/bbs/P0000559/news.rss?menuNo=200690';
+const PRIMARY_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+const NEWS_MAX_AGE_MS = 48 * 60 * 60_000;
 const BOK_MAX_AGE_MS = 48 * 60 * 60_000;
-const BOK_MAX_FUTURE_SKEW_MS = 5 * 60_000;
+const MAX_SOURCE_FUTURE_SKEW_MS = 5 * 60_000;
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -129,16 +131,13 @@ const cleanTitlePublisher = (title: string, fallback: string) => {
   return { title: parts.slice(0, -1).join(' - ').trim(), publisher };
 };
 
-const itemTimestamp = (item: any) => {
+const validatedItemTimestamp = (item: any, maxAgeMs: number, now = Date.now()) => {
   const value = item.isoDate || item.pubDate || item.published || item.updated;
   const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : Date.now();
-};
-
-const strictItemTimestamp = (item: any) => {
-  const value = item.isoDate || item.pubDate || item.published || item.updated;
-  const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : null;
+  if (!Number.isFinite(parsed)) return null;
+  const ageMs = now - parsed;
+  if (ageMs < -MAX_SOURCE_FUTURE_SKEW_MS || ageMs > maxAgeMs) return null;
+  return parsed;
 };
 
 const shortHash = (value: string) => {
@@ -158,13 +157,16 @@ const provenanceDiscriminator = (item: any) => shortHash(`${String(item?.link ||
 const collectCoinDesk = async (markets: string[], warnings: string[]) => {
   try {
     const feed = await parser.parseURL('https://www.coindesk.com/arc/outboundfeeds/rss/');
+    const now = Date.now();
     const result: Candidate[] = [];
     for (const market of markets) {
       const matching = (feed.items || [])
         .filter((item: any) => matchesMarket(`${item.title || ''} ${item.contentSnippet || ''}`, market))
-        .slice(0, 2);
-      matching.forEach((item: any) => {
-        if (!item.link || !item.title) return;
+        .slice(0, 4);
+      for (const item of matching) {
+        if (!item.link || !item.title) continue;
+        const publishedAt = validatedItemTimestamp(item, NEWS_MAX_AGE_MS, now);
+        if (publishedAt == null) continue;
         result.push({
           candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'coindesk'),
           market,
@@ -172,12 +174,13 @@ const collectCoinDesk = async (markets: string[], warnings: string[]) => {
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
           publisher: 'CoinDesk',
           sourceUrl: String(item.link),
-          publishedAt: itemTimestamp(item),
+          publishedAt,
           sourceType: 'NEWS',
           reliability: 0.80,
           tags: ['coindesk', 'language:en', market.replace(/^KRW-/, '').toLowerCase()],
         });
-      });
+        if (result.filter((candidate) => candidate.market === market).length >= 2) break;
+      }
     }
     return result;
   } catch (error) {
@@ -190,21 +193,27 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
   if (!markets.includes('KRW-ETH')) return [] as Candidate[];
   try {
     const feed = await parser.parseURL('https://blog.ethereum.org/feed.xml');
-    return (feed.items || []).slice(0, 3).flatMap((item: any): Candidate[] => {
-      if (!item.link || !item.title) return [];
-      return [{
+    const now = Date.now();
+    const result: Candidate[] = [];
+    for (const item of feed.items || []) {
+      if (result.length >= 3) break;
+      if (!item.link || !item.title) continue;
+      const publishedAt = validatedItemTimestamp(item, PRIMARY_MAX_AGE_MS, now);
+      if (publishedAt == null) continue;
+      result.push({
         candidateId: makeCandidateId('KRW-ETH', provenanceDiscriminator(item), 'ethereum-foundation'),
         market: 'KRW-ETH',
         title: String(item.title).trim(),
         summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
         publisher: 'Ethereum Foundation',
         sourceUrl: String(item.link),
-        publishedAt: itemTimestamp(item),
+        publishedAt,
         sourceType: 'PRIMARY',
         reliability: 0.96,
         tags: ['official', 'ethereum', 'protocol', 'language:en'],
-      }];
-    });
+      });
+    }
+    return result;
   } catch (error) {
     warnings.push(`Ethereum Foundation RSS: ${errorMessage(error)}`);
     return [];
@@ -214,15 +223,19 @@ const collectEthereumPrimary = async (markets: string[], warnings: string[]) => 
 const collectFscPrimary = async (markets: string[], warnings: string[]) => {
   try {
     const feed = await parser.parseURL(FSC_PRESS_RELEASE_RSS);
+    const now = Date.now();
     const relevant = (feed.items || [])
       .filter((item: any) => item?.title && item?.link)
       .filter((item: any) => isBroadKoreanCryptoRegulatory(`${item.title || ''} ${item.contentSnippet || ''} ${item.content || ''}`))
+      .flatMap((item: any) => {
+        const publishedAt = validatedItemTimestamp(item, PRIMARY_MAX_AGE_MS, now);
+        return publishedAt == null ? [] : [{ item, publishedAt }];
+      })
       .slice(0, 3);
 
     const result: Candidate[] = [];
     for (const market of markets) {
-      for (const item of relevant) {
-        const publishedAt = itemTimestamp(item);
+      for (const { item, publishedAt } of relevant) {
         result.push({
           candidateId: makeCandidateId(market, provenanceDiscriminator(item), 'fsc-korea'),
           market,
@@ -251,11 +264,8 @@ const collectBokMacro = async (markets: string[], warnings: string[]) => {
     const relevant = (feed.items || [])
       .flatMap((item: any) => {
         if (!item?.title || !item?.link) return [];
-        const publishedAt = strictItemTimestamp(item);
-        if (publishedAt == null) return [];
-        const ageMs = now - publishedAt;
-        if (ageMs < -BOK_MAX_FUTURE_SKEW_MS || ageMs > BOK_MAX_AGE_MS) return [];
-        return [{ item, publishedAt }];
+        const publishedAt = validatedItemTimestamp(item, BOK_MAX_AGE_MS, now);
+        return publishedAt == null ? [] : [{ item, publishedAt }];
       })
       .slice(0, 2);
 
@@ -299,13 +309,16 @@ const collectGoogleNews = async (
 
     try {
       const feed = await parser.parseURL(url);
+      const now = Date.now();
       const result: Candidate[] = [];
-      let accepted = 0;
       for (const item of feed.items || []) {
-        if (accepted >= 2 || !item.title || !item.link) break;
+        if (result.length >= 2) break;
+        if (!item.title || !item.link) continue;
         const parsed = cleanTitlePublisher(String(item.title), 'Google News');
         const reliability = publisherReliability(parsed.publisher);
         if (reliability <= 0) continue;
+        const publishedAt = validatedItemTimestamp(item, NEWS_MAX_AGE_MS, now);
+        if (publishedAt == null) continue;
         result.push({
           candidateId: makeCandidateId(market, provenanceDiscriminator(item), `gnews-${language.toLowerCase()}-${symbol}`),
           market,
@@ -313,12 +326,11 @@ const collectGoogleNews = async (
           summary: String(item.contentSnippet || '').trim().slice(0, 1200) || undefined,
           publisher: parsed.publisher,
           sourceUrl: String(item.link),
-          publishedAt: itemTimestamp(item),
+          publishedAt,
           sourceType: 'NEWS',
           reliability,
           tags: ['google-news', `language:${language.toLowerCase()}`, symbol.toLowerCase()],
         });
-        accepted += 1;
       }
       return result;
     } catch (error) {
