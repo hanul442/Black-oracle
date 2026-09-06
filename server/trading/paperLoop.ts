@@ -11,6 +11,16 @@ import { buildDeterministicGovernancePackage } from '../../src/trading/governanc
 import { buildFinalDecision } from '../../src/trading/intelligencePipeline';
 import type { MarketPriceSnapshot } from '../../src/trading/marketHistory';
 import { assessPortfolioCorrelationRisk } from '../../src/trading/portfolioCorrelationRisk';
+import {
+  appendStrategyReturnObservation,
+  createStrategyReturnObservation,
+  createStrategyReturnPanelCheckpoint,
+  normalizeStrategyReturnPanel,
+  resolveStrategyReturnPanel,
+  summarizeStrategyReturnPanel,
+  type StrategyReturnPanelCheckpoint,
+  type StrategyReturnPanelObservation,
+} from '../../src/trading/strategyReturnPanel';
 import { buildTradeCaseRecord } from '../../src/trading/tradeCase';
 import type { LiquiditySnapshot } from '../../src/trading/types';
 import { mergeValidationSamples } from '../../src/trading/validationLedger';
@@ -29,6 +39,7 @@ export interface PaperLoopCheckpoint {
   schemaVersion: 1; running: boolean; config: PaperLoopConfig; cycleCount: number; lastCycle: PaperLoopCycleResult | null;
   marketHistory?: MarketPriceSnapshot[]; cycleHistory?: PaperLoopCycleResult[]; validationSamples?: BlindValidationSample[];
   councilComparisons?: CouncilComparisonObservation[];
+  strategyReturnPanel?: StrategyReturnPanelCheckpoint;
 }
 
 const DEFAULT_CONFIG: PaperLoopConfig = { intervalMs: 15 * 60 * 1000, maxMarkets: 6, maxOpenPositions: 4 };
@@ -137,6 +148,7 @@ export class PaperLoopController {
   private cycleHistory: PaperLoopCycleResult[] = [];
   private validationSamples: BlindValidationSample[] = [];
   private councilComparisons: CouncilComparisonObservation[] = [];
+  private strategyReturnPanel: StrategyReturnPanelCheckpoint = createStrategyReturnPanelCheckpoint();
 
   checkpoint(): PaperLoopCheckpoint {
     return {
@@ -144,6 +156,7 @@ export class PaperLoopController {
       lastCycle: this.lastCycle ? cloneCycle(this.lastCycle) : null, marketHistory: cloneHistory(this.marketHistory),
       cycleHistory: this.cycleHistory.map(cloneCycle), validationSamples: this.validationSamples.map(cloneValidationSample),
       councilComparisons: this.councilComparisons.map(cloneCouncilComparison),
+      strategyReturnPanel: normalizeStrategyReturnPanel(this.strategyReturnPanel),
     };
   }
   restore(checkpoint: PaperLoopCheckpoint, resume = false) {
@@ -153,6 +166,7 @@ export class PaperLoopController {
     this.marketHistory = normalizeHistory(checkpoint.marketHistory); this.cycleHistory = normalizeCycleHistory(checkpoint.cycleHistory, this.lastCycle);
     this.validationSamples = normalizeValidationSamples(checkpoint.validationSamples);
     this.councilComparisons = normalizeCouncilComparisons(checkpoint.councilComparisons);
+    this.strategyReturnPanel = normalizeStrategyReturnPanel(checkpoint.strategyReturnPanel);
     if (!this.lastCycle && this.cycleHistory.length) this.lastCycle = cloneCycle(this.cycleHistory[this.cycleHistory.length - 1]);
     if (checkpoint.running && resume) this.start(this.config); return this.status();
   }
@@ -173,12 +187,14 @@ export class PaperLoopController {
           comparison: summarizeCouncilComparison(this.councilComparisons),
         },
       },
+      strategyResearch: summarizeStrategyReturnPanel(this.strategyReturnPanel),
       validationRetention: {
         horizonMs: VALIDATION_HORIZON_MS,
         retainedSamples: this.validationSamples.length,
         maxSamples: MAX_VALIDATION_SAMPLES,
         noLookahead: true as const,
         councilComparisonSamples: this.councilComparisons.length,
+        strategyReturnObservations: this.strategyReturnPanel.observations.length,
       },
     };
   }
@@ -212,6 +228,7 @@ export class PaperLoopController {
           let liquidity: LiquiditySnapshot | undefined = liquidityByMarket.get(market); if (!liquidity) liquidity = await getMarketLiquidity(market);
           const evidence = tradingEvidenceStore.aggregate(market);
           let councilComparison: CouncilComparisonObservation | null = null;
+          let strategyObservation: StrategyReturnPanelObservation | null = null;
           const step = await paperTradingSession.step(
             market, evidence.activeCount > 0 ? evidence.score : undefined, liquidity, newEntryAllowed,
             (context) => {
@@ -220,6 +237,15 @@ export class PaperLoopController {
               const intelligence = buildDeterministicGovernancePackage(governanceInput);
               const challenger = buildCouncilV2Challenger(governanceInput);
               councilComparison = createCouncilComparisonObservation({ base: intelligence, challenger: challenger.challenger }, context.liquidity.tradePrice, VALIDATION_HORIZON_MS);
+              strategyObservation = createStrategyReturnObservation(this.strategyReturnPanel, {
+                market,
+                generatedAt: governanceNow,
+                anchorPrice: context.liquidity.tradePrice,
+                multiTimeframe: context.multiTimeframe,
+                evidence,
+                liquidity: context.liquidity,
+                horizonMs: VALIDATION_HORIZON_MS,
+              });
               const finalDecision = buildFinalDecision({ market, executionDecision: context.executionDecision, hasOpenPositionBefore: context.hasOpenPositionBefore, intelligence, mode: 'ENFORCE', policy: 'STRICT_CONSENSUS', now: intelligence.generatedAt });
               return { intelligence, finalDecision };
             },
@@ -229,6 +255,7 @@ export class PaperLoopController {
             this.councilComparisons.push(cloneCouncilComparison(councilComparison));
             if (this.councilComparisons.length > MAX_COUNCIL_COMPARISONS) this.councilComparisons.splice(0, this.councilComparisons.length - MAX_COUNCIL_COMPARISONS);
           }
+          if (strategyObservation) this.strategyReturnPanel = appendStrategyReturnObservation(this.strategyReturnPanel, strategyObservation);
           const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
           const trace = buildDecisionTrace({
             timestamp: Date.now(), market, decision: step.decision, multiTimeframe: step.multiTimeframe, evidence, hasOpenPositionAfterStep,
@@ -262,6 +289,7 @@ export class PaperLoopController {
       const newlyEvaluable = buildBlindValidationSamples(recentDecisions, this.marketHistory, VALIDATION_HORIZON_MS);
       this.validationSamples = mergeValidationSamples(this.validationSamples, newlyEvaluable, MAX_VALIDATION_SAMPLES);
       this.councilComparisons = resolveCouncilComparisonObservations(this.councilComparisons, this.marketHistory).slice(-MAX_COUNCIL_COMPARISONS);
+      this.strategyReturnPanel = resolveStrategyReturnPanel(this.strategyReturnPanel, this.marketHistory);
       this.cycleCount += 1; return result;
     } finally { this.cycleInProgress = false; }
   }
