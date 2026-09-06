@@ -47,3 +47,23 @@ test('Bank of Korea evidence is recent-only MACRO context and remains non-execut
   assert.match(source, /bokMacro:\s*bokMacro\.length/);
   assert.match(source, /executionAuthority:\s*false/);
 });
+
+test('Google News market fetches run concurrently so feed collection fits the scheduler budget', async () => {
+  const sourceUrl = new URL('../../api/trading-evidence-refresh.ts', import.meta.url);
+  const source = await readFile(sourceUrl, 'utf-8');
+  const collectorStart = source.indexOf('const collectGoogleNews');
+  const collectorEnd = source.indexOf('const extractOutputText');
+  const collector = source.slice(collectorStart, collectorEnd);
+
+  assert.match(collector, /Promise\.all\(markets\.map\(async \(market\)/);
+  assert.match(collector, /return batches\.flat\(\)/);
+});
+
+test('source candidate IDs use provenance rather than timestamps or feed positions', async () => {
+  const sourceUrl = new URL('../../api/trading-evidence-refresh.ts', import.meta.url);
+  const source = await readFile(sourceUrl, 'utf-8');
+
+  assert.match(source, /const provenanceDiscriminator =/);
+  assert.match(source, /makeCandidateId\(market, provenanceDiscriminator\(item\), 'fsc-korea'\)/);
+  assert.match(source, /makeCandidateId\(market, provenanceDiscriminator\(item\), 'bok-monetary-policy'\)/);
+});
