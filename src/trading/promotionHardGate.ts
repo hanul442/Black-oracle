@@ -41,6 +41,8 @@ export interface PromotionHardGatePolicy {
 export interface PromotionHardGateInput {
   stage: StrategyPromotionStage;
   inputValidation: InputValidationLedgerRecord | InputValidationLedgerRecord[] | null;
+  /** Every market whose outcomes contribute to the promotion claim must be covered by input provenance. */
+  requiredMarkets?: string[];
   blindValidation: BlindValidationResult | null;
   walkForward: WalkForwardResult | null;
   monteCarlo: MonteCarloValidation | null;
@@ -97,6 +99,10 @@ const parityStatus = (value: unknown): string | null => {
   return typeof record?.status === 'string' ? record.status : null;
 };
 const inputRecords = (value: PromotionHardGateInput['inputValidation']): InputValidationLedgerRecord[] => value == null ? [] : Array.isArray(value) ? value : [value];
+const normalizeMarket = (market: unknown) => {
+  const normalized = String(market ?? '').toUpperCase();
+  return /^KRW-[A-Z0-9]+$/.test(normalized) ? normalized : null;
+};
 
 /** Summarize Sprint 7 shadow/runtime parity evidence from the immutable Trading Ledger. */
 export const summarizePromotionParityFromLedger = (events: TradingLedgerEvent[]): PromotionParitySummary => {
@@ -148,53 +154,67 @@ export const buildStrategyPromotionEligibility = (
   const checks: PromotionGateCheck[] = [];
   const records = inputRecords(input.inputValidation);
   const requiredFrames = [...new Set(policy.requiredInputTimeframes.map((value) => Math.trunc(value)).filter((value) => value > 0))];
-  const recordByFrame = new Map(records
-    .filter((record) => Number.isFinite(record.dataset.timeframeMinutes))
-    .map((record) => [record.dataset.timeframeMinutes as number, record] as [number, InputValidationLedgerRecord]));
-  const missingFrames = requiredFrames.filter((frame) => !recordByFrame.has(frame));
-  const requiredRecords = requiredFrames.flatMap((frame) => recordByFrame.get(frame) ? [recordByFrame.get(frame)!] : []);
+  const recordMarkets = [...new Set(records.flatMap((record) => {
+    const market = normalizeMarket(record.dataset.market);
+    return market ? [market] : [];
+  }))].sort();
+  const requestedMarkets = [...new Set((input.requiredMarkets ?? []).flatMap((market) => {
+    const normalized = normalizeMarket(market);
+    return normalized ? [normalized] : [];
+  }))].sort();
+  const requiredMarkets = requestedMarkets.length ? requestedMarkets : recordMarkets;
+  const recordByMarketFrame = new Map(records.flatMap((record) => {
+    const market = normalizeMarket(record.dataset.market);
+    const frame = record.dataset.timeframeMinutes;
+    return market && Number.isFinite(frame) ? [[`${market}|${frame}`, record] as [string, InputValidationLedgerRecord]] : [];
+  }));
+  const requiredPairs = requiredMarkets.flatMap((market) => requiredFrames.map((frame) => ({ market, frame, key: `${market}|${frame}` })));
+  const missingPairs = requiredPairs.filter((pair) => !recordByMarketFrame.has(pair.key));
+  const requiredRecords = requiredPairs.flatMap((pair) => recordByMarketFrame.get(pair.key) ? [recordByMarketFrame.get(pair.key)!] : []);
 
+  const noRequiredMarkets = requiredMarkets.length === 0;
   const integrityFailed = requiredRecords.filter((record) => record.integrity.disposition !== 'PASS');
-  const integrityPassed = missingFrames.length === 0 && integrityFailed.length === 0 && requiredRecords.length === requiredFrames.length;
+  const integrityPassed = !noRequiredMarkets && missingPairs.length === 0 && integrityFailed.length === 0 && requiredRecords.length === requiredPairs.length;
   checks.push(check(
     'INPUT_INTEGRITY',
     integrityPassed,
-    missingFrames.length > 0 || records.length === 0,
+    noRequiredMarkets || missingPairs.length > 0 || records.length === 0,
     integrityPassed
-      ? `Required input integrity passed for ${requiredFrames.join('/')} minute timeframes.`
-      : missingFrames.length
-        ? `Input-validation provenance is missing for timeframe(s): ${missingFrames.join(', ')}.`
-        : `Input integrity failed for timeframe(s): ${integrityFailed.map((record) => record.dataset.timeframeMinutes).join(', ')}.`,
+      ? `Required input integrity passed for ${requiredMarkets.length} market(s) × ${requiredFrames.length} timeframe(s).`
+      : noRequiredMarkets
+        ? 'No promotion market scope is available for input-integrity validation.'
+        : missingPairs.length
+          ? `Input-validation provenance is missing for: ${missingPairs.map((pair) => `${pair.market}@${pair.frame}m`).join(', ')}.`
+          : `Input integrity failed for: ${integrityFailed.map((record) => `${record.dataset.market}@${record.dataset.timeframeMinutes}m`).join(', ')}.`,
   ));
 
   const unstableWarmup = requiredRecords.filter((record) => {
     const disposition = record.warmup?.disposition ?? null;
     return disposition !== 'PASS' && !(policy.allowWarmupWatch && disposition === 'WATCH');
   });
-  const warmupMissing = missingFrames.length > 0 || requiredRecords.some((record) => !record.warmup || record.warmup.disposition === 'INSUFFICIENT_DATA');
-  const warmupPassed = missingFrames.length === 0 && unstableWarmup.length === 0 && requiredRecords.length === requiredFrames.length;
+  const warmupMissing = noRequiredMarkets || missingPairs.length > 0 || requiredRecords.some((record) => !record.warmup || record.warmup.disposition === 'INSUFFICIENT_DATA');
+  const warmupPassed = !noRequiredMarkets && missingPairs.length === 0 && unstableWarmup.length === 0 && requiredRecords.length === requiredPairs.length;
   checks.push(check(
     'WARMUP_STABILITY',
     warmupPassed,
     warmupMissing,
     warmupPassed
-      ? `Recursive warm-up stability is inside policy for ${requiredFrames.join('/')} minute timeframes.`
+      ? `Recursive warm-up stability is inside policy for all ${requiredPairs.length} market/timeframe dataset(s).`
       : warmupMissing
-        ? 'Recursive warm-up evidence is incomplete for one or more required timeframes.'
-        : `Recursive warm-up policy failed for timeframe(s): ${unstableWarmup.map((record) => `${record.dataset.timeframeMinutes}:${record.warmup?.disposition ?? 'MISSING'}`).join(', ')}.`,
+        ? 'Recursive warm-up evidence is incomplete for one or more required market/timeframe datasets.'
+        : `Recursive warm-up policy failed for: ${unstableWarmup.map((record) => `${record.dataset.market}@${record.dataset.timeframeMinutes}m:${record.warmup?.disposition ?? 'MISSING'}`).join(', ')}.`,
   ));
 
   const researchConfigurationValid = /^rcfg-v1-[0-9a-f]{16}$/.test(String(input.researchConfigurationId ?? '').toLowerCase());
   const reproducibleRecords = requiredRecords.filter((record) => Boolean(record.dataset.datasetId) && /^sha256:[0-9a-f]{64}$/.test(record.dataset.checksum));
-  const singleMarket = new Set(requiredRecords.map((record) => record.dataset.market).filter(Boolean)).size <= 1;
-  const datasetReproducible = missingFrames.length === 0 && reproducibleRecords.length === requiredFrames.length && researchConfigurationValid && singleMarket;
+  const datasetReproducible = !noRequiredMarkets && missingPairs.length === 0 && reproducibleRecords.length === requiredPairs.length && researchConfigurationValid;
   checks.push(check(
     'REPRODUCIBLE_LINEAGE',
     datasetReproducible,
-    missingFrames.length > 0 || records.length === 0 || !input.researchConfigurationId,
+    noRequiredMarkets || missingPairs.length > 0 || records.length === 0 || !input.researchConfigurationId,
     datasetReproducible
-      ? `All required datasets and research configuration ${input.researchConfigurationId} are reproducibly identified.`
-      : 'Required timeframe checksums, a consistent market, and/or research configuration ID are missing or invalid.',
+      ? `All ${requiredPairs.length} required market/timeframe datasets and research configuration ${input.researchConfigurationId} are reproducibly identified.`
+      : 'Required market/timeframe checksums and/or research configuration ID are missing or invalid.',
   ));
 
   const blind = input.blindValidation;
@@ -267,6 +287,7 @@ export const buildStrategyPromotionEligibility = (
   const verdict: PromotionGateVerdict = blockers.length ? 'BLOCKED' : insufficientEvidence.length ? 'INSUFFICIENT_DATA' : 'PASS';
   const reasons = [
     `${checks.filter((item) => item.passed).length}/${checks.length} promotion hard gates passed for ${input.stage}.`,
+    `Promotion dataset scope covers ${requiredMarkets.length} market(s) × ${requiredFrames.length} required timeframe(s).`,
     `Minimum grade for this transition is ${minimumGrade}; ratings remain governance evidence and never grant execution authority.`,
   ];
   if (blockers.length) reasons.push(`Blocking gate(s): ${blockers.join(', ')}.`);
