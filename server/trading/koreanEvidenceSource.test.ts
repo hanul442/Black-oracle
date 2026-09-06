@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  BOK_MONETARY_POLICY_RSS,
   FSC_PRESS_RELEASE_RSS,
   isBroadKoreanCryptoRegulatory,
 } from '../../api/trading-evidence-refresh.ts';
 
 test('FSC collector uses the official press-release RSS endpoint', () => {
   assert.equal(FSC_PRESS_RELEASE_RSS, 'https://www.fsc.go.kr/about/fsc_bbs_rss/?fid=0111');
+});
+
+test('Bank of Korea collector uses the official monetary-policy RSS endpoint', () => {
+  assert.equal(BOK_MONETARY_POLICY_RSS, 'https://www.bok.or.kr/portal/bbs/P0000559/news.rss?menuNo=200690');
 });
 
 test('Korean primary-source filter accepts crypto regulation and rejects unrelated finance news', () => {
@@ -27,5 +32,18 @@ test('FSC evidence remains PRIMARY, source-backed and non-executing in refresh p
   assert.match(source, /reliability:\s*0\.94/);
   assert.match(source, /collectFscPrimary\(markets, warnings\)/);
   assert.match(source, /fscPrimary:\s*fscPrimary\.length/);
+  assert.match(source, /executionAuthority:\s*false/);
+});
+
+test('Bank of Korea evidence is recent-only MACRO context and remains non-executing', async () => {
+  const sourceUrl = new URL('../../api/trading-evidence-refresh.ts', import.meta.url);
+  const source = await readFile(sourceUrl, 'utf-8');
+
+  assert.match(source, /BOK_MAX_AGE_MS\s*=\s*48\s*\*\s*60\s*\*\s*60_000/);
+  assert.match(source, /publisher:\s*'한국은행'/);
+  assert.match(source, /sourceType:\s*'MACRO'/);
+  assert.match(source, /reliability:\s*0\.96/);
+  assert.match(source, /collectBokMacro\(markets, warnings\)/);
+  assert.match(source, /bokMacro:\s*bokMacro\.length/);
   assert.match(source, /executionAuthority:\s*false/);
 });
