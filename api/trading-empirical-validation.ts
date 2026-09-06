@@ -12,11 +12,13 @@ export default async function handler(request: any, response: any) {
 
     const [
       { tradingCheckpointStore },
-      { buildEmpiricalAccumulationHealth, buildDailyEmpiricalPaperReport },
+      { buildEmpiricalAccumulationHealth, buildDailyEmpiricalPaperReport, scopeEmpiricalInputToQualificationWindow },
+      { normalizeQualificationWindow, qualificationWindowSummary },
       { normalizeStrategyReturnPanel, summarizeStrategyReturnPanel },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/empiricalValidation.js'),
+      import('../src/trading/qualificationWindow.js'),
       import('../src/trading/strategyReturnPanel.js'),
     ]);
 
@@ -53,6 +55,10 @@ export default async function handler(request: any, response: any) {
       closedTrades,
       timezoneOffsetMinutes: 540,
     };
+    const qualificationWindow = normalizeQualificationWindow(checkpoint.qualificationWindow);
+    const windowSummary = qualificationWindowSummary(qualificationWindow);
+    const qualificationStartedAt = qualificationWindow?.status === 'COLLECTING' ? qualificationWindow.startedAt : null;
+    const qualifiedInput = scopeEmpiricalInputToQualificationWindow(empiricalInput, qualificationStartedAt);
 
     return response.status(200).json({
       success: true,
@@ -60,6 +66,13 @@ export default async function handler(request: any, response: any) {
       now,
       accumulation: buildEmpiricalAccumulationHealth(empiricalInput),
       daily: buildDailyEmpiricalPaperReport(empiricalInput),
+      qualification: {
+        window: windowSummary,
+        creditActive: qualificationStartedAt != null,
+        accumulation: buildEmpiricalAccumulationHealth(qualifiedInput),
+        daily: buildDailyEmpiricalPaperReport(qualifiedInput),
+        legacyCreditAllowed: false,
+      },
       sourceCheckpoint: { savedAt: checkpoint.savedAt, reason: checkpoint.reason },
       executionAuthority: false,
       promotionAuthority: false,
