@@ -20,10 +20,12 @@ export default async function handler(request: any, response: any) {
         buildBlockRegimeMonteCarlo,
       },
       { summarizeCouncilComparison },
+      { normalizeStrategyReturnPanel, buildAlignedStrategyReturnSeries, summarizeStrategyReturnPanel },
     ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/researchValidation.js'),
       import('../src/trading/councilComparison.js'),
+      import('../src/trading/strategyReturnPanel.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -46,6 +48,18 @@ export default async function handler(request: any, response: any) {
       outcome: Boolean(item.v2Favorable),
     })));
 
+    const strategyPanelPersisted = Boolean(checkpoint.loop.strategyReturnPanel);
+    const strategyPanel = normalizeStrategyReturnPanel(checkpoint.loop.strategyReturnPanel);
+    const strategyPanelSummary = summarizeStrategyReturnPanel(strategyPanel);
+    const strategySeries = buildAlignedStrategyReturnSeries(strategyPanel);
+    const pbo = buildProbabilityBacktestOverfitting(strategySeries.map((item) => ({ id: item.id, returns: item.returns })));
+    const pboSource = strategyPanelPersisted ? 'PERSISTED_PROSPECTIVE_STRATEGY_COHORT' : 'PROSPECTIVE_COHORT_NOT_STARTED';
+    const pboNote = pbo.available
+      ? `PBO is calculated from ${strategyPanelSummary.alignedObservations} aligned, prospectively resolved observations across ${strategyPanelSummary.candidateCount} research candidates.`
+      : strategyPanelPersisted
+        ? `Prospective Strategy Factory cohort is collecting aligned observations; ${strategyPanelSummary.alignedObservations}/${strategyPanelSummary.minimumPboObservations} required observations are currently resolved.`
+        : 'Strategy Factory prospective return-panel collection has not yet appeared in the persisted runtime checkpoint.';
+
     return response.status(200).json({
       success: true,
       available: true,
@@ -55,6 +69,9 @@ export default async function handler(request: any, response: any) {
         blindValidationSamples: validationSamples.length,
         councilComparisonSamples: comparisons.length,
         resolvedCouncilComparisons: resolvedComparisons.length,
+        strategyCandidates: strategyPanelSummary.candidateCount,
+        strategyPanelObservations: strategyPanelSummary.observations,
+        alignedStrategyObservations: strategyPanelSummary.alignedObservations,
       },
       expectedShortfall: {
         es95: buildExpectedShortfall(closedReturns, 0.95),
@@ -65,9 +82,10 @@ export default async function handler(request: any, response: any) {
         trialCountSource,
       },
       probabilityBacktestOverfitting: {
-        ...buildProbabilityBacktestOverfitting([]),
-        source: 'STRATEGY_RETURN_PANEL_NOT_PERSISTED',
-        note: 'PBO remains unavailable until aligned return panels for multiple Strategy Factory candidates are persisted. A single strategy history is not sufficient.',
+        ...pbo,
+        source: pboSource,
+        note: pboNote,
+        panel: strategyPanelSummary,
       },
       blockRegimeMonteCarlo: {
         ...buildBlockRegimeMonteCarlo(blockSamples),
