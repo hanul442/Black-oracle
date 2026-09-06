@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const VERSION = "4.3.1-provenance";
+const VERSION = "4.3.2-provenance";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -63,6 +63,17 @@ Deno.serve(async (req: Request) => {
       );
       if (!result.ok) return reply(500, { ok: false, error: "source_profile_query_failed", status: result.status, detail: result.detail });
       return reply(200, { ok: true, service: "nars-provenance", version: VERSION, mode, items: result.data });
+    }
+
+    if (mode === "authorities") {
+      const country = input.searchParams.get("country")?.trim().toUpperCase() || null;
+      const params = new URLSearchParams();
+      params.set("select", "authority_key,display_name,authority_type,country,official_domains,review_status,provenance,metadata,reviewed_at,updated_at");
+      params.set("order", "country.asc,authority_type.asc,display_name.asc");
+      if (country) params.set("country", `eq.${country}`);
+      const result = await restJson(supabaseUrl, headers, `nars_authority_registry?${params.toString()}`);
+      if (!result.ok) return reply(500, { ok: false, error: "authority_query_failed", status: result.status, detail: result.detail });
+      return reply(200, { ok: true, service: "nars-provenance", version: VERSION, mode, filters: { country }, items: result.data });
     }
 
     const eventId = input.searchParams.get("event_id")?.trim() ?? null;
