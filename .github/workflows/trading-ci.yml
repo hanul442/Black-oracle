@@ -56,6 +56,9 @@ jobs:
       - name: Serverless Promotion-readiness bundle smoke
         run: npx esbuild api/trading-promotion-readiness.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-promotion-readiness.mjs
 
+      - name: Serverless Strategy-vault bundle smoke
+        run: npx esbuild api/trading-strategy-vault.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-strategy-vault.mjs
+
       - name: Supabase scheduler Edge bundle smoke
         run: npx esbuild supabase/functions/black-oracle-paper-scheduler/index.ts --bundle --platform=neutral --format=esm --target=es2022 '--external:jsr:*' '--external:npm:*' --outfile=/tmp/black-oracle-paper-scheduler.mjs
 
