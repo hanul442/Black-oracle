@@ -18,7 +18,7 @@ export interface EmpiricalCouncilLike { generatedAt: number; resolvedAt: number 
 export interface EmpiricalStrategyObservationLike { generatedAt: number; resolvedAt: number | null; }
 export interface EmpiricalExperimentEventLike { timestamp: number; type: string; }
 export interface EmpiricalGradeSnapshotLike { timestamp: number; rating: { grade: string; rawScore: number; appliedGateKeys?: string[] } }
-export interface EmpiricalClosedTradeLike { closedAt: number; returnPct: number; netPnl: number; }
+export interface EmpiricalClosedTradeLike { openedAt: number; closedAt: number; returnPct: number; netPnl: number; }
 
 export interface EmpiricalGate {
   key: string;
@@ -53,6 +53,36 @@ const safeRatio = (numerator: number, denominator: number) => denominator > 0 ? 
 const finiteTimestamp = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
 const inWindow = (timestamp: number | null | undefined, start: number, end: number) => finiteTimestamp(timestamp) && timestamp >= start && timestamp <= end;
 const localDayKey = (timestamp: number, offsetMinutes: number) => new Date(timestamp + offsetMinutes * 60_000).toISOString().slice(0, 10);
+
+export const scopeEmpiricalInputToQualificationWindow = (input: EmpiricalAccumulationInput, startedAt: number | null | undefined): EmpiricalAccumulationInput => {
+  const validStart = finiteTimestamp(startedAt) ? startedAt : null;
+  if (validStart === null) {
+    return {
+      ...input,
+      cycleHistory: [],
+      validationSamples: [],
+      councilComparisons: [],
+      strategyObservations: [],
+      strategyAlignedObservations: 0,
+      experimentEvents: [],
+      gradeHistory: [],
+      closedTrades: [],
+    };
+  }
+  const strategyObservations = input.strategyObservations.filter((item) => item.generatedAt >= validStart);
+  return {
+    ...input,
+    cycleHistory: input.cycleHistory.filter((cycle) => cycle.startedAt >= validStart),
+    validationSamples: input.validationSamples.filter((item) => finiteTimestamp(item.decisionTimestamp) && item.decisionTimestamp >= validStart),
+    councilComparisons: input.councilComparisons.filter((item) => item.generatedAt >= validStart),
+    strategyObservations,
+    strategyAlignedObservations: strategyObservations.filter((item) => finiteTimestamp(item.resolvedAt)).length,
+    experimentEvents: input.experimentEvents.filter((item) => item.timestamp >= validStart),
+    gradeHistory: input.gradeHistory.filter((item) => item.timestamp >= validStart),
+    // A position opened before the qualification window remains legacy even if it exits later.
+    closedTrades: input.closedTrades.filter((trade) => trade.openedAt >= validStart),
+  };
+};
 
 const observationRatePerHour = (timestamps: number[], now: number) => {
   const recent = timestamps.filter((timestamp) => inWindow(timestamp, now - DAY, now));
