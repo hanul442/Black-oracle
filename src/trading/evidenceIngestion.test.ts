@@ -50,6 +50,37 @@ test('fresh evidence preserves publisher, URL and classification without grantin
   assert.equal('executionAuthority' in result, false);
 });
 
+test('Bank of Korea macro candidate preserves source type and official provenance after normalization', () => {
+  const observedAt = Date.UTC(2026, 8, 6, 0, 0, 0);
+  const bokCandidate = {
+    market: 'KRW-BTC',
+    title: '통화정책 관련 공식 발표',
+    summary: '한국은행 공식 통화정책 자료.',
+    publisher: '한국은행',
+    sourceUrl: 'https://www.bok.or.kr/portal/example',
+    publishedAt: observedAt - 60 * 60_000,
+    sourceType: 'MACRO' as const,
+    reliability: 0.96,
+    tags: ['official', 'bok-korea', 'macro', 'monetary-policy', 'language:ko', 'btc'],
+  };
+
+  const result = buildExternalTradingEvidence(
+    bokCandidate,
+    { relevant: true, direction: 'NEUTRAL', strength: 55, expiryHours: 18, rationale: 'KRW liquidity context.' },
+    observedAt,
+  );
+
+  assert.ok(result);
+  assert.equal(result.sourceType, 'MACRO');
+  assert.equal(result.publisher, '한국은행');
+  assert.equal(result.source, '한국은행');
+  assert.equal(result.sourceUrl, bokCandidate.sourceUrl);
+  assert.equal(result.reliability, 0.96);
+  assert.ok(result.tags?.includes('bok-korea'));
+  assert.ok(result.tags?.includes('auto-ingested'));
+  assert.equal('executionAuthority' in result, false);
+});
+
 test('stale news is rejected instead of masquerading as fresh evidence', () => {
   const observedAt = Date.UTC(2026, 8, 7, 9, 0, 0);
   const result = buildExternalTradingEvidence(
