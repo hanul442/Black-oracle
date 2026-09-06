@@ -24,6 +24,8 @@ export interface GradeSurveillanceSummary {
   executionAuthority: false;
 }
 
+const DEFAULT_MAX_HISTORY = 2016;
+const DEFAULT_MIN_INTERVAL_MS = 15 * 60_000;
 const gradeIndex = (grade: OracleGrade) => ORACLE_GRADE_ORDER.indexOf(grade);
 const cloneRating = (rating: OracleRatingResult): OracleRatingResult => ({
   ...rating,
@@ -50,7 +52,11 @@ const validSnapshot = (value: unknown): value is OracleRatingSnapshot => {
   );
 };
 
-export const normalizeGradeSurveillance = (value: unknown, maxHistory = 720): GradeSurveillanceCheckpoint => {
+const sameGateSet = (left: string[], right: string[]) => (
+  left.slice().sort().join('|') === right.slice().sort().join('|')
+);
+
+export const normalizeGradeSurveillance = (value: unknown, maxHistory = DEFAULT_MAX_HISTORY): GradeSurveillanceCheckpoint => {
   const candidate = value as Partial<GradeSurveillanceCheckpoint> | null;
   const history = Array.isArray(candidate?.history)
     ? candidate!.history.filter(validSnapshot).map(cloneSnapshot).sort((a, b) => a.timestamp - b.timestamp).slice(-maxHistory)
@@ -61,11 +67,19 @@ export const normalizeGradeSurveillance = (value: unknown, maxHistory = 720): Gr
 export const appendGradeSnapshot = (
   checkpoint: GradeSurveillanceCheckpoint | null | undefined,
   snapshot: OracleRatingSnapshot,
-  maxHistory = 720,
+  maxHistory = DEFAULT_MAX_HISTORY,
+  minimumIntervalMs = DEFAULT_MIN_INTERVAL_MS,
 ): GradeSurveillanceCheckpoint => {
   if (!validSnapshot(snapshot)) throw new Error('Invalid Oracle rating snapshot.');
   const normalized = normalizeGradeSurveillance(checkpoint, maxHistory);
   const history = normalized.history.filter((item) => item.timestamp !== snapshot.timestamp);
+  const last = history.length ? history[history.length - 1] : null;
+  const significant = !last
+    || last.rating.grade !== snapshot.rating.grade
+    || Math.abs(last.rating.rawScore - snapshot.rating.rawScore) >= 5
+    || !sameGateSet(last.rating.appliedGateKeys, snapshot.rating.appliedGateKeys)
+    || snapshot.timestamp - last.timestamp >= minimumIntervalMs;
+  if (!significant) return { schemaVersion: 1, history };
   history.push(cloneSnapshot(snapshot));
   history.sort((a, b) => a.timestamp - b.timestamp);
   return { schemaVersion: 1, history: history.slice(-maxHistory) };
