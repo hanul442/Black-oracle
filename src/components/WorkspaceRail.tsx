@@ -5,7 +5,7 @@ const primary = [
   { id: 'operations', code: 'MON', label: 'Monitor' },
   { id: 'cases', code: 'POS', label: 'Positions' },
   { id: 'ledger', code: 'AUD', label: 'Audit' },
-  { id: 'lab', code: 'LAB', label: 'Research' },
+  { id: 'lab', code: 'LAB', label: 'Lab' },
 ];
 
 export const WorkspaceRail: React.FC = () => {
