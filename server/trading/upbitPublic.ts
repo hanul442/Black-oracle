@@ -2,6 +2,8 @@ import { SUPPORTED_UPBIT_MINUTE_UNITS, type SupportedUpbitMinuteUnit } from '../
 import type { Candle } from '../../src/trading/types';
 
 const UPBIT_API_BASE = 'https://api.upbit.com';
+const MAX_CANDLES_PER_REQUEST = 200;
+const MAX_PAGINATED_CANDLES = 1_000;
 
 interface UpbitMarketResponse {
   market: string;
@@ -68,6 +70,21 @@ const assertKrwMarket = (market: string) => {
   if (!/^KRW-[A-Z0-9]+$/.test(market)) throw new Error('Only normalized KRW Upbit markets are allowed in v0.1.');
 };
 
+const assertMinuteUnit = (unit: SupportedUpbitMinuteUnit) => {
+  if (!SUPPORTED_UPBIT_MINUTE_UNITS.includes(unit)) throw new Error(`Unsupported Upbit minute unit: ${unit}`);
+};
+
+const assertCount = (count: number, max: number, label: string) => {
+  if (!Number.isInteger(count) || count < 1 || count > max) {
+    throw new Error(`${label} must be an integer between 1 and ${max}.`);
+  }
+};
+
+const assertExclusiveCursor = (to?: string) => {
+  if (to == null) return;
+  if (!to.trim() || !Number.isFinite(Date.parse(to))) throw new Error('Upbit candle to cursor must be a valid ISO-8601 timestamp.');
+};
+
 export const listKrwMarkets = async () => {
   const url = new URL('/v1/market/all', UPBIT_API_BASE);
   url.searchParams.set('is_details', 'true');
@@ -122,18 +139,26 @@ export const getOrderbooks = async (markets: string[]) => {
   }));
 };
 
+export interface MinuteCandleRequestOptions {
+  /** Upbit's exclusive end cursor. Candles strictly before this UTC timestamp are returned. */
+  to?: string;
+}
+
 export const getMinuteCandles = async (
   market: string,
   unit: SupportedUpbitMinuteUnit,
-  count = 200,
+  count = MAX_CANDLES_PER_REQUEST,
+  options: MinuteCandleRequestOptions = {},
 ): Promise<Candle[]> => {
   assertKrwMarket(market);
-  if (!SUPPORTED_UPBIT_MINUTE_UNITS.includes(unit)) throw new Error(`Unsupported Upbit minute unit: ${unit}`);
-  if (!Number.isInteger(count) || count < 1 || count > 200) throw new Error('Candle count must be an integer between 1 and 200.');
+  assertMinuteUnit(unit);
+  assertCount(count, MAX_CANDLES_PER_REQUEST, 'Candle count');
+  assertExclusiveCursor(options.to);
 
   const url = new URL(`/v1/candles/minutes/${unit}`, UPBIT_API_BASE);
   url.searchParams.set('market', market);
   url.searchParams.set('count', String(count));
+  if (options.to) url.searchParams.set('to', options.to);
 
   const raw = await getJson<UpbitMinuteCandleResponse[]>(url);
   return raw
@@ -150,3 +175,67 @@ export const getMinuteCandles = async (
     }))
     .sort((a, b) => a.timestamp - b.timestamp);
 };
+
+export interface MinuteCandlePageRequest {
+  market: string;
+  unit: SupportedUpbitMinuteUnit;
+  count: number;
+  to?: string;
+}
+
+export type MinuteCandlePageReader = (request: MinuteCandlePageRequest) => Promise<Candle[]>;
+
+/**
+ * Deterministically stitch Upbit's <=200-candle pages into one ascending history.
+ * Duplicate page-boundary timestamps fail closed instead of being silently deduplicated.
+ */
+export const paginateMinuteCandleHistory = async (
+  request: MinuteCandlePageRequest,
+  pageReader: MinuteCandlePageReader,
+): Promise<Candle[]> => {
+  assertKrwMarket(request.market);
+  assertMinuteUnit(request.unit);
+  assertCount(request.count, MAX_PAGINATED_CANDLES, 'Paginated candle count');
+  assertExclusiveCursor(request.to);
+
+  const collected: Candle[] = [];
+  const seen = new Set<number>();
+  let cursor = request.to;
+
+  while (collected.length < request.count) {
+    const remaining = request.count - collected.length;
+    const pageSize = Math.min(MAX_CANDLES_PER_REQUEST, remaining);
+    const page = await pageReader({ market: request.market, unit: request.unit, count: pageSize, to: cursor });
+    if (!Array.isArray(page) || page.length === 0) break;
+    if (page.length > pageSize) throw new Error(`Upbit candle page exceeded requested size ${pageSize}.`);
+
+    for (const candle of page) {
+      if (seen.has(candle.timestamp)) {
+        throw new Error(`Duplicate candle timestamp ${candle.timestamp} crossed an Upbit pagination boundary.`);
+      }
+      seen.add(candle.timestamp);
+      collected.push(candle);
+    }
+
+    if (page.length < pageSize || collected.length >= request.count) break;
+    const earliestTimestamp = page.reduce((minimum, candle) => Math.min(minimum, candle.timestamp), Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(earliestTimestamp) || earliestTimestamp <= 0) {
+      throw new Error('Cannot continue Upbit candle pagination from an invalid page timestamp.');
+    }
+    cursor = new Date(earliestTimestamp).toISOString();
+  }
+
+  return collected
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-request.count);
+};
+
+export const getMinuteCandleHistory = async (
+  market: string,
+  unit: SupportedUpbitMinuteUnit,
+  count = 400,
+  options: MinuteCandleRequestOptions = {},
+): Promise<Candle[]> => paginateMinuteCandleHistory(
+  { market, unit, count, to: options.to },
+  ({ market: pageMarket, unit: pageUnit, count: pageCount, to }) => getMinuteCandles(pageMarket, pageUnit, pageCount, { to }),
+);
