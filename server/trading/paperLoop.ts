@@ -38,6 +38,19 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const cloneTrace = <T extends DecisionTrace & { decision: DecisionTrace['action'] }>(item: T): T => ({
+  ...item,
+  router: { ...item.router, reasons: item.router.reasons.slice() },
+  forecast: { ...item.forecast, reasons: item.forecast.reasons.slice() },
+  evidenceIds: item.evidenceIds.slice(),
+  technicalEvidence: item.technicalEvidence ? { ...item.technicalEvidence } : null,
+  structure: item.structure ? { ...item.structure } : null,
+  cycle: item.cycle ? { ...item.cycle, frames: { ...item.cycle.frames }, reasons: item.cycle.reasons.slice() } : null,
+  tradeMap: item.tradeMap ? { ...item.tradeMap, reasons: item.tradeMap.reasons.slice() } : null,
+  reasons: item.reasons.slice(),
+  riskReasons: item.riskReasons.slice(),
+});
+
 const validateConfig = (config: PaperLoopConfig) => {
   if (!Number.isInteger(config.intervalMs) || config.intervalMs < 5 * 60 * 1000) {
     throw new Error('Paper loop intervalMs must be at least 300000 (5 minutes).');
@@ -66,12 +79,7 @@ export class PaperLoopController {
       lastCycle: this.lastCycle ? {
         ...this.lastCycle,
         errors: this.lastCycle.errors.map((item) => ({ ...item })),
-        markets: this.lastCycle.markets.map((item) => ({
-          ...item,
-          evidenceIds: item.evidenceIds.slice(),
-          reasons: item.reasons.slice(),
-          riskReasons: item.riskReasons.slice(),
-        })),
+        markets: this.lastCycle.markets.map((item) => cloneTrace(item)),
       } : null,
     };
   }
@@ -87,7 +95,13 @@ export class PaperLoopController {
       noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0,
       errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
       markets: checkpoint.lastCycle.markets.map((item) => ({
-        ...item,
+        ...cloneTrace({
+          ...item,
+          technicalEvidence: item.technicalEvidence ?? null,
+          structure: item.structure ?? null,
+          cycle: item.cycle ?? null,
+          tradeMap: item.tradeMap ?? null,
+        }),
         evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.slice() : [],
         reasons: Array.isArray(item.reasons) ? item.reasons.slice() : [],
         riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons.slice() : [],
@@ -179,6 +193,7 @@ export class PaperLoopController {
             decision: step.decision,
             multiTimeframe: step.multiTimeframe,
             evidence,
+            tradeMap: step.tradeMap,
             hasOpenPositionAfterStep,
           });
 
