@@ -10,9 +10,6 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
-  "dependencies": {
-    "fast-xml-parser": "5.11.1"
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260905.1",
     "typescript": "5.9.2",
