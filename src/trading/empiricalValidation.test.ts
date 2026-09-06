@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDailyEmpiricalPaperReport, buildEmpiricalAccumulationHealth, type EmpiricalAccumulationInput } from './empiricalValidation.ts';
+import { buildDailyEmpiricalPaperReport, buildEmpiricalAccumulationHealth, scopeEmpiricalInputToQualificationWindow, type EmpiricalAccumulationInput } from './empiricalValidation.ts';
 
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 const INTERVAL = 15 * 60_000;
@@ -29,7 +29,7 @@ const baseInput = (): EmpiricalAccumulationInput => ({
   minimumPboObservations: 60,
   experimentEvents: [{ timestamp: NOW - HOUR, type: 'EXPERIMENT_STARTED' }],
   gradeHistory: Array.from({ length: 10 }, (_, index) => ({ timestamp: NOW - index * INTERVAL, rating: { grade: 'BBB0', rawScore: 72, appliedGateKeys: ['OOS'] } })),
-  closedTrades: Array.from({ length: 10 }, (_, index) => ({ closedAt: NOW - index * INTERVAL, returnPct: 0.01, netPnl: 100 })),
+  closedTrades: Array.from({ length: 10 }, (_, index) => ({ openedAt: NOW - index * INTERVAL - HOUR, closedAt: NOW - index * INTERVAL, returnPct: 0.01, netPnl: 100 })),
 });
 
 test('empirical health fails closed when there is no runtime history', () => {
@@ -54,7 +54,7 @@ test('stale runtime is marked STALLED regardless of research sample depth', () =
   input.cycleHistory = [cycle(NOW - INTERVAL * 4)];
   input.strategyAlignedObservations = 60;
   input.councilComparisons = Array.from({ length: 40 }, () => ({ generatedAt: NOW - HOUR, resolvedAt: NOW - HOUR }));
-  input.closedTrades = Array.from({ length: 60 }, () => ({ closedAt: NOW - HOUR, returnPct: 0.01, netPnl: 10 }));
+  input.closedTrades = Array.from({ length: 60 }, () => ({ openedAt: NOW - HOUR * 2, closedAt: NOW - HOUR, returnPct: 0.01, netPnl: 10 }));
   input.gradeHistory = Array.from({ length: 24 }, (_, index) => ({ timestamp: NOW - index * INTERVAL, rating: { grade: 'A0', rawScore: 86 } }));
   const report = buildEmpiricalAccumulationHealth(input);
   assert.equal(report.disposition, 'STALLED');
@@ -64,7 +64,7 @@ test('fully satisfied operational and sample gates can become HEALTHY', () => {
   const input = baseInput();
   input.strategyAlignedObservations = 60;
   input.councilComparisons = Array.from({ length: 30 }, (_, index) => ({ generatedAt: NOW - index * INTERVAL, resolvedAt: NOW - index * INTERVAL }));
-  input.closedTrades = Array.from({ length: 60 }, (_, index) => ({ closedAt: NOW - index * INTERVAL, returnPct: 0.01, netPnl: 10 }));
+  input.closedTrades = Array.from({ length: 60 }, (_, index) => ({ openedAt: NOW - index * INTERVAL - HOUR, closedAt: NOW - index * INTERVAL, returnPct: 0.01, netPnl: 10 }));
   input.gradeHistory = Array.from({ length: 24 }, (_, index) => ({ timestamp: NOW - index * INTERVAL, rating: { grade: 'A0', rawScore: 86 } }));
   const report = buildEmpiricalAccumulationHealth(input);
   assert.equal(report.disposition, 'HEALTHY');
@@ -79,4 +79,30 @@ test('daily report uses KST-local calendar day and preserves evidence linkage', 
   assert.equal(report.evidence.linkedDecisions, 80);
   assert.equal(report.outcomes.netPnl, 1000);
   assert.equal(report.executionAuthority, false);
+});
+
+test('qualification scope removes all legacy samples when window has not started', () => {
+  const scoped = scopeEmpiricalInputToQualificationWindow(baseInput(), null);
+  assert.equal(scoped.cycleHistory.length, 0);
+  assert.equal(scoped.strategyAlignedObservations, 0);
+  assert.equal(scoped.closedTrades.length, 0);
+});
+
+test('qualification scope rejects a trade opened before the window even if it closes after start', () => {
+  const start = NOW - HOUR;
+  const input = baseInput();
+  input.closedTrades = [
+    { openedAt: start - 1, closedAt: start + INTERVAL, returnPct: 0.01, netPnl: 10 },
+    { openedAt: start + 1, closedAt: start + INTERVAL, returnPct: 0.02, netPnl: 20 },
+  ];
+  input.strategyObservations = [
+    { generatedAt: start - 1, resolvedAt: start + INTERVAL },
+    { generatedAt: start + 1, resolvedAt: start + INTERVAL },
+  ];
+  input.strategyAlignedObservations = 2;
+  const scoped = scopeEmpiricalInputToQualificationWindow(input, start);
+  assert.equal(scoped.closedTrades.length, 1);
+  assert.equal(scoped.closedTrades[0]?.netPnl, 20);
+  assert.equal(scoped.strategyObservations.length, 1);
+  assert.equal(scoped.strategyAlignedObservations, 1);
 });
