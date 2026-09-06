@@ -6,6 +6,7 @@ import { TradingLedger } from '../../src/trading/ledger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
+import { projectExecutionDecisionToPortfolioTarget } from '../../src/trading/portfolioTargetContract';
 import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
@@ -76,6 +77,17 @@ export class PaperTradingSession {
       else if (governance?.finalDecision.action !== 'ENTER') decision = governanceVetoDecision(baseDecision, governance?.finalDecision.reasons ?? ['Governance evaluation was unavailable; new entry failed closed.']);
     }
 
+    // Sprint 7 bridge: make target state explicit while preserving the authoritative
+    // legacy PAPER decision -> broker path. The target is shadow-only and cannot place orders.
+    const portfolioTarget = projectExecutionDecisionToPortfolioTarget({
+      market: normalized,
+      strategyVersion: TRADING_STRATEGY_VERSION,
+      generatedAt: Date.now(),
+      referencePrice: liquidity.tradePrice,
+      portfolio: before,
+      decision,
+    });
+
     this.ledger.append('MARKET_SNAPSHOT', { market: normalized, price: liquidity.tradePrice, liquidityScore: liquidity.score, multiTimeframeScore: multiTimeframe.oracleTradeScore, eventScore: eventScore ?? null });
     this.ledger.append('SIGNAL', {
       market: normalized, baseAction: baseDecision.action, action: decision.action, side: decision.side, directionalScore: multiTimeframe.directionalScore,
@@ -83,17 +95,29 @@ export class PaperTradingSession {
       governancePolicy: governance?.finalDecision.policy ?? null, intelligenceDisposition: governance?.finalDecision.intelligenceDisposition ?? null,
       intelligencePackageId: governance?.intelligence.id ?? null, scenarioSetId: governance?.intelligence.scenarios.id ?? null, councilRunId: governance?.intelligence.council.id ?? null,
       portfolioEntryBlockReasons: newEntryAllowed ? [] : newEntryBlockReasons, governanceError,
+      portfolioTarget: {
+        id: portfolioTarget.id,
+        source: portfolioTarget.source,
+        intent: portfolioTarget.intent,
+        currentWeight: portfolioTarget.currentWeight,
+        targetWeight: portfolioTarget.targetWeight,
+        currentNotional: portfolioTarget.currentNotional,
+        targetNotional: portfolioTarget.targetNotional,
+        deltaNotional: portfolioTarget.deltaNotional,
+        riskDisposition: portfolioTarget.riskDisposition,
+        executionAuthority: portfolioTarget.executionAuthority,
+      },
     });
 
     let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
-      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional });
+      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, portfolioTargetId: portfolioTarget.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'BUY', notional: decision.notional, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       this.portfolio.applyFill(fill); this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
       if (decision.stopLossPrice && decision.takeProfitPrice) this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
-      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity });
+      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, portfolioTargetId: portfolioTarget.id });
       fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'SELL', quantity: position.quantity, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
       const entry = this.entryMetadata.get(normalized); const costBasis = position.averageCost * fill.quantity; const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
       const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity; const netPnl = fill.notional - fill.fee - costBasis;
@@ -102,7 +126,7 @@ export class PaperTradingSession {
       this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
     }
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now()); const performance = buildPaperPerformance(this.closedTrades, after.equityCurve, after.initialEquity, after.equity, after.drawdownPct);
-    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, decision, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
+    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, decision, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
   }
 }
 
