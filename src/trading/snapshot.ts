@@ -1,7 +1,9 @@
 import { buildIndicatorSnapshot } from './indicators';
+import { buildMarketStructure } from './marketStructure';
 import { buildMeanReversionSignal } from './meanReversion';
 import { classifyRegime } from './regime';
 import { buildSignalFusion } from './signalFusion';
+import { buildTechnicalEvidence } from './technicalEvidence';
 import { buildMomentumSignal, buildTrendSignal } from './trendMomentum';
 import type { Candle, TradingSnapshot } from './types';
 
@@ -15,6 +17,17 @@ export const buildTradingSnapshot = (candles: Candle[], eventScore?: number): Tr
   const momentum = buildMomentumSignal(indicators);
   const meanReversion = buildMeanReversionSignal(indicators, regime);
   const fusion = buildSignalFusion(trend, momentum, meanReversion, regime, eventScore);
+  const structure = buildMarketStructure(ordered);
+  const technicalEvidence = buildTechnicalEvidence({
+    market: latest.market,
+    timeframeMinutes: latest.timeframeMinutes,
+    asOf: latest.timestamp,
+    indicators,
+    structure,
+    trend,
+    momentum,
+    regime,
+  });
 
   return {
     market: latest.market,
@@ -27,5 +40,7 @@ export const buildTradingSnapshot = (candles: Candle[], eventScore?: number): Tr
     momentum,
     meanReversion,
     fusion,
+    structure,
+    technicalEvidence,
   };
 };
