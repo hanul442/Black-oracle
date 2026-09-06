@@ -1,4 +1,11 @@
 import { appendGradeSnapshot, normalizeGradeSurveillance, summarizeGradeSurveillance, type GradeSurveillanceCheckpoint } from '../../src/trading/gradeSurveillance';
+import {
+  advanceQualificationWindow,
+  normalizeQualificationWindow,
+  qualificationWindowConfigFromEnv,
+  qualificationWindowSummary,
+  type QualificationWindowCheckpoint,
+} from '../../src/trading/qualificationWindow';
 import { tradingEvidenceStore } from './evidenceStore';
 import { runtimeExperimentLedgerStore } from './experimentLedgerStore';
 import { runtimeIntegrityStore } from './integrityStore';
@@ -10,6 +17,8 @@ import { tradeCaseStore } from './tradeCaseStore';
 
 let autosaveTimer: NodeJS.Timeout | null = null;
 let gradeSurveillance: GradeSurveillanceCheckpoint = normalizeGradeSurveillance(null);
+let qualificationWindow: QualificationWindowCheckpoint | null = null;
+let qualificationConfigError: string | null = null;
 let restoreSummary: {
   restored: boolean;
   savedAt: number | null;
@@ -22,9 +31,33 @@ let restoreSummary: {
   resumedLoop: false,
 };
 
+const safeQualificationConfig = () => {
+  try {
+    const config = qualificationWindowConfigFromEnv();
+    qualificationConfigError = null;
+    return config;
+  } catch (error) {
+    qualificationConfigError = error instanceof Error ? error.message : 'Invalid qualification window configuration.';
+    return null;
+  }
+};
+
+const advanceRuntimeQualificationWindow = () => {
+  const config = safeQualificationConfig();
+  if (!config) return qualificationWindow;
+  qualificationWindow = advanceQualificationWindow({
+    existing: qualificationWindow,
+    config,
+    latestCycle: paperLoopController.checkpoint().lastCycle,
+    evidence: tradingEvidenceStore.list(undefined, true),
+  });
+  return qualificationWindow;
+};
+
 export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpoint => {
   runtimeIntegrityStore.ensureStarted();
   const savedAt = Date.now();
+  const nextQualificationWindow = advanceRuntimeQualificationWindow();
   const base: TradingRuntimeCheckpoint = {
     schemaVersion: 1 as const,
     savedAt,
@@ -36,6 +69,7 @@ export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpo
     // Optional schema-v1 extensions keep old checkpoints readable while adding auditable runtime history.
     integrity: runtimeIntegrityStore.snapshot(),
     experimentLedger: runtimeExperimentLedgerStore.snapshot(),
+    ...(nextQualificationWindow ? { qualificationWindow: nextQualificationWindow } : {}),
   };
   const readiness = buildPaperReadinessSnapshotFromCheckpoint(base, savedAt);
   gradeSurveillance = appendGradeSnapshot(gradeSurveillance, readiness.snapshot);
@@ -55,6 +89,8 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
     runtimeIntegrityStore.ensureStarted();
     runtimeExperimentLedgerStore.restore([]);
     gradeSurveillance = normalizeGradeSurveillance(null);
+    qualificationWindow = null;
+    safeQualificationConfig();
     restoreSummary = {
       restored: false,
       savedAt: null,
@@ -72,6 +108,8 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   runtimeIntegrityStore.ensureStarted();
   runtimeExperimentLedgerStore.restore(checkpoint.experimentLedger ?? []);
   gradeSurveillance = normalizeGradeSurveillance(checkpoint.gradeSurveillance);
+  qualificationWindow = normalizeQualificationWindow(checkpoint.qualificationWindow);
+  advanceRuntimeQualificationWindow();
 
   restoreSummary = {
     restored: true,
@@ -109,4 +147,8 @@ export const runtimePersistenceStatus = () => ({
   integrity: runtimeIntegrityStore.summary(),
   gradeSurveillance: summarizeGradeSurveillance(gradeSurveillance),
   experimentLedger: runtimeExperimentLedgerStore.summary(),
+  qualificationWindow: {
+    ...qualificationWindowSummary(qualificationWindow),
+    configError: qualificationConfigError,
+  },
 });
