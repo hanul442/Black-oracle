@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildSchedulerPipelineOutcome,
   EVIDENCE_REFRESH_TIMEOUT_MS,
+  isAllowedProductionSchedulerTarget,
   isEvidenceRefreshHttpSuccess,
   isPaperCycleHttpSuccess,
   PAPER_CYCLE_TIMEOUT_MS,
@@ -12,7 +13,6 @@ import {
 
 const RUNTIME_ID = "black-oracle-paper";
 const CONFIG_TABLE = "black_oracle_trading_scheduler_config";
-const PRODUCTION_TARGET = "https://black-oracle.vercel.app";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -22,7 +22,6 @@ const json = (body: Record<string, unknown>, status = 200) =>
 
 type RequestMode = {
   action: "cycle" | "status";
-  targetBaseUrl?: string;
 };
 
 type DownstreamCall = SchedulerStageResult & {
@@ -32,13 +31,8 @@ type DownstreamCall = SchedulerStageResult & {
 const readMode = async (req: Request): Promise<RequestMode> => {
   if (req.method !== "POST") return { action: "cycle" };
   try {
-    const body = await req.json() as { action?: unknown; targetBaseUrl?: unknown };
-    if (body?.action === "status") {
-      return {
-        action: "status",
-        targetBaseUrl: typeof body.targetBaseUrl === "string" ? body.targetBaseUrl.trim() : undefined,
-      };
-    }
+    const body = await req.json() as { action?: unknown };
+    if (body?.action === "status") return { action: "status" };
   } catch {
     // Default to the scheduler cycle path for malformed/non-JSON POST bodies.
   }
@@ -117,10 +111,13 @@ Deno.serve(async (req: Request) => {
   const mode = await readMode(req);
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const vercelAutomationBypassSecret = Deno.env.get("VERCEL_AUTOMATION_BYPASS_SECRET");
+  const cronSecret = Deno.env.get("CRON_SECRET");
 
   if (!supabaseUrl || !serviceRoleKey) {
     return json({ success: false, error: "Supabase server credentials are unavailable." }, 500);
+  }
+  if (!cronSecret) {
+    return json({ success: false, error: "Dedicated scheduler CRON_SECRET is unavailable." }, 500);
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -141,30 +138,18 @@ Deno.serve(async (req: Request) => {
     return json({ success: true, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
   }
 
-  const baseUrl = mode.action === "status"
-    ? (mode.targetBaseUrl || config.target_base_url)
-    : config.target_base_url;
-
+  const baseUrl = config.target_base_url;
   if (!baseUrl) {
     return json({ success: false, error: "Target URL is unset." }, 500);
   }
-
-  let validatedTarget: URL;
-  try {
-    validatedTarget = new URL(baseUrl);
-  } catch {
-    return json({ success: false, error: "Configured Vercel target URL is invalid." }, 500);
+  if (!isAllowedProductionSchedulerTarget(baseUrl)) {
+    return json({
+      success: false,
+      error: "Scheduler target is not the canonical BLACK ORACLE production origin. Preview and arbitrary vercel.app cycle targets are prohibited.",
+    }, 500);
   }
 
-  if (validatedTarget.protocol !== "https:" || !validatedTarget.hostname.endsWith(".vercel.app")) {
-    return json({ success: false, error: "Configured target must be an HTTPS vercel.app deployment." }, 500);
-  }
-
-  const isPreviewCycle = mode.action === "cycle" && validatedTarget.hostname !== "black-oracle.vercel.app";
   const headers: Record<string, string> = { accept: "application/json" };
-  if (vercelAutomationBypassSecret) {
-    headers["x-vercel-protection-bypass"] = vercelAutomationBypassSecret;
-  }
 
   if (mode.action === "status") {
     const status = await callDownstream(
@@ -186,7 +171,9 @@ Deno.serve(async (req: Request) => {
     return json({ success: true, action: mode.action, downstreamStatus: status.status, data: status.body });
   }
 
-  headers.authorization = `Bearer ${serviceRoleKey}`;
+  // The Supabase service-role key remains inside Supabase for database administration only.
+  // Downstream Vercel calls use the dedicated scheduler secret accepted by the internal APIs.
+  headers.authorization = `Bearer ${cronSecret}`;
 
   // Evidence refresh owns and releases the runtime lease inside its endpoint. The Paper cycle
   // runs only after the HTTP call has completed, so the two stages never nest the same lease.
@@ -231,11 +218,6 @@ Deno.serve(async (req: Request) => {
     updated_at: now,
   };
 
-  if (isPreviewCycle) {
-    telemetryUpdate.enabled = false;
-    telemetryUpdate.target_base_url = PRODUCTION_TARGET;
-  }
-
   const { error: updateError } = await admin
     .from(CONFIG_TABLE)
     .update(telemetryUpdate)
@@ -257,7 +239,6 @@ Deno.serve(async (req: Request) => {
       success: false,
       pipelineOk: outcome.pipelineOk,
       degraded: false,
-      autoDisarmed: isPreviewCycle,
       evidenceRefresh: stageSummary(evidenceRefresh),
       paperCycle: stageSummary(paperCycle),
       error: outcome.telemetryError ?? "Scheduled Paper cycle failed.",
@@ -268,7 +249,6 @@ Deno.serve(async (req: Request) => {
     success: true,
     pipelineOk: outcome.pipelineOk,
     degraded: outcome.degraded,
-    autoDisarmed: isPreviewCycle,
     evidenceRefresh: stageSummary(evidenceRefresh),
     paperCycle: stageSummary(paperCycle),
   });
