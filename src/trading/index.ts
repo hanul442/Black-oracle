@@ -2,6 +2,7 @@ export * from './championChallenger';
 export * from './config';
 export * from './councilComparison';
 export * from './councilV2';
+export * from './empiricalValidation';
 export * from './evidence';
 export * from './evidenceSourcePolicy';
 export * from './executionPolicy';
