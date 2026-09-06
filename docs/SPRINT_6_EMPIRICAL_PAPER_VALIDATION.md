@@ -25,7 +25,7 @@ Research sample gates:
 - resolved Council v1/v2 comparisons: initial review target >= 30
 - closed PAPER trades: empirical qualification target >= 60
 - Grade Surveillance snapshots: initial history target >= 24
-- at least one Experiment Ledger STARTED or COMPLETED event
+- at least one **qualified Strategy-bound** Experiment Ledger STARTED or COMPLETED event
 
 Dispositions:
 - `INSUFFICIENT_DATA`: no persisted PAPER cycle truth exists yet
@@ -58,7 +58,7 @@ The persisted window starts in `ARMED` state. It advances to `COLLECTING` only a
 
 The first qualifying cycle's `startedAt` becomes the immutable qualification `startedAt` so observations produced by that cycle can receive credit.
 
-A persisted window whose id, arming time, or source revision no longer matches configuration is marked `INVALIDATED`. BLACK ORACLE never silently shifts the qualification window to make old samples qualify.
+A persisted window whose id, arming time, or source revision no longer matches configuration is marked `INVALIDATED`. BLACK ORACLE never silently shifts the qualification window to make old samples qualify. If a persisted window loses its explicit runtime pin, qualification credit is frozen rather than silently continuing from checkpoint state alone.
 
 ## Qualification-scoped credit
 
@@ -69,12 +69,39 @@ Only records generated inside the started qualification window receive qualifica
 - blind validation: `decisionTimestamp >= qualification.startedAt`
 - Council comparison: `generatedAt >= qualification.startedAt`
 - Strategy Factory: `generatedAt >= qualification.startedAt`; aligned count is recomputed only from resolved in-window observations
-- Experiment/Grade history: event timestamp >= qualification start
+- Grade history: snapshot timestamp >= qualification start
 - closed PAPER trade: **the position must have opened after qualification start**
+- Experiment: must satisfy the explicit Experiment Qualification Lineage rules below
 
 A legacy position opened before the qualification window receives zero qualification credit even if it closes after the window starts.
 
 Before the window reaches `COLLECTING`, qualified PBO/Council/closed-trade/Grade/Experiment counts remain zero. Raw legacy totals may remain visible as operational context but cannot satisfy Sprint 6 empirical exit gates.
+
+## Experiment Qualification Lineage
+
+Time proximity alone does not qualify an Experiment.
+
+A qualification-eligible Strategy experiment must be planned through the explicit qualified path and carry both identities:
+1. canonical `researchConfigurationId` (`rcfg-v1-*`) proving which Strategy Genome/configuration is being tested
+2. qualification binding containing the exact `windowId`, `sourceRevision`, and immutable `windowStartedAt`
+
+Runtime planning uses `planForQualifiedStrategyGenome(...)`. It refuses planning unless the supplied Qualification Window is already `COLLECTING`, and it refuses timestamps before the qualification start.
+
+The Experiment Ledger propagates the planned qualification identity and canonical Research Configuration ID into both `EXPERIMENT_STARTED` and `EXPERIMENT_COMPLETED` events. The empirical qualification verifier then requires all of the following before an Experiment event receives credit:
+- event type is STARTED or COMPLETED
+- event timestamp is on/after the active qualification start
+- window id matches exactly
+- source revision matches exactly
+- bound window start matches exactly
+- a valid canonical `rcfg-v1-*` Research Configuration ID is present
+
+Therefore:
+- an unbound Experiment started after the window receives **zero** qualification credit
+- a generic Experiment with no Research Configuration ID receives **zero** qualification credit
+- an Experiment from another qualification window/revision receives **zero** qualification credit
+- raw Experiment history remains persisted for audit, but only exact-bound events satisfy the qualification Experiment gate
+
+LAB exposes the qualified Experiment gate and also reports `qualified/raw` tried-event binding coverage for operator audit.
 
 ## Daily empirical report
 
@@ -104,12 +131,13 @@ LAB exposes a compact empirical strip with raw operational cadence and clearly p
 - Q closed-trade progress
 - Q Grade history depth
 - Q Experiment tried events
+- Experiment binding coverage (`qualified/raw`)
 - Q daily Evidence link rate
 - Q daily realized PAPER P&L
 
 ## Persistence and compatibility
 
-Qualification Window is an optional schema-v1 runtime-checkpoint extension. Existing checkpoints that do not contain the field remain valid. No new Supabase table or migration is required.
+Qualification Window is an optional schema-v1 runtime-checkpoint extension. Experiment qualification metadata is optional on legacy Experiment specs/events. Existing checkpoints and historical Experiment Ledger entries remain readable; they simply receive zero qualification credit unless exact binding provenance is present. No new Supabase table or migration is required.
 
 ## Truth and authority boundary
 
@@ -122,5 +150,6 @@ Sprint 6 does not:
 - automatically promote Strategy Factory candidates
 - automatically transition PAPER to LIVE
 - automatically arm or start a qualification window
+- automatically create or promote a qualified Experiment
 
 All release or production rollout changes remain explicit human approvals after exact-revision CI, browser QA, deployed Preview verification, readiness checks and scheduler review.
