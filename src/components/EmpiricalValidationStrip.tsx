@@ -78,8 +78,8 @@ export const EmpiricalValidationStrip: React.FC = () => {
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(timer);
+    const timer = globalThis.window?.setInterval(() => void load(), 60_000);
+    return () => { if (timer != null) globalThis.window?.clearInterval(timer); };
   }, [load]);
 
   const accumulation = payload?.accumulation;
@@ -90,9 +90,9 @@ export const EmpiricalValidationStrip: React.FC = () => {
   const qSamples = qualified?.samples;
   const qDaily = qualification?.daily;
   const qActive = qualification?.creditActive === true;
-  const window = qualification?.window;
+  const qualificationWindow = qualification?.window;
   const failedGate = accumulation?.operationalGates?.find((gate) => gate.status === 'FAIL');
-  const windowFailure = window?.invalidationReasons?.[0];
+  const windowFailure = qualificationWindow?.invalidationReasons?.[0];
 
   return (
     <section className="shrink-0 border-b border-[#24282c] bg-[#050607] font-mono">
@@ -102,8 +102,8 @@ export const EmpiricalValidationStrip: React.FC = () => {
         <span className={tone(accumulation?.disposition)}>{accumulation?.disposition || (payload?.available === false ? 'UNAVAILABLE' : '—')}</span>
         <span className="text-[#343c43]">|</span>
         <span className="text-[#69737b]">WINDOW</span>
-        <span className={windowTone(window?.status)}>{window?.id || 'UNCONFIGURED'} · {window?.status || 'NOT_CONFIGURED'}</span>
-        <span className="hidden max-w-[220px] truncate text-[#465058] lg:inline">{window?.sourceRevision ? `rev ${window.sourceRevision.slice(0, 12)}` : 'legacy credit disabled'}</span>
+        <span className={windowTone(qualificationWindow?.status)}>{qualificationWindow?.id || 'UNCONFIGURED'} · {qualificationWindow?.status || 'NOT_CONFIGURED'}</span>
+        <span className="hidden max-w-[220px] truncate text-[#465058] lg:inline">{qualificationWindow?.sourceRevision ? `rev ${qualificationWindow.sourceRevision.slice(0, 12)}` : 'legacy credit disabled'}</span>
         {error && <span className="truncate text-[#ff6262]">{error}</span>}
         <span className="ml-auto flex items-center gap-1 text-[#465058]"><Clock3 className="h-2.5 w-2.5" />{daily?.date || '—'} KST</span>
       </div>
