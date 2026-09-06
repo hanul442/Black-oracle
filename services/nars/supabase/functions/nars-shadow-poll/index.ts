@@ -21,7 +21,6 @@ const SOURCES: Source[] = [
   { key: "direct:khan:all", name: "경향신문", endpoint: "https://www.khan.co.kr/rss/rssdata/total_news.xml", language: "ko", country: "KR" },
   { key: "direct:mk:all", name: "매일경제", endpoint: "https://www.mk.co.kr/rss/40300001/", language: "ko", country: "KR" },
   { key: "direct:donga:all", name: "동아일보", endpoint: "https://rss.donga.com/total.xml", language: "ko", country: "KR" },
-  { key: "direct:hankyung:all", name: "한국경제", endpoint: "https://www.hankyung.com/feed/all-news", language: "ko", country: "KR" },
 ];
 
 const MAX_ITEMS_PER_SOURCE = 8;
