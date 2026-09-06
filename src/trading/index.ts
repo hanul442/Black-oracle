@@ -27,5 +27,6 @@ export * from './risk';
 export * from './riskProfiles';
 export * from './signalFusion';
 export * from './snapshot';
+export * from './strategyReturnPanel';
 export * from './trendMomentum';
 export * from './types';
