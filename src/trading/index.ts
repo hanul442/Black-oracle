@@ -35,6 +35,7 @@ export * from './riskProfiles';
 export * from './signalFusion';
 export * from './snapshot';
 export * from './strategyReturnPanel';
+export * from './targetPipeline';
 export * from './trendMomentum';
 export * from './types';
 export * from './validationDataset';
