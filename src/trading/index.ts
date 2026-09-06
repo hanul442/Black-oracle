@@ -36,5 +36,7 @@ export * from './snapshot';
 export * from './strategyReturnPanel';
 export * from './trendMomentum';
 export * from './types';
+export * from './validationDataset';
 export * from './validationIntegrity';
+export * from './validationLedger';
 export * from './warmupStability';
