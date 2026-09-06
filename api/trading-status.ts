@@ -82,6 +82,10 @@ export default async function handler(request: any, response: any) {
       evidenceActiveCount: item.evidenceActiveCount ?? 0,
       evidenceContradictionCount: item.evidenceContradictionCount ?? 0,
       evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+      technicalEvidence: item.technicalEvidence ?? null,
+      structure: item.structure ?? null,
+      cycle: item.cycle ?? null,
+      tradeMap: item.tradeMap ?? null,
       primaryReason: item.primaryReason ?? null,
       reasons: Array.isArray(item.reasons) ? item.reasons : [],
       riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
@@ -101,6 +105,7 @@ export default async function handler(request: any, response: any) {
       strategyVersion: trade.strategyVersion,
       entryOracleTradeScore: trade.entryOracleTradeScore,
       exitOracleTradeScore: trade.exitOracleTradeScore,
+      entryAudit: trade.entryAudit ?? null,
     }));
     const lastClosedTrade = checkpoint.session.closedTrades.length
       ? checkpoint.session.closedTrades[checkpoint.session.closedTrades.length - 1]
