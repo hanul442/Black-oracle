@@ -4,10 +4,12 @@ import test from 'node:test';
 import {
   buildSchedulerPipelineOutcome,
   EVIDENCE_REFRESH_TIMEOUT_MS,
+  isAllowedProductionSchedulerTarget,
   isEvidenceRefreshHttpSuccess,
   isPaperCycleHttpSuccess,
   MAX_SCHEDULER_DOWNSTREAM_BUDGET_MS,
   PAPER_CYCLE_TIMEOUT_MS,
+  PRODUCTION_SCHEDULER_TARGET,
   SCHEDULER_DOWNSTREAM_BUDGET_MS,
   shouldRunPaperCycleAfterEvidenceRefresh,
 } from '../../supabase/functions/_shared/paperSchedulerPolicy.ts';
@@ -72,7 +74,14 @@ test('Paper cycle failure is a scheduler failure even when Evidence refresh succ
   assert.match(outcome.telemetryError || '', /PAPER_CYCLE HTTP_500/);
 });
 
-test('Edge scheduler invokes Evidence refresh before Paper cycle and preserves production auto-disarm', async () => {
+test('scheduler target policy accepts only the canonical production origin', () => {
+  assert.equal(PRODUCTION_SCHEDULER_TARGET, 'https://black-oracle.vercel.app');
+  assert.equal(isAllowedProductionSchedulerTarget(PRODUCTION_SCHEDULER_TARGET), true);
+  assert.equal(isAllowedProductionSchedulerTarget('https://black-oracle-preview.vercel.app'), false);
+  assert.equal(isAllowedProductionSchedulerTarget('https://third-party.vercel.app'), false);
+});
+
+test('Edge scheduler runs Evidence before Paper with dedicated CRON auth and no preview auto-disarm path', async () => {
   const schedulerUrl = new URL('../../supabase/functions/black-oracle-paper-scheduler/index.ts', import.meta.url);
   const source = await readFile(schedulerUrl, 'utf-8');
   const evidenceIndex = source.indexOf('"/api/trading-evidence-refresh"');
@@ -83,6 +92,15 @@ test('Edge scheduler invokes Evidence refresh before Paper cycle and preserves p
   assert.match(source, /EVIDENCE_REFRESH_TIMEOUT_MS/);
   assert.match(source, /PAPER_CYCLE_TIMEOUT_MS/);
   assert.match(source, /last_ok:\s*outcome\.telemetryOk/);
-  assert.match(source, /telemetryUpdate\.enabled\s*=\s*false/);
-  assert.match(source, /telemetryUpdate\.target_base_url\s*=\s*PRODUCTION_TARGET/);
+
+  assert.match(source, /Deno\.env\.get\("CRON_SECRET"\)/, 'scheduler must read the dedicated CRON secret');
+  assert.match(source, /headers\.authorization\s*=\s*`Bearer \$\{cronSecret\}`/, 'downstream auth must use CRON_SECRET');
+  assert.doesNotMatch(source, /headers\.authorization\s*=\s*`Bearer \$\{serviceRoleKey\}`/, 'service-role key must never be sent downstream');
+  assert.match(source, /isAllowedProductionSchedulerTarget\(baseUrl\)/, 'cycle target must pass the canonical production-origin guard');
+
+  assert.doesNotMatch(source, /isPreviewCycle/);
+  assert.doesNotMatch(source, /targetBaseUrl/);
+  assert.doesNotMatch(source, /telemetryUpdate\.enabled\s*=\s*false/);
+  assert.doesNotMatch(source, /autoDisarmed/);
+  assert.match(source, /shouldRunPaperCycleAfterEvidenceRefresh\(evidenceRefresh\)/, 'protective PAPER runtime remains reachable after Evidence failure');
 });

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { EmpiricalValidationStrip } from '../components/EmpiricalValidationStrip';
 
 type Status = any;
 type Readiness = any;
@@ -72,6 +73,8 @@ export const TerminalLabView: React.FC = () => {
           <Metric label="INCIDENTS" value={String(integrity?.totalIncidents ?? 0)} warn={(integrity?.totalIncidents || 0) > 0} />
           <Metric label="LIVE GATE" value={eligibility?.state || 'BLOCKED'} warn={eligibility?.eligibleForLiveExecution !== true} />
         </div>
+
+        <EmpiricalValidationStrip />
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-[#24282c] xl:grid-cols-[1.1fr_1fr_.85fr]">
           <section className="min-h-0 overflow-auto bg-[#050607]">

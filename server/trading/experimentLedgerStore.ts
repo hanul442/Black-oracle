@@ -1,5 +1,12 @@
-import type { ExperimentResult, ExperimentRun, ExperimentSpec } from '../../src/trading/experiment';
+import {
+  bindExperimentSpecToQualification,
+  type ExperimentQualificationBinding,
+  type ExperimentResult,
+  type ExperimentRun,
+  type ExperimentSpec,
+} from '../../src/trading/experiment';
 import { ExperimentLedger, type ExperimentLedgerEvent } from '../../src/trading/experimentLedger';
+import type { QualificationWindowCheckpoint } from '../../src/trading/qualificationWindow';
 import { bindExperimentSpecToStrategyGenome } from '../../src/trading/researchConfiguration';
 import type { StrategyGenome } from '../../src/trading/strategyGenome';
 
@@ -10,6 +17,19 @@ export interface RuntimeExperimentLedgerSummary {
   started: number;
   completed: number;
 }
+
+const bindingFromQualificationWindow = (
+  window: QualificationWindowCheckpoint | null | undefined,
+): ExperimentQualificationBinding => {
+  if (!window || window.status !== 'COLLECTING' || !Number.isFinite(window.startedAt) || (window.startedAt ?? 0) <= 0) {
+    throw new Error('Strategy-bound qualification experiment requires an active COLLECTING qualification window.');
+  }
+  return {
+    windowId: window.id,
+    sourceRevision: window.sourceRevision,
+    windowStartedAt: window.startedAt as number,
+  };
+};
 
 class RuntimeExperimentLedgerStore {
   private ledger = new ExperimentLedger();
@@ -29,6 +49,20 @@ class RuntimeExperimentLedgerStore {
 
   planForStrategyGenome(spec: ExperimentSpec, genome: StrategyGenome, timestamp = Date.now()) {
     return this.ledger.plan(bindExperimentSpecToStrategyGenome(spec, genome), timestamp);
+  }
+
+  planForQualifiedStrategyGenome(
+    spec: ExperimentSpec,
+    genome: StrategyGenome,
+    window: QualificationWindowCheckpoint,
+    timestamp = Date.now(),
+  ) {
+    const binding = bindingFromQualificationWindow(window);
+    if (timestamp < binding.windowStartedAt) {
+      throw new Error('Qualified strategy experiment cannot be planned before the qualification window starts.');
+    }
+    const strategyBound = bindExperimentSpecToStrategyGenome(spec, genome);
+    return this.ledger.plan(bindExperimentSpecToQualification(strategyBound, binding), timestamp);
   }
 
   start(run: ExperimentRun, timestamp = Date.now()) {

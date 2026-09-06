@@ -12,6 +12,8 @@ export type SchedulerPipelineOutcome = {
   telemetryError: string | null;
 };
 
+export const PRODUCTION_SCHEDULER_TARGET = 'https://black-oracle.vercel.app';
+
 // Supabase hosted Edge Functions currently have a 150s request/wall-clock ceiling on the
 // Free plan. Evidence refresh itself can spend up to ~8s collecting feeds and 45s classifying,
 // so its outer timeout must be larger than that internal budget while the combined sequential
@@ -26,6 +28,27 @@ export const isEvidenceRefreshHttpSuccess = (status: number | null, responseOk: 
 
 export const isPaperCycleHttpSuccess = (status: number | null, responseOk: boolean) =>
   (responseOk && status !== null && status >= 200 && status < 300) || status === 409;
+
+/**
+ * Scheduled PAPER cycles may send an internal scheduler credential downstream, so their
+ * target is deliberately pinned to the canonical production origin. Preview validation
+ * is performed through separate QA/readiness probes and never through the scheduled cycle.
+ */
+export const isAllowedProductionSchedulerTarget = (raw: string | null | undefined) => {
+  if (!raw?.trim()) return false;
+  try {
+    const target = new URL(raw.trim());
+    return target.origin === PRODUCTION_SCHEDULER_TARGET
+      && target.protocol === 'https:'
+      && target.username === ''
+      && target.password === ''
+      && (target.pathname === '/' || target.pathname === '')
+      && target.search === ''
+      && target.hash === '';
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Evidence collection must never suppress deterministic protective exits.

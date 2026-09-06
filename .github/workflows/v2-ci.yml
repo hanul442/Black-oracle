@@ -5,9 +5,11 @@ on:
     branches:
       - feat/oracle-field-v2
       - main
+      - sprint/6-empirical-paper-validation
   pull_request:
     branches:
       - main
+      - sprint/5r-terminal-ui-actual
 
 permissions:
   contents: read

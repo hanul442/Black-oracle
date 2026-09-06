@@ -12,6 +12,12 @@ export interface ExperimentVariable {
   candidate: number | string | boolean;
 }
 
+export interface ExperimentQualificationBinding {
+  windowId: string;
+  sourceRevision: string;
+  windowStartedAt: number;
+}
+
 export interface ExperimentSpec {
   id: string;
   createdAt: number;
@@ -19,6 +25,7 @@ export interface ExperimentSpec {
   strategyVersion: string;
   modelVersion: string | null;
   researchConfigurationId?: string | null;
+  qualification?: ExperimentQualificationBinding | null;
   markets: string[];
   regimes: string[];
   variables: ExperimentVariable[];
@@ -60,6 +67,27 @@ const freezeArray = <T>(items: T[]): readonly T[] => Object.freeze(items.slice()
 const normalizeMarkets = (markets: string[]) => [...new Set(markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].sort();
 const normalizeStrings = (items: string[]) => [...new Set(items.map((item) => item.trim()).filter(Boolean))].sort();
 const researchConfigurationIdPattern = /^rcfg-v1-[0-9a-f]{16}$/;
+const positiveTimestamp = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+export const normalizeExperimentQualificationBinding = (
+  binding: ExperimentQualificationBinding | null | undefined,
+): ExperimentQualificationBinding | null => {
+  if (!binding) return null;
+  const windowId = String(binding.windowId ?? '').trim();
+  const sourceRevision = String(binding.sourceRevision ?? '').trim();
+  if (!windowId || !sourceRevision || !positiveTimestamp(binding.windowStartedAt)) {
+    throw new Error('Experiment qualification binding requires windowId, sourceRevision and windowStartedAt.');
+  }
+  return Object.freeze({ windowId, sourceRevision, windowStartedAt: binding.windowStartedAt });
+};
+
+export const bindExperimentSpecToQualification = (
+  spec: ExperimentSpec,
+  binding: ExperimentQualificationBinding,
+): ExperimentSpec => ({
+  ...spec,
+  qualification: normalizeExperimentQualificationBinding(binding),
+});
 
 export const validateExperimentSpec = (spec: ExperimentSpec) => {
   if (!spec.id.trim()) throw new Error('Experiment id is required.');
@@ -68,6 +96,7 @@ export const validateExperimentSpec = (spec: ExperimentSpec) => {
   if (!spec.strategyVersion.trim()) throw new Error('Experiment strategyVersion is required.');
   const configurationId = String(spec.researchConfigurationId ?? '').trim().toLowerCase();
   if (configurationId && !researchConfigurationIdPattern.test(configurationId)) throw new Error('Experiment researchConfigurationId is invalid.');
+  normalizeExperimentQualificationBinding(spec.qualification);
   if (!spec.markets.length) throw new Error('Experiment requires at least one market.');
   if (!spec.criteria.length) throw new Error('Experiment requires at least one acceptance criterion.');
   for (const criterion of spec.criteria) {
@@ -84,6 +113,7 @@ export const normalizeExperimentSpec = (spec: ExperimentSpec): ExperimentSpec =>
     strategyVersion: spec.strategyVersion.trim(),
     modelVersion: spec.modelVersion?.trim() || null,
     researchConfigurationId: String(spec.researchConfigurationId ?? '').trim().toLowerCase() || null,
+    qualification: normalizeExperimentQualificationBinding(spec.qualification),
     markets: freezeArray(normalizeMarkets(spec.markets)) as string[],
     regimes: freezeArray(normalizeStrings(spec.regimes)) as string[],
     variables: freezeArray(spec.variables.map((item) => Object.freeze({ ...item, name: item.name.trim() }))) as ExperimentVariable[],

@@ -17,6 +17,7 @@ const result = {
 const operatorApiPaths = [
   '/api/operator-log',
   '/api/trade-cases',
+  '/api/trading-empirical-validation',
   '/api/trading-grade',
   '/api/trading-readiness',
   '/api/trading-research-validation',

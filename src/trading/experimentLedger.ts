@@ -1,4 +1,10 @@
-import type { ExperimentResult, ExperimentRun, ExperimentSpec, ExperimentStatus } from './experiment';
+import type {
+  ExperimentQualificationBinding,
+  ExperimentResult,
+  ExperimentRun,
+  ExperimentSpec,
+  ExperimentStatus,
+} from './experiment';
 import { normalizeExperimentSpec } from './experiment';
 
 export type ExperimentLedgerEventType =
@@ -44,18 +50,37 @@ export class ExperimentLedger {
 
   plan(spec: ExperimentSpec, timestamp = Date.now()) {
     const normalized = normalizeExperimentSpec(spec);
+    if (normalized.qualification && timestamp < normalized.qualification.windowStartedAt) {
+      throw new Error('Qualified experiment cannot be planned before its qualification window starts.');
+    }
     return this.append('EXPERIMENT_PLANNED', normalized.id, { spec: normalized }, timestamp);
   }
 
   start(run: ExperimentRun, timestamp = Date.now()) {
     if (!run.id.trim() || !run.experimentId.trim()) throw new Error('Experiment run ids are required.');
     if (run.status !== 'RUNNING') throw new Error('Experiment run must start with RUNNING status.');
-    return this.append('EXPERIMENT_STARTED', run.experimentId, { run: Object.freeze({ ...run }) }, timestamp);
+    const lineage = this.lineageFor(run.experimentId);
+    if (lineage.qualification && run.startedAt < lineage.qualification.windowStartedAt) {
+      throw new Error('Qualified experiment run cannot start before its qualification window.');
+    }
+    return this.append('EXPERIMENT_STARTED', run.experimentId, {
+      run: Object.freeze({ ...run }),
+      qualification: lineage.qualification ? Object.freeze({ ...lineage.qualification }) : null,
+      researchConfigurationId: lineage.researchConfigurationId,
+    }, timestamp);
   }
 
   complete(result: ExperimentResult, timestamp = Date.now()) {
     if (!['PASSED', 'REJECTED', 'INVALID'].includes(result.status)) throw new Error('Experiment result status is invalid.');
-    return this.append('EXPERIMENT_COMPLETED', result.experimentId, { result: Object.freeze({ ...result }) }, timestamp);
+    const lineage = this.lineageFor(result.experimentId);
+    if (lineage.qualification && result.finishedAt < lineage.qualification.windowStartedAt) {
+      throw new Error('Qualified experiment result cannot finish before its qualification window.');
+    }
+    return this.append('EXPERIMENT_COMPLETED', result.experimentId, {
+      result: Object.freeze({ ...result }),
+      qualification: lineage.qualification ? Object.freeze({ ...lineage.qualification }) : null,
+      researchConfigurationId: lineage.researchConfigurationId,
+    }, timestamp);
   }
 
   status(experimentId: string): ExperimentStatus | null {
@@ -70,6 +95,20 @@ export class ExperimentLedger {
 
   snapshot(): readonly ExperimentLedgerEvent[] {
     return this.events.map(clone);
+  }
+
+  private lineageFor(experimentId: string): {
+    qualification: ExperimentQualificationBinding | null;
+    researchConfigurationId: string | null;
+  } {
+    const planned = this.events
+      .filter((event) => event.experimentId === experimentId && event.type === 'EXPERIMENT_PLANNED')
+      .at(-1);
+    const spec = planned?.payload.spec as ExperimentSpec | undefined;
+    return {
+      qualification: spec?.qualification ? { ...spec.qualification } : null,
+      researchConfigurationId: spec?.researchConfigurationId ?? null,
+    };
   }
 
   private append(
