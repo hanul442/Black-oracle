@@ -1,4 +1,5 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
+import { DeterministicReplayExecutionAdapter, compareExecutionFills } from '../../src/trading/executionAdapterParity';
 import { buildExecutionDecision, type ExecutionPolicyInput } from '../../src/trading/executionPolicy';
 import type { GovernedTradingIntelligencePackage } from '../../src/trading/governanceCore';
 import type { FinalDecision } from '../../src/trading/intelligencePipeline';
@@ -8,9 +9,11 @@ import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/pape
 import { buildPaperPerformance, type ClosedPaperTrade } from '../../src/trading/performance';
 import { buildIndependentPolicyShadow } from '../../src/trading/strategyIntent';
 import { buildShadowTargetPipeline } from '../../src/trading/targetPipeline';
-import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
+import type { ExecutionDecision, LiquiditySnapshot, MultiTimeframeSnapshot, PaperFill, PaperOrderRequest, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
+
+const PAPER_EXECUTION_ASSUMPTIONS = Object.freeze({ feeBps: 5, slippageBps: 8 });
 
 interface EntryMetadata { fill: PaperFill; oracleTradeScore: number; }
 export interface PaperTradingSessionCheckpoint { schemaVersion: 1; portfolio: PaperPortfolioState; markPrices: Array<[string, number]>; entryMetadata: Array<[string, EntryMetadata]>; closedTrades: ClosedPaperTrade[]; ledger: TradingLedgerEvent[]; processedOrderIds: string[]; }
@@ -31,7 +34,7 @@ export class PaperTradingSession {
   private readonly entryMetadata = new Map<string, EntryMetadata>();
   private readonly closedTrades: ClosedPaperTrade[] = [];
 
-  constructor(initialCash = 1_000_000) { this.portfolio = new PaperPortfolio(initialCash); this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 }); this.ledger = new TradingLedger(); }
+  constructor(initialCash = 1_000_000) { this.portfolio = new PaperPortfolio(initialCash); this.broker = new PaperBroker(PAPER_EXECUTION_ASSUMPTIONS); this.ledger = new TradingLedger(); }
 
   checkpoint(): PaperTradingSessionCheckpoint {
     return {
@@ -44,7 +47,7 @@ export class PaperTradingSession {
 
   restore(checkpoint: PaperTradingSessionCheckpoint) {
     if (!checkpoint || checkpoint.schemaVersion !== 1) throw new Error('Unsupported Paper session checkpoint schema.');
-    this.portfolio = PaperPortfolio.restore(checkpoint.portfolio); this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
+    this.portfolio = PaperPortfolio.restore(checkpoint.portfolio); this.broker = new PaperBroker(PAPER_EXECUTION_ASSUMPTIONS);
     this.broker.restoreProcessedOrderIds(checkpoint.processedOrderIds ?? []); this.ledger = TradingLedger.restore(checkpoint.ledger ?? []);
     this.markPrices.clear(); for (const [market, price] of checkpoint.markPrices ?? []) if (/^KRW-[A-Z0-9]+$/.test(market) && Number.isFinite(price) && price > 0) this.markPrices.set(market, price);
     this.entryMetadata.clear(); for (const [market, metadata] of checkpoint.entryMetadata ?? []) if (metadata?.fill && Number.isFinite(metadata.oracleTradeScore)) this.entryMetadata.set(market, { fill: { ...metadata.fill }, oracleTradeScore: metadata.oracleTradeScore });
@@ -52,7 +55,7 @@ export class PaperTradingSession {
     return this.state();
   }
 
-  reset(initialCash = 1_000_000) { this.portfolio = new PaperPortfolio(initialCash); this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 }); this.ledger = new TradingLedger(); this.markPrices.clear(); this.entryMetadata.clear(); this.closedTrades.splice(0, this.closedTrades.length); return this.state(); }
+  reset(initialCash = 1_000_000) { this.portfolio = new PaperPortfolio(initialCash); this.broker = new PaperBroker(PAPER_EXECUTION_ASSUMPTIONS); this.ledger = new TradingLedger(); this.markPrices.clear(); this.entryMetadata.clear(); this.closedTrades.splice(0, this.closedTrades.length); return this.state(); }
   performance(timestamp = Date.now()) { const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp); return buildPaperPerformance(this.closedTrades, portfolio.equityCurve, portfolio.initialEquity, portfolio.equity, portfolio.drawdownPct); }
   state() { const portfolio = this.portfolio.snapshot(Object.fromEntries(this.markPrices)); return { mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, portfolio, performance: buildPaperPerformance(this.closedTrades, portfolio.equityCurve, portfolio.initialEquity, portfolio.equity, portfolio.drawdownPct), closedTrades: this.closedTrades.slice(-100), ledger: this.ledger.snapshot() }; }
 
@@ -81,8 +84,7 @@ export class PaperTradingSession {
     }
 
     // Sprint 7 bridge: the legacy decision remains authoritative. The independent
-    // pre-risk intent seam and post-governance target pipeline are both observation-only.
-    // Neither parity report can create, cancel, resize or promote an order.
+    // pre-risk intent seam and post-governance target pipeline are observation-only.
     const targetPipeline = buildShadowTargetPipeline({
       market: normalized,
       strategyVersion: TRADING_STRATEGY_VERSION,
@@ -153,24 +155,34 @@ export class PaperTradingSession {
       },
     });
 
-    let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null;
+    let fill: PaperFill | null = null; let closedTrade: ClosedPaperTrade | null = null; let executionAdapterParity = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
-      const orderId = `paper-${Date.now()}-${normalized}-buy`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
-      fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'BUY', notional: decision.notional, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
+      const timestamp = Date.now();
+      const orderId = `paper-${timestamp}-${normalized}-buy`;
+      const orderRequest: PaperOrderRequest = Object.freeze({ id: orderId, market: normalized, side: 'BUY', notional: decision.notional, referencePrice: liquidity.tradePrice, timestamp, strategyVersion: TRADING_STRATEGY_VERSION });
+      const replayReferenceFill = new DeterministicReplayExecutionAdapter(PAPER_EXECUTION_ASSUMPTIONS).execute(orderRequest);
+      this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
+      fill = this.broker.executeMarketOrder(orderRequest);
+      executionAdapterParity = compareExecutionFills(replayReferenceFill, fill);
       this.portfolio.applyFill(fill); this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore });
       if (decision.stopLossPrice && decision.takeProfitPrice) this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
-      this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
+      this.ledger.append('ORDER_FILLED', { ...fill, executionAdapterParity, replayReferenceFill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
-      const orderId = `paper-${Date.now()}-${normalized}-sell`; this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
-      fill = this.broker.executeMarketOrder({ id: orderId, market: normalized, side: 'SELL', quantity: position.quantity, referencePrice: liquidity.tradePrice, timestamp: Date.now(), strategyVersion: TRADING_STRATEGY_VERSION });
+      const timestamp = Date.now();
+      const orderId = `paper-${timestamp}-${normalized}-sell`;
+      const orderRequest: PaperOrderRequest = Object.freeze({ id: orderId, market: normalized, side: 'SELL', quantity: position.quantity, referencePrice: liquidity.tradePrice, timestamp, strategyVersion: TRADING_STRATEGY_VERSION });
+      const replayReferenceFill = new DeterministicReplayExecutionAdapter(PAPER_EXECUTION_ASSUMPTIONS).execute(orderRequest);
+      this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity, independentPolicyParityId: independentPolicyShadow.parity.id, portfolioTargetId: portfolioTarget.id, targetPipelineParityId: targetPipeline.parity.id });
+      fill = this.broker.executeMarketOrder(orderRequest);
+      executionAdapterParity = compareExecutionFills(replayReferenceFill, fill);
       const entry = this.entryMetadata.get(normalized); const costBasis = position.averageCost * fill.quantity; const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
       const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity; const netPnl = fill.notional - fill.fee - costBasis;
       closedTrade = { id: `trade-${normalized}-${position.openedAt}-${fill.timestamp}`, market: normalized, openedAt: position.openedAt, closedAt: fill.timestamp, entryPrice: position.entryPrice, exitPrice: fill.fillPrice, quantity: fill.quantity, grossPnl, fees: entryFee + fill.fee, netPnl, returnPct: costBasis > 0 ? netPnl / costBasis : 0, exitReason: decision.reasons[0] ?? 'Exit policy triggered.', strategyVersion: TRADING_STRATEGY_VERSION, entryOracleTradeScore: entry?.oracleTradeScore ?? 50, exitOracleTradeScore: multiTimeframe.oracleTradeScore };
       this.portfolio.applyFill(fill); this.entryMetadata.delete(normalized); this.closedTrades.push(closedTrade); if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
-      this.ledger.append('ORDER_FILLED', { ...fill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
+      this.ledger.append('ORDER_FILLED', { ...fill, executionAdapterParity, replayReferenceFill }); this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
     }
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now()); const performance = buildPaperPerformance(this.closedTrades, after.equityCurve, after.initialEquity, after.equity, after.drawdownPct);
-    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, independentPolicyShadow, decision, targetPipeline, portfolioTarget, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
+    return { success: true, mode: 'PAPER' as const, strategyVersion: TRADING_STRATEGY_VERSION, liquidity, multiTimeframe, eventScore: eventScore ?? null, baseDecision, independentPolicyShadow, decision, targetPipeline, portfolioTarget, executionAdapterParity, governance, governanceError, fill, closedTrade, portfolio: after, performance, ledgerTail: this.ledger.snapshot().slice(-8) };
   }
 }
 
