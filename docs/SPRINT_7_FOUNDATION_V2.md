@@ -143,24 +143,9 @@ Implemented:
 
 The independent seam does not call the legacy policy to determine its intent or risk result. It derives the candidate from the same raw policy inputs and then compares its projection against the current authoritative `ExecutionDecision`.
 
-Coverage includes:
+Coverage includes approved new long entry, weak-signal HOLD, portfolio-level entry block, deterministic risk rejection, protective stop-loss exit, healthy-position HOLD and deliberate notional tampering that must produce parity REJECT.
 
-- approved new long entry
-- weak-signal HOLD
-- portfolio-level entry block
-- deterministic risk rejection
-- protective stop-loss exit
-- healthy existing-position HOLD
-- deliberate notional tampering that must produce parity REJECT
-
-PAPER integration:
-
-- each PAPER step computes the existing legacy decision exactly as before
-- an independent shadow Intent/risk projection is computed from the same policy inputs
-- parity is written to the `SIGNAL` ledger
-- order audit events retain `independentPolicyParityId`
-- the independent seam cannot create, cancel, resize or promote an order
-- governance still acts after the authoritative legacy base decision; the post-governance target pipeline remains a separate shadow comparison layer
+PAPER integration records the independent Strategy Intent and parity evidence in the `SIGNAL` ledger. Order audit events retain `independentPolicyParityId`. Governance remains after the authoritative legacy base decision. The independent seam cannot create, cancel, resize or promote an order.
 
 This creates two explicit observation boundaries:
 
@@ -169,6 +154,27 @@ This creates two explicit observation boundaries:
 
 Neither boundary has execution authority in Sprint 7.
 
+### S7-04A — deterministic Replay / PAPER execution-adapter parity harness
+
+Implemented:
+
+- common simulation-only `SimulationExecutionAdapter` contract
+- independent `DeterministicReplayExecutionAdapter`
+- `PaperBrokerExecutionAdapter` wrapper around the current PAPER broker
+- per-fill parity report across market, side, quantity, fill price, notional, fee, slippage and timestamp
+- independent Replay spot-book state model
+- lifecycle parity against the actual `PaperPortfolio`
+- BUY-only open-position state comparison
+- BUY -> SELL full round-trip comparison
+- explicit custom fee/slippage assumption comparison
+- deliberate altered-fee test that must produce parity REJECT
+
+The Replay implementation does not reuse `PaperBroker` fill code and the Replay spot book does not reuse `PaperPortfolio` accounting. This keeps the parity test meaningful instead of comparing a module with itself.
+
+All Replay/PAPER adapter parity objects are simulation-only and have `executionAuthority: false`. No LIVE adapter was introduced.
+
+S7-04A is a test/audit harness. It does not yet run a second replay fill inside each production PAPER order path; that runtime audit wiring is intentionally separated as S7-04B so broker behavior is not changed while the common contract is being validated.
+
 ## 4. Validation / branch integrity
 
 On 2026-09-06:
@@ -176,8 +182,9 @@ On 2026-09-06:
 - the stale/diverged Sprint 7 stack was detected before further expansion
 - the original head was backed up to `backup/sprint-7-pre-rebase-20260906`
 - Sprint 7 was replayed onto the latest Sprint 6 safety/security baseline
-- the rebased S7-02 and S7-03A checkpoints passed both main GitHub validation workflows
-- S7-03B unit/type/serverless bundle validation passed before PAPER ledger integration; the final integrated head must also pass both workflows before the increment is treated as complete
+- rebased S7-02 and S7-03A checkpoints passed both main GitHub validation workflows
+- the independent S7-03B seam passed typecheck, trading-core tests and serverless bundle smoke checks before final PAPER integration
+- final S7-04A integrated head must pass both main workflows before this increment is considered complete
 - Vercel commit status remains an independent external deployment QA blocker; the connected Vercel API does not expose the project required to retrieve the detailed deployment failure
 
 Interpretation:
@@ -208,13 +215,13 @@ No production table, scheduler configuration, Edge Function, risk limit or tradi
 
 ## 6. Next code increments
 
-### S7-04 — Replay / PAPER adapter parity
+### S7-04B — PAPER runtime adapter-parity evidence
 
-- common execution-adapter request/result contract
-- deterministic historical replay adapter
-- existing PAPER broker adapter wrapper
-- parity report for requested target, expected order, fill assumptions, fees, slippage and resulting position state
-- replay/PAPER adapters remain non-LIVE; no Live adapter with order authority in this sprint
+- construct one immutable PAPER order request before execution
+- derive an independent Replay reference fill from that exact request
+- execute the same request through the existing authoritative PAPER broker
+- compare actual fill with Replay reference and append parity evidence to the ledger
+- parity mismatch is audit/promotion-blocking evidence only; no order cancellation or alternate execution path in Sprint 7
 
 ### S7-05 — Validation Hard Gate integration
 
@@ -238,6 +245,7 @@ Promotion requires all of:
 - Council and LLM outputs have no execution authority.
 - Strategy Factory output has no execution authority.
 - Portfolio Target, Strategy Intent, post-risk Target and parity objects have no execution authority.
+- Replay and PAPER comparison adapters are simulation-only; no LIVE adapter is introduced in Sprint 7.
 - No automatic Champion or Council promotion.
 - No automatic PAPER-to-LIVE transition.
 - No production schema migration or deployment from this branch without explicit human approval.
