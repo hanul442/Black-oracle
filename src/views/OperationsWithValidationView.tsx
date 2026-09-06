@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Crosshair, ShieldCheck } from 'lucide-react';
+import { TradeAuditHistory, type AuditedClosedTrade } from '../components/TradeAuditHistory';
 import { OperationsView } from './OperationsView';
 
 type Validation = {
@@ -78,6 +79,7 @@ type StatusPayload = {
   available?: boolean;
   validation?: Validation;
   decisionTape?: AuditDecision[];
+  recentTrades?: AuditedClosedTrade[];
 };
 
 const pct = (value: number | null | undefined) => value == null || !Number.isFinite(value)
@@ -182,6 +184,8 @@ export const OperationsWithValidationView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <TradeAuditHistory trades={payload?.recentTrades ?? []} />
 
       <div className="min-h-0 flex-1">
         <OperationsView />
