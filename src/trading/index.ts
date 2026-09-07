@@ -19,6 +19,7 @@ export * from './liquidity';
 export * from './meanReversion';
 export * from './monteCarlo';
 export * from './multiTimeframe';
+export * from './oracleHarness';
 export * from './paperBroker';
 export * from './paperPortfolio';
 export * from './paperReadinessRating';
