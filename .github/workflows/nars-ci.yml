@@ -14,6 +14,7 @@ on:
       - nars-v4-source-provenance
       - nars-v4-primary-resolver
       - nars-v4-source-diversification-clean
+      - nars-v4-dynamic-connectors
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
