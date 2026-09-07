@@ -24,7 +24,9 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run lint
-      - name: Build static PWA shell
+      - name: Build exact static status PWA
+        env:
+          VITE_STATIC_PWA_STATUS_ONLY: 'true'
         run: npx vite build --base=/Black-oracle/
       - name: Validate PWA artifacts
         run: |
@@ -34,9 +36,15 @@ jobs:
           test -f dist/icon-192.svg
           test -f dist/icon-512.svg
           grep -q 'manifest.webmanifest' dist/index.html
-      - name: Probe Supabase runtime heartbeat
+      - name: Probe legacy Supabase runtime heartbeat
         run: |
           curl --fail --silent --show-error --max-time 20 \
             'https://dzbsxxoumlylyfhtmjnk.supabase.co/functions/v1/black-oracle-runtime-status' \
             -o /tmp/runtime-status.json
           node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/runtime-status.json','utf8'));if(x.success!==true)throw new Error('heartbeat success=false');if(!['RUNNING','DEGRADED','STALLED','BLOCKED','UNKNOWN'].includes(x.state))throw new Error('invalid heartbeat state');if(x.authority?.liveTrading!==false)throw new Error('heartbeat authority contract violated');console.log(JSON.stringify({state:x.state,transport:x.transport,cycleCount:x.cycleCount,ageMs:x.ageMs}))"
+      - name: Probe native Supabase shadow heartbeat
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            'https://dzbsxxoumlylyfhtmjnk.supabase.co/functions/v1/black-oracle-runtime-status?runtime=black-oracle-paper-native-shadow' \
+            -o /tmp/native-status.json
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/native-status.json','utf8'));if(x.success!==true)throw new Error('native heartbeat success=false');if(x.transport!=='SUPABASE_NATIVE_SHADOW')throw new Error('native transport mismatch');if(!Number.isFinite(x.cycleCount)||x.cycleCount<1)throw new Error('native cycle has not persisted');if(x.authority?.liveTrading!==false)throw new Error('native authority contract violated');console.log(JSON.stringify({state:x.state,transport:x.transport,cycleCount:x.cycleCount,ageMs:x.ageMs}))"
