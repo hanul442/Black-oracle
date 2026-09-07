@@ -204,8 +204,7 @@ export class PaperLoopController {
       const eligibleCandidates = universe.filter((item) => item.eligible).slice(0, this.config.maxMarkets).map((item) => item.market);
       const orderedMarkets = [...new Set([...openMarkets, ...eligibleCandidates])];
 
-      // PHASE 1: complete all production decisions first. Shadow research is not
-      // allowed to introduce API latency, exceptions, or values into execution.
+      // PHASE 1: all production decisions complete before any Shadow computation.
       for (const market of orderedMarkets) {
         const currentState = paperTradingSession.state();
         const currentlyOpen = currentState.portfolio.positions.map((position) => position.market);
@@ -255,7 +254,7 @@ export class PaperLoopController {
       }
 
       // PHASE 2: research-only instrumentation. Universe membership is frozen to
-      // this cycle and candle queries are cut off at the production decision time.
+      // Universe(t), and all historical queries have explicit point-in-time cutoffs.
       let relativeContext: Awaited<ReturnType<typeof buildPointInTimeRelativeStrengthContext>> | null = null;
       try {
         relativeContext = await buildPointInTimeRelativeStrengthContext(universe, startedAt);
@@ -274,59 +273,17 @@ export class PaperLoopController {
             target.decisionAt,
             relativeContext?.byMarket.get(target.market) ?? null,
           );
-          const enriched = buildDecisionTrace({
-            timestamp: trace.timestamp,
-            market: target.market,
-            decision: {
-              action: trace.action === 'ENTER' ? 'ENTER' : trace.action === 'EXIT' ? 'EXIT' : 'HOLD',
-              side: trace.action === 'ENTER' ? 'BUY' : trace.action === 'EXIT' ? 'SELL' : null,
-              notional: trace.tradeMap?.entryPrice && trace.action === 'ENTER' ? 0 : 0,
-              quantity: 0,
-              confidence: trace.confidence,
-              stopLossPrice: trace.tradeMap?.stopLossPrice ?? null,
-              takeProfitPrice: trace.tradeMap?.takeProfit1Price ?? null,
-              riskDisposition: trace.riskDisposition,
-              riskReasons: trace.riskReasons.slice(),
-              reasons: trace.reasons.slice(),
-            },
-            multiTimeframe: {
-              market: trace.market,
-              asOf: trace.timestamp,
-              action: trace.action === 'ENTER' ? 'BUY' : trace.action === 'EXIT' ? 'SELL' : 'WAIT',
-              directionalScore: trace.technicalEvidence?.directionalScore ?? 0,
-              oracleTradeScore: trace.oracleTradeScore,
-              confidence: trace.confidence,
-              aligned: trace.cycle?.aligned ?? false,
-              positionRiskMultiplier: 1,
-              frames: {
-                fourHour: research.snapshot.frames.fourHour as never,
-                oneHour: research.snapshot.frames.oneHour as never,
-                fifteenMinute: research.snapshot.frames.fifteenMinute as never,
-              },
-              reasons: [],
-            } as never,
-            evidence: {
-              market: trace.market,
-              score: trace.evidenceScore,
-              confidence: trace.evidenceConfidence,
-              activeCount: trace.evidenceActiveCount,
-              bullishWeight: trace.evidenceBullishWeight,
-              bearishWeight: trace.evidenceBearishWeight,
-              contradictionCount: trace.evidenceContradictionCount,
-              asOf: trace.timestamp,
-              evidenceIds: trace.evidenceIds.slice(),
-              reasons: [],
-            },
-            evidenceGate: trace.evidenceGate,
-            shadowResearch: research.snapshot,
-            tradeMap: trace.tradeMap,
-            hasOpenPositionAfterStep: trace.action === 'ENTER' || trace.action === 'HOLD',
-          });
-          // Only the research field is taken from the enriched trace. The production
-          // decision trace itself remains byte-for-byte unchanged.
+          const shadowResearch = {
+            authority: 'OBSERVATION_ONLY' as const,
+            frames: research.snapshot.frames,
+            consensus: research.snapshot.consensus,
+          };
+
+          // Append the observation-only field without rebuilding or re-evaluating
+          // any production decision state.
           result.markets[target.traceIndex] = cloneTrace({
             ...trace,
-            shadowResearch: enriched.shadowResearch,
+            shadowResearch,
             decision: trace.action,
           });
 
