@@ -40,6 +40,10 @@ const candle = (timestamp: number, close: number, high = close, low = close): Ca
   volume: 1,
 });
 
+const assertClose = (actual: number, expected: number, tolerance = 1e-12) => {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to be within ${tolerance} of ${expected}`);
+};
+
 test('outcome resolver refuses to resolve before the requested horizon', () => {
   const future = candle(observation.timestamp + 15 * 60_000, 102, 103, 99);
   const outcome = resolveFeatureOutcome(observation, '15M', [future], observation.timestamp + 14 * 60_000);
@@ -51,9 +55,9 @@ test('outcome resolver ignores candles at or before the decision timestamp', () 
   const resolved = candle(observation.timestamp + 15 * 60_000, 102, 103, 99);
   const outcome = resolveFeatureOutcome(observation, '15M', [contaminated, resolved], resolved.timestamp);
   assert.ok(outcome);
-  assert.equal(outcome!.futureReturn, 0.02);
-  assert.equal(outcome!.mfe, 0.03);
-  assert.equal(outcome!.mae, -0.01);
+  assertClose(outcome!.futureReturn, 0.02);
+  assertClose(outcome!.mfe, 0.03);
+  assertClose(outcome!.mae, -0.01);
 });
 
 test('outcome resolver never reads a candle later than now', () => {
@@ -61,9 +65,9 @@ test('outcome resolver never reads a candle later than now', () => {
   const leaked = candle(observation.timestamp + 30 * 60_000, 200, 220, 50);
   const outcome = resolveFeatureOutcome(observation, '15M', [first, leaked], first.timestamp);
   assert.ok(outcome);
-  assert.equal(outcome!.futureReturn, 0.02);
-  assert.equal(outcome!.mfe, 0.02);
-  assert.equal(outcome!.mae, 0.02);
+  assertClose(outcome!.futureReturn, 0.02);
+  assertClose(outcome!.mfe, 0.02);
+  assertClose(outcome!.mae, 0.02);
 });
 
 test('sample sufficiency uses the sprint observation bands exactly', () => {
