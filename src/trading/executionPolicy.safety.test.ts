@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDecisionTrace } from './decisionTrace';
 import type { EvidenceAggregate } from './evidence';
+import type { EvidenceGateDecision } from './evidenceGate';
 import { buildExecutionDecision } from './executionPolicy';
 import { PaperPortfolio } from './paperPortfolio';
 
@@ -53,6 +54,22 @@ const multiTimeframe = {
   reasons: [],
 };
 
+const passGate: EvidenceGateDecision = {
+  status: 'PASS',
+  eligibleForNewRisk: true,
+  score: 65,
+  confidence: 0.8,
+  activeCount: 2,
+  uniqueEvidenceCount: 2,
+  sourceDiversity: 2,
+  sourceTypeDiversity: 2,
+  weightedQuality: 0.7,
+  freshness: 0.8,
+  contradictionSeverity: 0,
+  evidenceIds: ['e1', 'e2'],
+  reasons: ['PASS'],
+};
+
 const noEvidence: EvidenceAggregate = {
   market: 'KRW-TEST',
   score: 0,
@@ -74,6 +91,7 @@ test('stale market data fails closed and persists as NO_TRADE with risk provenan
     oneHour: oneHour as any,
     portfolio: portfolio.snapshot({}),
     position: null,
+    evidenceGate: passGate,
     marketDataAgeMs: 10 * 60 * 1000,
   });
 
@@ -86,6 +104,7 @@ test('stale market data fails closed and persists as NO_TRADE with risk provenan
     decision,
     multiTimeframe: multiTimeframe as any,
     evidence: noEvidence,
+    evidenceGate: passGate,
     hasOpenPositionAfterStep: false,
   });
 
@@ -111,6 +130,7 @@ test('feed, ledger, and duplicate-order safety faults all reject new entries', (
       oneHour: oneHour as any,
       portfolio: portfolio.snapshot({}),
       position: null,
+      evidenceGate: passGate,
       ...patch,
     });
     assert.equal(decision.action, 'HOLD');
