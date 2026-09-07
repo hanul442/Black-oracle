@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - sprint/7-supabase-native-pwa
   workflow_dispatch:
 
 permissions:
@@ -25,7 +26,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build static PWA
+      - name: Build Vercel-independent status PWA
+        env:
+          VITE_STATIC_PWA_STATUS_ONLY: 'true'
         run: npx vite build --base=/Black-oracle/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
