@@ -1,4 +1,5 @@
 import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
+import { evaluateEvidenceGate } from '../../src/trading/evidenceGate';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { buildMicrostructureChallenger } from '../../src/trading/microstructureChallenger';
@@ -7,6 +8,7 @@ import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/pape
 import { buildPaperPerformance, type ClosedPaperTrade, type PaperEntryAuditSnapshot } from '../../src/trading/performance';
 import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
+import { tradingEvidenceStore } from './evidenceStore';
 import { buildMarketMicrostructure } from './microstructure';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { getMarketLiquidity } from './universe';
@@ -19,6 +21,11 @@ interface EntryMetadata {
 
 const cloneAudit = (audit?: PaperEntryAuditSnapshot): PaperEntryAuditSnapshot | undefined => audit ? {
   ...audit,
+  evidence: audit.evidence ? {
+    ...audit.evidence,
+    evidenceIds: audit.evidence.evidenceIds.slice(),
+    reasons: audit.evidence.reasons.slice(),
+  } : null,
   structure: audit.structure ? { ...audit.structure } : null,
   cycle: audit.cycle ? { ...audit.cycle, frames: { ...audit.cycle.frames }, reasons: audit.cycle.reasons.slice() } : null,
   technicalEvidence: audit.technicalEvidence ? { ...audit.technicalEvidence } : null,
@@ -143,6 +150,10 @@ export class PaperTradingSession {
     newEntryAllowed = true,
   ) {
     const normalized = market.toUpperCase();
+    const evidenceAggregate = tradingEvidenceStore.aggregate(normalized);
+    const evidenceItems = tradingEvidenceStore.list(normalized, false, evidenceAggregate.asOf);
+    const evidenceGate = evaluateEvidenceGate(evidenceAggregate, evidenceItems, 'LONG');
+
     const [liquidity, multiTimeframe] = await Promise.all([
       precomputedLiquidity ? Promise.resolve(precomputedLiquidity) : getMarketLiquidity(normalized),
       buildMarketMultiTimeframe(normalized, eventScore),
@@ -159,6 +170,7 @@ export class PaperTradingSession {
       oneHour: multiTimeframe.frames.oneHour,
       portfolio: before,
       position,
+      evidenceGate,
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
       newEntryAllowed,
     });
@@ -174,6 +186,24 @@ export class PaperTradingSession {
     const entryAudit: PaperEntryAuditSnapshot = {
       timestamp: multiTimeframe.asOf,
       eventScore: eventScore ?? null,
+      evidence: {
+        gateStatus: evidenceGate.status,
+        eligibleForNewRisk: evidenceGate.eligibleForNewRisk,
+        evidenceIds: evidenceGate.evidenceIds.slice(),
+        activeCount: evidenceAggregate.activeCount,
+        uniqueEvidenceCount: evidenceGate.uniqueEvidenceCount,
+        sourceDiversity: evidenceGate.sourceDiversity,
+        sourceTypeDiversity: evidenceGate.sourceTypeDiversity,
+        score: evidenceAggregate.score,
+        confidence: evidenceAggregate.confidence,
+        bullishWeight: evidenceAggregate.bullishWeight,
+        bearishWeight: evidenceAggregate.bearishWeight,
+        contradictionCount: evidenceAggregate.contradictionCount,
+        contradictionSeverity: evidenceGate.contradictionSeverity,
+        weightedQuality: evidenceGate.weightedQuality,
+        freshness: evidenceGate.freshness,
+        reasons: evidenceGate.reasons.slice(),
+      },
       regime: oneHour.regime.regime,
       regimeConfidence: oneHour.regime.confidence,
       structure: structure ? {
@@ -226,6 +256,7 @@ export class PaperTradingSession {
       liquidityScore: liquidity.score,
       multiTimeframeScore: multiTimeframe.oracleTradeScore,
       eventScore: eventScore ?? null,
+      evidence: entryAudit.evidence,
       structure: entryAudit.structure,
       cycle: entryAudit.cycle,
       microstructure: entryAudit.microstructure,
@@ -238,17 +269,34 @@ export class PaperTradingSession {
       directionalScore: multiTimeframe.directionalScore,
       oracleTradeScore: multiTimeframe.oracleTradeScore,
       confidence: decision.confidence,
+      evidenceGate: entryAudit.evidence,
       technicalEvidence: entryAudit.technicalEvidence,
       tradeMap,
       microstructure: entryAudit.microstructure,
       challenger: entryAudit.challenger,
     });
+    this.ledger.append(evidenceGate.eligibleForNewRisk ? 'RISK_PASS' : 'RISK_REJECT', {
+      stage: 'EVIDENCE_GATE',
+      market: normalized,
+      evidenceIds: evidenceGate.evidenceIds.slice(),
+      gate: entryAudit.evidence,
+    });
 
     let fill: PaperFill | null = null;
     let closedTrade: ClosedPaperTrade | null = null;
     if (decision.action === 'ENTER' && decision.side === 'BUY') {
+      if (!evidenceGate.eligibleForNewRisk || evidenceGate.evidenceIds.length === 0) {
+        throw new Error('Evidence-first invariant violated: ENTER cannot be submitted without a passing Evidence Gate.');
+      }
       const orderId = `paper-${Date.now()}-${normalized}-buy`;
-      this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'BUY', notional: decision.notional });
+      this.ledger.append('ORDER_SUBMITTED', {
+        orderId,
+        market: normalized,
+        side: 'BUY',
+        notional: decision.notional,
+        evidenceIds: evidenceGate.evidenceIds.slice(),
+        evidenceGateStatus: evidenceGate.status,
+      });
       fill = this.broker.executeMarketOrder({
         id: orderId,
         market: normalized,
@@ -257,13 +305,14 @@ export class PaperTradingSession {
         referencePrice: liquidity.tradePrice,
         timestamp: Date.now(),
         strategyVersion: TRADING_STRATEGY_VERSION,
+        evidenceIds: evidenceGate.evidenceIds.slice(),
       });
       this.portfolio.applyFill(fill);
       this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore, audit: cloneAudit(entryAudit) });
       if (decision.stopLossPrice && decision.takeProfitPrice) {
         this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       }
-      this.ledger.append('ORDER_FILLED', { ...fill });
+      this.ledger.append('ORDER_FILLED', { ...fill, evidenceIds: evidenceGate.evidenceIds.slice() });
       this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
       const orderId = `paper-${Date.now()}-${normalized}-sell`;
@@ -327,6 +376,8 @@ export class PaperTradingSession {
       multiTimeframe,
       microstructure,
       challenger,
+      evidence: evidenceAggregate,
+      evidenceGate,
       eventScore: eventScore ?? null,
       decision,
       tradeMap,
@@ -334,7 +385,7 @@ export class PaperTradingSession {
       closedTrade,
       portfolio: after,
       performance,
-      ledgerTail: this.ledger.snapshot().slice(-8),
+      ledgerTail: this.ledger.snapshot().slice(-10),
     };
   }
 }
