@@ -9,6 +9,8 @@ import {
   type TradingRuntimeCheckpoint,
 } from './persistence';
 
+const researchObservationId = 'cycle-12:KRW-BTC:1H:breakout.donchian.v1:1.0.0';
+
 const buildCheckpoint = (): TradingRuntimeCheckpoint => ({
   schemaVersion: 1,
   savedAt: 123456,
@@ -32,6 +34,44 @@ const buildCheckpoint = (): TradingRuntimeCheckpoint => ({
     processedOrderIds: [],
   },
   evidence: [],
+  research: {
+    schemaVersion: 1,
+    observations: [{
+      id: researchObservationId,
+      cycleId: 'cycle-12',
+      timestamp: 120_000,
+      market: 'KRW-BTC',
+      timeframe: '1H',
+      featureFamily: 'BREAKOUT',
+      featureName: 'breakout.donchian.v1',
+      featureVersion: '1.0.0',
+      rawValue: 1,
+      normalizedValue: 0.4,
+      direction: 'BULLISH',
+      confidence: 0.7,
+      status: 'SHADOW',
+      strategyVersion: 'test',
+      codeCommit: 'commit',
+      configVersion: 'config',
+      provenance: 'PROSPECTIVE',
+      referencePrice: 100,
+      executionDecision: 'NO_TRADE',
+      evidenceScore: null,
+      evidenceConfidence: 0,
+      oracleTradeScore: 60,
+      metadata: { authority: 'OBSERVATION_ONLY' },
+    }],
+    outcomes: [{
+      observationId: researchObservationId,
+      horizon: '15M',
+      futureReturn: 0.01,
+      mfe: 0.02,
+      mae: -0.005,
+      resolvedAt: 1_020_000,
+    }],
+    pendingObservationIds: [researchObservationId],
+    pendingOutcomeKeys: [`${researchObservationId}:15M`],
+  },
   loop: {
     schemaVersion: 1,
     running: true,
@@ -45,7 +85,7 @@ const buildCheckpoint = (): TradingRuntimeCheckpoint => ({
   },
 });
 
-test('JSON checkpoint store roundtrips runtime state', async () => {
+test('JSON checkpoint store roundtrips runtime and research state', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'black-oracle-trading-'));
   const filePath = path.join(directory, 'runtime.json');
   const store = new JsonTradingCheckpointStore(filePath);
@@ -56,6 +96,10 @@ test('JSON checkpoint store roundtrips runtime state', async () => {
     const restored = await store.load();
 
     assert.deepEqual(restored, checkpoint);
+    assert.equal(restored?.research?.observations[0]?.id, researchObservationId);
+    assert.equal(restored?.research?.outcomes[0]?.horizon, '15M');
+    assert.deepEqual(restored?.research?.pendingObservationIds, [researchObservationId]);
+    assert.deepEqual(restored?.research?.pendingOutcomeKeys, [`${researchObservationId}:15M`]);
     assert.equal(store.status().backend, 'json');
     assert.equal(store.status().writes, 1);
     assert.equal(store.status().restores, 1);
@@ -79,7 +123,7 @@ test('missing checkpoint returns null without marking persistence faulty', async
   }
 });
 
-test('Supabase checkpoint store upserts and restores the runtime row', async () => {
+test('Supabase checkpoint store upserts and restores runtime research state', async () => {
   const checkpoint = buildCheckpoint();
   let stored: TradingRuntimeCheckpoint | null = null;
   const calls: Array<{ url: string; method: string; headers: Headers; body?: string }> = [];
@@ -120,6 +164,8 @@ test('Supabase checkpoint store upserts and restores the runtime row', async () 
   const restored = await store.load();
 
   assert.deepEqual(restored, checkpoint);
+  assert.equal(restored?.research?.observations.length, 1);
+  assert.equal(restored?.research?.outcomes.length, 1);
   assert.equal(store.status().backend, 'supabase');
   assert.equal(store.status().runtimeId, 'paper-primary');
   assert.equal(store.status().writes, 1);
