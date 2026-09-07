@@ -1,4 +1,5 @@
 import { DEFAULT_RISK_LIMITS } from './config';
+import type { EvidenceGateDecision } from './evidenceGate';
 import { evaluateRisk } from './risk';
 import type {
   ExecutionDecision,
@@ -17,6 +18,7 @@ export interface ExecutionPolicyInput {
   oneHour: TradingSnapshot;
   portfolio: PaperPortfolioSnapshot;
   position: PaperPosition | null;
+  evidenceGate?: EvidenceGateDecision | null;
   marketDataAgeMs?: number;
   feedConnected?: boolean;
   ledgerInSync?: boolean;
@@ -34,6 +36,8 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
   const { liquidity, multiTimeframe, oneHour, portfolio, position } = input;
   const currentPrice = liquidity.tradePrice;
 
+  // Risk-reduction authority is intentionally evaluated before any entry-only
+  // evidence gate. Evidence scarcity must never trap an existing position.
   if (position) {
     if (position.stopLossPrice && currentPrice <= position.stopLossPrice) {
       return withoutRiskEvaluation({
@@ -126,6 +130,24 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     });
   }
 
+  const evidenceGate = input.evidenceGate;
+  if (!evidenceGate || !evidenceGate.eligibleForNewRisk) {
+    const gateReason = evidenceGate?.reasons[0] ?? 'REJECT — NO_ACTIVE_EVIDENCE';
+    return withoutRiskEvaluation({
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: evidenceGate?.confidence ?? 0,
+      stopLossPrice: null,
+      takeProfitPrice: null,
+      reasons: [
+        `Evidence Gate blocked new risk: ${gateReason}`,
+        ...(evidenceGate?.reasons.slice(1) ?? []),
+      ],
+    });
+  }
+
   const conviction = clamp((multiTimeframe.directionalScore - 20) / 50, 0.35, 1);
   const requestedNotional = portfolio.equity * DEFAULT_RISK_LIMITS.maxPositionPct * conviction * multiTimeframe.positionRiskMultiplier;
   const estimatedSlippageBps = Math.max(8, liquidity.spreadBps / 2 + 5);
@@ -171,7 +193,8 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     riskDisposition: 'APPROVE',
     riskReasons: risk.reasons.slice(),
     reasons: [
-      'Liquidity, multi-timeframe consensus, confidence, and deterministic risk gates all passed.',
+      'Evidence, liquidity, multi-timeframe consensus, confidence, and deterministic risk gates all passed.',
+      `Evidence authority: ${evidenceGate.evidenceIds.length} unique evidence id(s), confidence ${evidenceGate.confidence.toFixed(3)}.`,
       `Initial stop uses ${Math.round(stopDistancePct * 10_000)} bps; take-profit is set at 2R.`,
     ],
   };
