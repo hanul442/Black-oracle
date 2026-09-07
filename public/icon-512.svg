@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="84" fill="#030405"/>
+  <rect x="58" y="58" width="396" height="396" rx="64" fill="none" stroke="#f3a312" stroke-width="16"/>
+  <text x="256" y="302" text-anchor="middle" font-family="monospace" font-size="144" font-weight="700" fill="#f3a312">BO</text>
+</svg>

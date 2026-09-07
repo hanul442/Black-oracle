@@ -1,0 +1,51 @@
+name: Black Oracle Supabase Native Edge Bundle
+
+on:
+  push:
+    branches:
+      - sprint/7-supabase-native-pwa
+    paths:
+      - 'server/trading/**'
+      - 'src/trading/**'
+      - '.github/workflows/supabase-native-edge-bundle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-edge-runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build browser-neutral trading runtime bundle
+        run: >-
+          npx esbuild server/trading/edgeRuntimeBundleEntry.ts
+          --bundle
+          --platform=browser
+          --format=esm
+          --target=es2022
+          --outfile=supabase/functions/_shared/tradingRuntimeEdgeBundle.mjs
+          --define:process.env.NODE_ENV='"production"'
+      - name: Reject Node-only runtime imports
+        run: |
+          if grep -E "node:(fs|path|child_process|worker_threads)" supabase/functions/_shared/tradingRuntimeEdgeBundle.mjs; then
+            echo "Node-only import leaked into Supabase Edge runtime bundle."
+            exit 1
+          fi
+      - name: Commit deterministic Edge bundle
+        run: |
+          git config user.name "black-oracle-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add supabase/functions/_shared/tradingRuntimeEdgeBundle.mjs
+          if git diff --cached --quiet; then
+            echo "Edge bundle already current."
+            exit 0
+          fi
+          git commit -m "build: refresh Supabase native runtime bundle [skip ci]"
+          git push origin HEAD:sprint/7-supabase-native-pwa

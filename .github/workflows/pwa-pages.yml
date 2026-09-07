@@ -1,0 +1,47 @@
+name: BLACK ORACLE PWA Pages
+
+on:
+  push:
+    branches:
+      - main
+      - sprint/7-supabase-native-pwa
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build Vercel-independent status PWA
+        env:
+          VITE_STATIC_PWA_STATUS_ONLY: 'true'
+        run: npx vite build --base=/Black-oracle/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - name: Deploy PWA
+        id: deployment
+        uses: actions/deploy-pages@v4
