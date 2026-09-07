@@ -16,6 +16,7 @@ test('paper portfolio restore preserves cash, positions, protection and equity h
     referencePrice: 100,
     timestamp: 1000,
     strategyVersion: 'test',
+    evidenceIds: ['recovery-evidence'],
   });
   portfolio.applyFill(fill);
   portfolio.setProtection('KRW-BTC', 95, 110, 1000);
