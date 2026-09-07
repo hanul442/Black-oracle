@@ -36,9 +36,9 @@ interface ReturnVector {
 
 const safeReturn = (latest: number, previous: number) => previous > 0 ? latest / previous - 1 : 0;
 
-const buildReturnVector = async (market: string): Promise<ReturnVector> => {
-  const candles = await getMinuteCandles(market, 15, 97);
-  if (candles.length < 97) throw new Error(`Relative strength requires 97 15-minute candles for ${market}.`);
+const buildReturnVector = async (market: string, asOf: number): Promise<ReturnVector> => {
+  const candles = await getMinuteCandles(market, 15, 97, asOf);
+  if (candles.length < 97) throw new Error(`Relative strength requires 97 point-in-time 15-minute candles for ${market}.`);
   const close = candles.map((candle) => candle.close);
   const latest = close[close.length - 1];
   return {
@@ -50,7 +50,7 @@ const buildReturnVector = async (market: string): Promise<ReturnVector> => {
   };
 };
 
-const percentileRanks = (values: Array<{ market: string; value: number }>) => {
+export const percentileRanks = (values: Array<{ market: string; value: number }>) => {
   const sorted = values.slice().sort((a, b) => a.value - b.value || a.market.localeCompare(b.market));
   const output = new Map<string, number>();
   let cursor = 0;
@@ -81,12 +81,12 @@ export const buildPointInTimeRelativeStrengthContext = async (
     return { universeAt, universeMarkets, byMarket: new Map() };
   }
 
-  const settled = await Promise.allSettled(universeMarkets.map(buildReturnVector));
+  const settled = await Promise.allSettled(universeMarkets.map((market) => buildReturnVector(market, universeAt)));
   const vectors = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
   if (vectors.length < 2) return { universeAt, universeMarkets, byMarket: new Map() };
 
-  // Point-in-time rule: rank only markets successfully observed in Universe(t).
-  // No current/future universe is ever applied retroactively to an old cycle.
+  // Point-in-time rule: rank only successfully observed members of Universe(t),
+  // using candles explicitly cut off at t. Never retroactively apply Universe(today).
   const observedMarkets = vectors.map((item) => item.market);
   const rank15m = percentileRanks(vectors.map((item) => ({ market: item.market, value: item.return15m })));
   const rank1h = percentileRanks(vectors.map((item) => ({ market: item.market, value: item.return1h })));
@@ -140,13 +140,14 @@ export const buildPointInTimeRelativeStrengthContext = async (
 
 export const buildMarketShadowResearch = async (
   market: string,
+  asOf: number,
   relativeStrength?: RelativeStrengthPointInTime | null,
 ): Promise<{ snapshot: MarketShadowResearchSnapshot; fifteenMinuteCandles: Awaited<ReturnType<typeof getMinuteCandles>> }> => {
   const normalized = market.toUpperCase();
   const [fourHourCandles, oneHourCandles, fifteenMinuteCandles] = await Promise.all([
-    getMinuteCandles(normalized, 240, 200),
-    getMinuteCandles(normalized, 60, 200),
-    getMinuteCandles(normalized, 15, 200),
+    getMinuteCandles(normalized, 240, 200, asOf),
+    getMinuteCandles(normalized, 60, 200, asOf),
+    getMinuteCandles(normalized, 15, 200, asOf),
   ]);
   const fourHour = buildTechnicalFeatureShadowSnapshot(fourHourCandles, '4H', relativeStrength);
   const oneHour = buildTechnicalFeatureShadowSnapshot(oneHourCandles, '1H', relativeStrength);
@@ -156,7 +157,7 @@ export const buildMarketShadowResearch = async (
   return {
     snapshot: {
       market: normalized,
-      asOf: Math.max(fourHour.asOf, oneHour.asOf, fifteenMinute.asOf),
+      asOf,
       authority: 'OBSERVATION_ONLY',
       frames,
       consensus: buildCrossTimeframeShadowConsensus([fourHour, oneHour, fifteenMinute]),
