@@ -20,6 +20,8 @@ export interface ResearchStoreCheckpoint {
   schemaVersion: 1;
   observations: ResearchFeatureObservation[];
   outcomes: ResearchFeatureOutcome[];
+  pendingObservationIds?: string[];
+  pendingOutcomeKeys?: string[];
 }
 
 export interface AppendShadowResearchInput {
@@ -34,11 +36,17 @@ export interface AppendShadowResearchInput {
   snapshot: MarketShadowResearchSnapshot;
 }
 
+export interface ResearchPersistenceBatch {
+  observations: ResearchFeatureObservation[];
+  outcomes: ResearchFeatureOutcome[];
+}
+
 const cloneObservation = (item: ResearchFeatureObservation): ResearchFeatureObservation => ({
   ...item,
   metadata: { ...item.metadata },
 });
 const cloneOutcome = (item: ResearchFeatureOutcome): ResearchFeatureOutcome => ({ ...item });
+const outcomeKey = (item: Pick<ResearchFeatureOutcome, 'observationId' | 'horizon'>) => `${item.observationId}:${item.horizon}`;
 
 const inferDirection = (feature: ShadowFeatureValue): ResearchFeatureObservation['direction'] => {
   if (!feature.available || feature.normalizedValue === null) return 'UNAVAILABLE';
@@ -66,12 +74,16 @@ export class ResearchFeatureStore {
   private outcomes: ResearchFeatureOutcome[] = [];
   private observationIds = new Set<string>();
   private outcomeKeys = new Set<string>();
+  private pendingObservationIds = new Set<string>();
+  private pendingOutcomeKeys = new Set<string>();
 
   checkpoint(): ResearchStoreCheckpoint {
     return {
       schemaVersion: 1,
       observations: this.observations.map(cloneObservation),
       outcomes: this.outcomes.map(cloneOutcome),
+      pendingObservationIds: Array.from(this.pendingObservationIds),
+      pendingOutcomeKeys: Array.from(this.pendingOutcomeKeys),
     };
   }
 
@@ -80,6 +92,8 @@ export class ResearchFeatureStore {
     this.outcomes = [];
     this.observationIds.clear();
     this.outcomeKeys.clear();
+    this.pendingObservationIds.clear();
+    this.pendingOutcomeKeys.clear();
     if (!checkpoint) return this.summary();
     if (checkpoint.schemaVersion !== 1) throw new Error('Unsupported research store checkpoint schema.');
 
@@ -90,10 +104,25 @@ export class ResearchFeatureStore {
     }
     for (const outcome of (checkpoint.outcomes ?? []).slice(-MAX_OUTCOMES)) {
       if (!outcome?.observationId) continue;
-      const key = `${outcome.observationId}:${outcome.horizon}`;
+      const key = outcomeKey(outcome);
       if (this.outcomeKeys.has(key)) continue;
       this.outcomes.push(cloneOutcome(outcome));
       this.outcomeKeys.add(key);
+    }
+
+    // Legacy checkpoints did not track normalized-table delivery. Treat every
+    // restored row as pending so idempotent persistence can safely backfill it.
+    const pendingObservationIds = Array.isArray(checkpoint.pendingObservationIds)
+      ? checkpoint.pendingObservationIds
+      : this.observations.map((item) => item.id);
+    for (const id of pendingObservationIds) {
+      if (this.observationIds.has(id)) this.pendingObservationIds.add(id);
+    }
+    const pendingOutcomeKeys = Array.isArray(checkpoint.pendingOutcomeKeys)
+      ? checkpoint.pendingOutcomeKeys
+      : this.outcomes.map(outcomeKey);
+    for (const key of pendingOutcomeKeys) {
+      if (this.outcomeKeys.has(key)) this.pendingOutcomeKeys.add(key);
     }
     return this.summary();
   }
@@ -142,11 +171,15 @@ export class ResearchFeatureStore {
       };
       this.observations.push(observation);
       this.observationIds.add(id);
+      this.pendingObservationIds.add(id);
       appended.push(cloneObservation(observation));
     }
     if (this.observations.length > MAX_OBSERVATIONS) {
       const removed = this.observations.splice(0, this.observations.length - MAX_OBSERVATIONS);
-      for (const item of removed) this.observationIds.delete(item.id);
+      for (const item of removed) {
+        this.observationIds.delete(item.id);
+        this.pendingObservationIds.delete(item.id);
+      }
     }
     return appended;
   }
@@ -163,14 +196,41 @@ export class ResearchFeatureStore {
         if (!outcome) continue;
         this.outcomes.push(outcome);
         this.outcomeKeys.add(key);
+        this.pendingOutcomeKeys.add(key);
         resolved.push(cloneOutcome(outcome));
       }
     }
     if (this.outcomes.length > MAX_OUTCOMES) {
       const removed = this.outcomes.splice(0, this.outcomes.length - MAX_OUTCOMES);
-      for (const item of removed) this.outcomeKeys.delete(`${item.observationId}:${item.horizon}`);
+      for (const item of removed) {
+        const key = outcomeKey(item);
+        this.outcomeKeys.delete(key);
+        this.pendingOutcomeKeys.delete(key);
+      }
     }
     return resolved;
+  }
+
+  pendingPersistence(observationLimit = 1_000, outcomeLimit = 4_000): ResearchPersistenceBatch {
+    const observationIds = new Set(Array.from(this.pendingObservationIds).slice(0, Math.max(1, observationLimit)));
+    const outcomeKeys = new Set(Array.from(this.pendingOutcomeKeys).slice(0, Math.max(1, outcomeLimit)));
+    return {
+      observations: this.observations.filter((item) => observationIds.has(item.id)).map(cloneObservation),
+      outcomes: this.outcomes.filter((item) => outcomeKeys.has(outcomeKey(item))).map(cloneOutcome),
+    };
+  }
+
+  markPersisted(batch: ResearchPersistenceBatch) {
+    for (const observation of batch.observations) this.pendingObservationIds.delete(observation.id);
+    for (const outcome of batch.outcomes) this.pendingOutcomeKeys.delete(outcomeKey(outcome));
+    return this.persistenceBacklog();
+  }
+
+  persistenceBacklog() {
+    return {
+      observations: this.pendingObservationIds.size,
+      outcomes: this.pendingOutcomeKeys.size,
+    };
   }
 
   list(market?: string, limit = 250) {
@@ -243,6 +303,7 @@ export class ResearchFeatureStore {
       sampleSufficiency: sampleSufficiency(this.observations.length),
       prospectiveCount: this.observations.filter((item) => item.provenance === 'PROSPECTIVE').length,
       reconstructedCount: this.observations.filter((item) => item.provenance === 'RECONSTRUCTED').length,
+      persistenceBacklog: this.persistenceBacklog(),
       features,
     };
   }
