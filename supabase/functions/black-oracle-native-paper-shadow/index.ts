@@ -10,7 +10,7 @@ import {
 
 const RUNTIME_ID = "black-oracle-paper-native-shadow";
 const RUNTIME_TABLE = "black_oracle_trading_runtime";
-const VERSION = "BO-SUPABASE-NATIVE-SHADOW-v0.2";
+const VERSION = "BO-SUPABASE-NATIVE-SHADOW-v0.3";
 const MAX_EVIDENCE = 48;
 const FEEDS = [
   { url: "https://www.coindesk.com/arc/outboundfeeds/rss/", publisher: "CoinDesk", sourceType: "NEWS", reliability: 0.80 },
@@ -35,7 +35,7 @@ const countHits = (text: string, words: readonly string[]) => words.reduce((sum,
 const classify = (text: string) => { const positive = countHits(text, POSITIVE); const negative = countHits(text, NEGATIVE); if (positive === 0 && negative === 0) return { direction: "NEUTRAL" as const, strength: 20, rationale: "No deterministic directional keyword matched; retained as neutral context." }; if (positive === negative) return { direction: "NEUTRAL" as const, strength: 25, rationale: `Directional keyword conflict (${positive}/${negative}); retained as neutral context.` }; const direction = positive > negative ? "BULLISH" as const : "BEARISH" as const; const hits = Math.max(positive, negative); return { direction, strength: Math.min(55, 35 + hits * 5), rationale: `${direction} deterministic keyword evidence (${positive} positive / ${negative} negative hits).` }; };
 const collectEvidence = async () => {
   const now = Date.now();
-  const responses = await Promise.allSettled(FEEDS.map(async (feed) => { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 8_000); try { const response = await fetch(feed.url, { headers: { accept: "application/rss+xml, application/xml, text/xml, */*", "user-agent": "Black-Oracle-Native-Shadow/0.2" }, signal: controller.signal }); if (!response.ok) throw new Error(`${feed.publisher} RSS HTTP ${response.status}`); return { feed, items: parseFeed(await response.text()).slice(0, 40) }; } finally { clearTimeout(timeout); } }));
+  const responses = await Promise.allSettled(FEEDS.map(async (feed) => { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 8_000); try { const response = await fetch(feed.url, { headers: { accept: "application/rss+xml, application/xml, text/xml, */*", "user-agent": "Black-Oracle-Native-Shadow/0.3" }, signal: controller.signal }); if (!response.ok) throw new Error(`${feed.publisher} RSS HTTP ${response.status}`); return { feed, items: parseFeed(await response.text()).slice(0, 40) }; } finally { clearTimeout(timeout); } }));
   const evidence: any[] = []; const warnings: string[] = [];
   for (const result of responses) {
     if (result.status === "rejected") { warnings.push(result.reason instanceof Error ? result.reason.message : "RSS collection failed."); continue; }
@@ -55,6 +55,25 @@ const collectEvidence = async () => {
 };
 const resetRuntime = () => { paperTradingSession.reset(1_000_000); tradingEvidenceStore.clear(); tradeCaseStore.replaceAll([]); paperLoopController.restore({ schemaVersion: 1, running: false, config: { intervalMs: 15 * 60 * 1000, maxMarkets: 6, maxOpenPositions: 4 }, cycleCount: 0, lastCycle: null, marketHistory: [], cycleHistory: [], validationSamples: [], councilComparisons: [] }, false); };
 
+const auditEvidenceAttachments = (cycle: any) => {
+  const markets = Array.isArray(cycle?.markets) ? cycle.markets : [];
+  const decisionsWithEvidence = markets.filter((item: any) => Array.isArray(item?.evidenceIds) && item.evidenceIds.length > 0).length;
+  const invalidEntries = markets.filter((item: any) => {
+    if (item?.action !== "ENTER") return false;
+    const ids = Array.isArray(item?.evidenceIds) ? item.evidenceIds : [];
+    const active = Number(item?.evidenceActiveCount || 0);
+    const disposition = String(item?.governance?.intelligenceDisposition || "");
+    return ids.length === 0 || active <= 0 || disposition !== "SUPPORTED";
+  });
+  return {
+    status: invalidEntries.length === 0 ? "PASS" : "FAIL",
+    decisions: markets.length,
+    decisionsWithEvidence,
+    decisionsWithoutEvidence: Math.max(0, markets.length - decisionsWithEvidence),
+    invalidEntries: invalidEntries.map((item: any) => ({ market: item?.market || "UNKNOWN", evidenceIds: Array.isArray(item?.evidenceIds) ? item.evidenceIds : [], intelligenceDisposition: item?.governance?.intelligenceDisposition || null })),
+  };
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST" && req.method !== "GET") return json({ success: false, error: "Method not allowed." }, 405);
   const supabaseUrl = Deno.env.get("SUPABASE_URL"); const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -70,11 +89,16 @@ Deno.serve(async (req: Request) => {
     if (row?.checkpoint && typeof row.checkpoint === "object") { const checkpoint = row.checkpoint as any; paperTradingSession.restore(checkpoint.session); tradingEvidenceStore.replaceAll(Array.isArray(checkpoint.evidence) ? checkpoint.evidence : []); tradeCaseStore.replaceAll(Array.isArray(checkpoint.tradeCases) ? checkpoint.tradeCases : []); paperLoopController.restore(checkpoint.loop, false); } else resetRuntime();
     const collected = await collectEvidence();
     const merged = new Map<string, any>(tradingEvidenceStore.list(undefined, false).map((item: any) => [item.id, item])); for (const item of collected.evidence) merged.set(item.id, item); tradingEvidenceStore.replaceAll(Array.from(merged.values()).slice(0, MAX_EVIDENCE));
-    const cycle = await paperLoopController.runCycle(); const savedAt = Date.now();
-    const checkpoint = { schemaVersion: 1, savedAt, reason: "supabase-native-shadow-cycle", session: paperTradingSession.checkpoint(), evidence: tradingEvidenceStore.list(undefined, true), loop: paperLoopController.checkpoint(), tradeCases: tradeCaseStore.list() };
+    const cycle = await paperLoopController.runCycle();
+    const evidenceAudit = auditEvidenceAttachments(cycle);
+    if (evidenceAudit.status !== "PASS") {
+      throw new Error(`Evidence attachment invariant failed for ENTER: ${evidenceAudit.invalidEntries.map((item: any) => item.market).join(", ")}`);
+    }
+    const savedAt = Date.now();
+    const checkpoint = { schemaVersion: 1, savedAt, reason: "supabase-native-shadow-cycle", session: paperTradingSession.checkpoint(), evidence: tradingEvidenceStore.list(undefined, true), loop: paperLoopController.checkpoint(), tradeCases: tradeCaseStore.list(), evidenceAttachmentAudit: evidenceAudit };
     const { error: saveError } = await admin.from(RUNTIME_TABLE).upsert({ runtime_id: RUNTIME_ID, schema_version: 1, saved_at: new Date(savedAt).toISOString(), reason: checkpoint.reason, checkpoint }, { onConflict: "runtime_id" });
     if (saveError) throw new Error(`Shadow checkpoint write failed: ${saveError.message}`);
-    return json({ success: true, version: VERSION, runtimeId: RUNTIME_ID, authority: { mode: "PAPER_SHADOW", liveTrading: false, productionAuthority: false }, evidence: { active: tradingEvidenceStore.list().length, collected: collected.evidence.length, warnings: collected.warnings.slice(0, 8) }, cycle: { startedAt: cycle.startedAt, finishedAt: cycle.finishedAt, scanned: cycle.scanned, entered: cycle.entered, exited: cycle.exited, held: cycle.held, noTrade: cycle.noTrade, errors: cycle.errors.length } });
+    return json({ success: true, version: VERSION, runtimeId: RUNTIME_ID, authority: { mode: "PAPER_SHADOW", liveTrading: false, productionAuthority: false }, evidence: { active: tradingEvidenceStore.list().length, collected: collected.evidence.length, warnings: collected.warnings.slice(0, 8), attachmentAudit: evidenceAudit }, cycle: { startedAt: cycle.startedAt, finishedAt: cycle.finishedAt, scanned: cycle.scanned, entered: cycle.entered, exited: cycle.exited, held: cycle.held, noTrade: cycle.noTrade, errors: cycle.errors.length } });
   } catch (error) {
     return json({ success: false, version: VERSION, runtimeId: RUNTIME_ID, error: error instanceof Error ? error.message : "Unknown native shadow cycle error." }, 500);
   } finally {
