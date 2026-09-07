@@ -15,6 +15,7 @@ on:
       - nars-v4-primary-resolver
       - nars-v4-source-diversification-clean
       - nars-v4-dynamic-connectors
+      - nars-v4-official-feeds
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
