@@ -7,6 +7,7 @@ on:
       - integration/black-oracle-v0.2
       - sprint/6-empirical-paper-validation
       - sprint/7-validation-integrity-target-contract
+      - sprint/8-oracle-evaluation-harness
   pull_request:
     branches:
       - feat/oracle-field-v2
