@@ -5,6 +5,10 @@ export interface PaperBrokerOptions {
   slippageBps?: number;
 }
 
+export type EvidenceAwarePaperOrderRequest = PaperOrderRequest & {
+  evidenceIds?: string[];
+};
+
 export class PaperBroker {
   private readonly feeBps: number;
   private readonly slippageBps: number;
@@ -26,7 +30,7 @@ export class PaperBroker {
     return Array.from(this.processedOrderIds);
   }
 
-  executeMarketOrder(order: PaperOrderRequest): PaperFill {
+  executeMarketOrder(order: EvidenceAwarePaperOrderRequest): PaperFill {
     if (this.processedOrderIds.has(order.id)) {
       throw new Error(`Duplicate paper order id: ${order.id}`);
     }
@@ -41,6 +45,14 @@ export class PaperBroker {
     }
     if (order.side === 'BUY' && !hasNotional) {
       throw new Error('Paper BUY orders require notional sizing in v0.1.');
+    }
+    if (order.side === 'BUY') {
+      const evidenceIds = Array.isArray(order.evidenceIds)
+        ? [...new Set(order.evidenceIds.map((id) => String(id).trim()).filter(Boolean))]
+        : [];
+      if (evidenceIds.length === 0) {
+        throw new Error('Paper BUY entry orders require at least one Evidence ID.');
+      }
     }
 
     const slippageRate = this.slippageBps / 10_000;
