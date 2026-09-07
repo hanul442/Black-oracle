@@ -52,11 +52,13 @@ create index if not exists research_feature_outcomes_resolved_idx
 alter table public.research_feature_observations enable row level security;
 alter table public.research_feature_outcomes enable row level security;
 
-revoke all on table public.research_feature_observations from anon, authenticated, public;
-revoke all on table public.research_feature_outcomes from anon, authenticated, public;
+-- Explicitly clear inherited/default table privileges before granting the
+-- minimal server-only append/read contract.
+revoke all on table public.research_feature_observations from anon, authenticated, public, service_role;
+revoke all on table public.research_feature_outcomes from anon, authenticated, public, service_role;
 
--- Service role may append/read research data. UPDATE/DELETE are intentionally
--- not granted so the canonical SQL research tables remain append-only.
+-- Service role may append/read research data only. UPDATE/DELETE/TRUNCATE are
+-- deliberately absent so canonical research history remains append-only.
 grant select, insert on table public.research_feature_observations to service_role;
 grant select, insert on table public.research_feature_outcomes to service_role;
 
