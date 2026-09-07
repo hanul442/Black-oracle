@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Crosshair, ShieldCheck } from 'lucide-react';
+import { Crosshair, Eye, FlaskConical, ShieldCheck } from 'lucide-react';
 import { TradeAuditHistory, type AuditedClosedTrade } from '../components/TradeAuditHistory';
 import { OperationsView } from './OperationsView';
 
@@ -30,10 +30,39 @@ type Validation = {
   reasons: string[];
 };
 
+type EvidenceGateView = {
+  status: 'PASS' | 'WATCH' | 'REJECT' | 'NO_DATA';
+  eligibleForNewRisk: boolean;
+  score: number;
+  confidence: number;
+  activeCount: number;
+  uniqueEvidenceCount: number;
+  sourceDiversity: number;
+  sourceTypeDiversity: number;
+  weightedQuality: number;
+  freshness: number;
+  contradictionSeverity: number;
+  evidenceIds: string[];
+  reasons: string[];
+};
+
+type ShadowResearchView = {
+  authority: 'OBSERVATION_ONLY';
+  consensus: {
+    breakoutAlignment: string;
+    trendStrengthAlignment: string;
+    relativeStrengthAlignment: string;
+    volatilityAlignment: string;
+  };
+};
+
 type AuditDecision = {
   timestamp: number;
   market: string;
   decision: string;
+  evidenceGate?: EvidenceGateView | null;
+  evidenceIds?: string[];
+  shadowResearch?: ShadowResearchView | null;
   structure?: null | {
     bias: string;
     confidence: number;
@@ -74,10 +103,24 @@ type AuditDecision = {
   };
 };
 
+type ResearchSummary = {
+  authority: string;
+  observationCount: number;
+  outcomeCount: number;
+  tradeCount: number;
+  noTradeCycleCount: number;
+  sampleSufficiency: string;
+  prospectiveCount: number;
+  reconstructedCount: number;
+  persistenceBacklog?: { observations: number; outcomes: number };
+  features?: Array<{ featureName: string; timeframe: string; observationCount: number; sampleSufficiency: string }>;
+};
+
 type StatusPayload = {
   success?: boolean;
   available?: boolean;
   validation?: Validation;
+  research?: ResearchSummary;
   decisionTape?: AuditDecision[];
   recentTrades?: AuditedClosedTrade[];
 };
@@ -90,10 +133,21 @@ const price = (value: number | null | undefined) => value == null || !Number.isF
   ? '—'
   : new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 }).format(value);
 
+const score = (value: number | null | undefined) => value == null || !Number.isFinite(value)
+  ? '—'
+  : value.toFixed(1);
+
 const toneFor = (verdict: Validation['verdict'] | undefined) => {
   if (verdict === 'PASS') return 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.035] text-[#86C5B1]';
   if (verdict === 'REJECT') return 'border-[#D66565]/20 bg-[#D66565]/[0.035] text-[#D98787]';
   if (verdict === 'WATCH') return 'border-[#C7A96B]/20 bg-[#C7A96B]/[0.035] text-[#D3B778]';
+  return 'border-white/[0.07] bg-[#080C11] text-[#7E8993]';
+};
+
+const gateTone = (status: EvidenceGateView['status'] | undefined) => {
+  if (status === 'PASS') return 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.035] text-[#86C5B1]';
+  if (status === 'REJECT' || status === 'NO_DATA') return 'border-[#D66565]/20 bg-[#D66565]/[0.035] text-[#D98787]';
+  if (status === 'WATCH') return 'border-[#C7A96B]/20 bg-[#C7A96B]/[0.035] text-[#D3B778]';
   return 'border-white/[0.07] bg-[#080C11] text-[#7E8993]';
 };
 
@@ -127,6 +181,8 @@ export const OperationsWithValidationView: React.FC = () => {
     const items = payload?.decisionTape ?? [];
     return items.reduce<AuditDecision | null>((latest, item) => !latest || item.timestamp > latest.timestamp ? item : latest, null);
   }, [payload?.decisionTape]);
+  const gate = latestAudit?.evidenceGate ?? null;
+  const research = payload?.research ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#05070A]">
@@ -149,6 +205,34 @@ export const OperationsWithValidationView: React.FC = () => {
 
           <div className="ml-auto font-mono text-[6px] uppercase tracking-[0.11em] text-[#4F5963]">
             validation only · no order authority
+          </div>
+        </div>
+      </div>
+
+      <div className={`shrink-0 border-b px-4 py-2.5 md:px-6 xl:px-8 ${gateTone(gate?.status)}`}>
+        <div className="mx-auto flex max-w-[1520px] flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span className="font-mono text-[7px] uppercase tracking-[0.18em]">Evidence Gate</span>
+            <span className="border border-current/20 px-1.5 py-1 font-mono text-[6px] uppercase tracking-[0.1em]">{gate?.status ?? 'NO DATA'}</span>
+            {latestAudit && <span className="font-mono text-[7px] text-[#B7C0C8]">{latestAudit.market}</span>}
+          </div>
+
+          <div className="flex flex-1 flex-wrap gap-x-4 gap-y-1 font-mono text-[6px] uppercase tracking-[0.1em] text-[#69747E]">
+            <span>NEW RISK {gate?.eligibleForNewRisk ? 'AUTHORIZED' : 'BLOCKED'}</span>
+            <span>SCORE {score(gate?.score)}</span>
+            <span>CONF {pct(gate?.confidence)}</span>
+            <span>ACTIVE {gate?.activeCount ?? 0}</span>
+            <span>UNIQUE {gate?.uniqueEvidenceCount ?? 0}</span>
+            <span>SOURCES {gate?.sourceDiversity ?? 0}</span>
+            <span>QUALITY {pct(gate?.weightedQuality)}</span>
+            <span>FRESH {pct(gate?.freshness)}</span>
+            <span>CONTRA {pct(gate?.contradictionSeverity)}</span>
+            <span>IDS {gate?.evidenceIds?.length ?? latestAudit?.evidenceIds?.length ?? 0}</span>
+          </div>
+
+          <div className="ml-auto font-mono text-[6px] uppercase tracking-[0.11em] text-[#4F5963]">
+            only PASS may add new risk · exits remain authoritative
           </div>
         </div>
       </div>
@@ -180,7 +264,33 @@ export const OperationsWithValidationView: React.FC = () => {
           )}
 
           <div className="ml-auto font-mono text-[6px] uppercase tracking-[0.11em] text-[#46515B]">
-            shadow evidence · existing execution gates unchanged
+            champion execution map · evidence provenance attached
+          </div>
+        </div>
+      </div>
+
+      <div className="shrink-0 border-b border-[#7B6CC4]/15 bg-[#0A0910] px-4 py-2.5 md:px-6 xl:px-8">
+        <div className="mx-auto flex max-w-[1520px] flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2 text-[#A99BDB]">
+            <FlaskConical className="h-3.5 w-3.5" />
+            <span className="font-mono text-[7px] uppercase tracking-[0.18em]">Shadow research</span>
+            <span className="border border-[#A99BDB]/20 px-1.5 py-1 font-mono text-[6px] uppercase tracking-[0.1em]">OBSERVATION ONLY</span>
+          </div>
+
+          <div className="flex flex-1 flex-wrap gap-x-4 gap-y-1 font-mono text-[6px] uppercase tracking-[0.1em] text-[#6F6A82]">
+            <span>OBS {research?.observationCount ?? 0}</span>
+            <span>OUTCOMES {research?.outcomeCount ?? 0}</span>
+            <span>NO TRADE CYCLES {research?.noTradeCycleCount ?? 0}</span>
+            <span>SAMPLE {research?.sampleSufficiency ?? 'INSUFFICIENT'}</span>
+            <span>BACKLOG {research?.persistenceBacklog ? `${research.persistenceBacklog.observations}/${research.persistenceBacklog.outcomes}` : '—'}</span>
+            <span>BREAKOUT {latestAudit?.shadowResearch?.consensus.breakoutAlignment ?? '—'}</span>
+            <span>TREND {latestAudit?.shadowResearch?.consensus.trendStrengthAlignment ?? '—'}</span>
+            <span>REL STR {latestAudit?.shadowResearch?.consensus.relativeStrengthAlignment ?? '—'}</span>
+            <span>VOL {latestAudit?.shadowResearch?.consensus.volatilityAlignment ?? '—'}</span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 font-mono text-[6px] uppercase tracking-[0.11em] text-[#5C5670]">
+            <Eye className="h-3 w-3" /> cannot route, size, enter, exit, stop, or target
           </div>
         </div>
       </div>
