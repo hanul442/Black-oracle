@@ -11,6 +11,16 @@ type RuntimeHeartbeatPayload = {
   lastActivityAt?: number | null;
   ageMs?: number | null;
   cycleCount?: number | null;
+  evidence?: {
+    activeCount: number;
+    attachmentAudit: {
+      status: string;
+      decisions: number | null;
+      decisionsWithEvidence: number | null;
+      decisionsWithoutEvidence: number | null;
+      invalidEntryCount: number;
+    } | null;
+  } | null;
   lastCycle?: { startedAt: number | null; finishedAt: number | null; scanned: number; entered: number; exited: number; held: number; noTrade: number; errors: number } | null;
   scheduler?: { enabled: boolean; lastOk: boolean | null; lastHttpStatus: number | null } | null;
 };
@@ -78,6 +88,11 @@ export const RuntimeHeartbeat: React.FC = () => {
         const error = errors[slot.key];
         const state: RuntimeState = error ? 'UNKNOWN' : item?.state || 'UNKNOWN';
         const cycle = item?.lastCycle;
+        const evidence = item?.evidence;
+        const audit = evidence?.attachmentAudit;
+        const attached = audit?.decisionsWithEvidence;
+        const decisions = audit?.decisions;
+        const auditTone = audit?.status === 'PASS' ? 'text-[#62d49f]' : audit?.status === 'FAIL' ? 'text-[#ff6262]' : 'text-[#77818a]';
         return (
           <div key={slot.key} className="flex min-w-max items-center gap-2 border-l border-[#24282c] pl-2 first:border-l-0 first:pl-0">
             <span className="text-[#77818a]">{slot.label}</span>
@@ -85,6 +100,9 @@ export const RuntimeHeartbeat: React.FC = () => {
             <span className="text-[#7b858d]">#{item?.cycleCount ?? '—'}</span>
             <span className={state === 'STALLED' ? 'text-[#ff6262]' : 'text-[#9ba3aa]'}>{ageText(item?.ageMs)}</span>
             <span className="text-[#7b858d]">{cycle ? `${cycle.entered}E/${cycle.exited}X/${cycle.noTrade}N/${cycle.errors}ERR` : '—'}</span>
+            <span className="text-[#7b858d]">EVID <b className="font-normal text-[#c3c9ce]">{evidence?.activeCount ?? '—'}</b></span>
+            <span className={auditTone}>ATT {audit ? `${audit.status} ${attached ?? '—'}/${decisions ?? '—'}` : '—'}</span>
+            {audit?.invalidEntryCount ? <span className="text-[#ff6262]">INVALID ENTER {audit.invalidEntryCount}</span> : null}
             {error && <span className="max-w-52 truncate text-[#ff6262]">{error}</span>}
           </div>
         );
