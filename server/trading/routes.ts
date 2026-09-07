@@ -1,11 +1,13 @@
 import type { Express, Request, Response } from 'express';
 import { SUPPORTED_UPBIT_MINUTE_UNITS, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
 import type { EvidenceDirection, EvidenceSourceType, TradingEvidence } from '../../src/trading/evidence';
+import { TECHNICAL_FEATURE_REGISTRY } from '../../src/trading/research/featureRegistry';
 import { buildTradingSnapshot } from '../../src/trading/snapshot';
 import { tradingEvidenceStore } from './evidenceStore';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
+import { researchFeatureStore } from './researchStore';
 import { buildRuntimeHealth } from './runtimeHealth';
 import { runtimePersistenceStatus, saveRuntimeCheckpoint } from './runtimeState';
 import { buildKrwLiquidityUniverse } from './universe';
@@ -28,6 +30,12 @@ const parseCount = (value: unknown, fallback = 200) => {
 const parseLimit = (value: unknown, fallback = 12) => {
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error('limit must be an integer between 1 and 20');
+  return parsed;
+};
+
+const parseResearchLimit = (value: unknown, fallback = 250) => {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 2_000) throw new Error('research limit must be an integer between 1 and 2000');
   return parsed;
 };
 
@@ -103,6 +111,7 @@ const resolvedEventScore = (market: string, manualScore?: number) => {
     evidence,
     eventScore: manualScore ?? (evidence.activeCount > 0 ? evidence.score : undefined),
     source: manualScore !== undefined ? 'MANUAL_OVERRIDE' as const : evidence.activeCount > 0 ? 'EVIDENCE' as const : 'NONE' as const,
+    executionAuthority: manualScore !== undefined ? 'NONE' as const : 'STRUCTURED_EVIDENCE_GATE' as const,
   };
 };
 
@@ -175,7 +184,13 @@ export const registerTradingRoutes = (app: Express) => {
       const unit = parseUnit(req.query.unit, 60);
       const candles = await getMinuteCandles(market, unit, 200);
       const snapshot = buildTradingSnapshot(candles, resolved.eventScore);
-      return res.json({ success: true, snapshot, evidence: resolved.evidence, eventScoreSource: resolved.source });
+      return res.json({
+        success: true,
+        snapshot,
+        evidence: resolved.evidence,
+        eventScoreSource: resolved.source,
+        executionAuthority: resolved.executionAuthority,
+      });
     } catch (error) {
       return handleRouteError(error, res);
     }
@@ -187,7 +202,13 @@ export const registerTradingRoutes = (app: Express) => {
       const manualScore = parseOptionalEventScore(req.query.eventScore);
       const resolved = resolvedEventScore(market, manualScore);
       const multiTimeframe = await buildMarketMultiTimeframe(market, resolved.eventScore);
-      return res.json({ success: true, multiTimeframe, evidence: resolved.evidence, eventScoreSource: resolved.source });
+      return res.json({
+        success: true,
+        multiTimeframe,
+        evidence: resolved.evidence,
+        eventScoreSource: resolved.source,
+        executionAuthority: resolved.executionAuthority,
+      });
     } catch (error) {
       return handleRouteError(error, res);
     }
@@ -235,12 +256,29 @@ export const registerTradingRoutes = (app: Express) => {
     }
   });
 
+  app.get('/api/trading/research/features', (req: Request, res: Response) => {
+    try {
+      const market = req.query.market ? String(req.query.market).toUpperCase() : undefined;
+      const limit = parseResearchLimit(req.query.limit, 250);
+      return res.json({
+        success: true,
+        authority: 'SHADOW RESEARCH — NO EXECUTION AUTHORITY',
+        registry: TECHNICAL_FEATURE_REGISTRY,
+        summary: researchFeatureStore.summary(),
+        observations: researchFeatureStore.list(market, limit),
+        outcomes: researchFeatureStore.listOutcomes(market, Math.min(limit * 2, 5_000)),
+      });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
   app.get('/api/trading/paper/state', (_req: Request, res: Response) => {
-    return res.json({ success: true, ...paperTradingSession.state() });
+    return res.json({ success: true, ...paperTradingSession.state(), research: researchFeatureStore.summary() });
   });
 
   app.get('/api/trading/paper/performance', (_req: Request, res: Response) => {
-    return res.json({ success: true, performance: paperTradingSession.performance() });
+    return res.json({ success: true, performance: paperTradingSession.performance(), research: researchFeatureStore.summary() });
   });
 
   app.post('/api/trading/paper/reset', async (req: Request, res: Response) => {
@@ -249,7 +287,7 @@ export const registerTradingRoutes = (app: Express) => {
       const initialCash = parseInitialCash(req.body?.initialCash, 1_000_000);
       const state = paperTradingSession.reset(initialCash);
       await saveRuntimeCheckpoint('paper-reset');
-      return res.json({ success: true, ...state });
+      return res.json({ success: true, ...state, researchPreserved: true });
     } catch (error) {
       return handleRouteError(error, res);
     }
@@ -262,7 +300,11 @@ export const registerTradingRoutes = (app: Express) => {
       const resolved = resolvedEventScore(market, manualScore);
       const result = await paperTradingSession.step(market, resolved.eventScore);
       await saveRuntimeCheckpoint('paper-step');
-      return res.json({ ...result, evidence: resolved.evidence, eventScoreSource: resolved.source });
+      return res.json({
+        ...result,
+        eventScoreSource: resolved.source,
+        manualEventScoreExecutionAuthority: resolved.executionAuthority,
+      });
     } catch (error) {
       return handleRouteError(error, res);
     }
@@ -299,7 +341,12 @@ export const registerTradingRoutes = (app: Express) => {
     try {
       const cycle = await paperLoopController.runCycle();
       await saveRuntimeCheckpoint('paper-loop-cycle');
-      return res.json({ success: true, cycle, performance: paperTradingSession.performance() });
+      return res.json({
+        success: true,
+        cycle,
+        performance: paperTradingSession.performance(),
+        research: researchFeatureStore.summary(),
+      });
     } catch (error) {
       return handleRouteError(error, res);
     }
