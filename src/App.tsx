@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { AppProvider, useAppContext } from './store';
 import { TopBar } from './components/TopBar';
 import { WorkspaceRail } from './components/WorkspaceRail';
 import { MobileNavigation } from './components/MobileNavigation';
 import { GlobalLoadingOverlay } from './components/GlobalLoadingOverlay';
 import { CollectionWorkflow } from './components/CollectionWorkflow';
+import { RuntimeHeartbeat } from './components/RuntimeHeartbeat';
 import { LoginView } from './views/LoginView';
 import { TerminalMonitorView } from './views/TerminalMonitorView';
 import { TerminalPositionsView } from './views/TerminalPositionsView';
@@ -16,43 +17,12 @@ import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 const AppContent: React.FC = () => {
   const {
     currentView,
-    addNotification,
     notifications,
-    coreInterests,
     workflowQuery,
     setWorkflowQuery,
     isWorkflowMinimized,
     setIsWorkflowMinimized,
-    user,
   } = useAppContext() as any;
-
-  useEffect(() => {
-    if (currentView === 'login') return;
-
-    const intervalMs = 60 * 60 * 1000;
-    const fetchAuto = async () => {
-      localStorage.setItem('lastAutonomousRun', Date.now().toString());
-      try {
-        const response = await fetch('/api/fetch-rss', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ interests: coreInterests, userId: user?.uid }),
-        });
-        const data = await response.json();
-        if (data.success && (data.count > 0 || data.mergedCount > 0)) {
-          addNotification(`Evidence updated: ${data.count || 0} new, ${data.mergedCount || 0} merged.`, 'success');
-        }
-      } catch {
-        // Collection failures remain non-blocking for the operator shell.
-      }
-    };
-
-    const lastRun = localStorage.getItem('lastAutonomousRun');
-    if (!lastRun || Date.now() - Number(lastRun) > intervalMs) void fetchAuto();
-
-    const interval = window.setInterval(fetchAuto, intervalMs);
-    return () => window.clearInterval(interval);
-  }, [currentView, addNotification, coreInterests, user?.uid]);
 
   const renderView = () => {
     switch (currentView) {
@@ -90,6 +60,7 @@ const AppContent: React.FC = () => {
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar />
+        <RuntimeHeartbeat />
 
         <main className="relative flex min-h-0 flex-1 overflow-hidden pb-[46px] lg:pb-0">
           <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
@@ -137,7 +108,7 @@ const AppContent: React.FC = () => {
         </main>
 
         <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-[#202429] bg-[#070809] px-2 font-mono text-[6px] uppercase tracking-[0.08em] text-[#505960] lg:flex">
-          <span>BLACK ORACLE / OPERATOR TERMINAL / PERSISTED STATE ONLY</span>
+          <span>BLACK ORACLE / PWA OPERATOR TERMINAL / SUPABASE HEARTBEAT</span>
           <span className="text-[#f3a312]">PAPER EXECUTION</span>
         </footer>
       </div>
