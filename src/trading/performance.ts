@@ -19,9 +19,29 @@ export interface MicrostructureAuditSnapshot {
   profileLocation: 'ABOVE_VALUE' | 'IN_VALUE' | 'BELOW_VALUE' | 'AT_POC' | 'UNAVAILABLE';
 }
 
+export interface EvidenceEntryAuditSnapshot {
+  gateStatus: 'PASS' | 'WATCH' | 'REJECT' | 'NO_DATA';
+  eligibleForNewRisk: boolean;
+  evidenceIds: string[];
+  activeCount: number;
+  uniqueEvidenceCount: number;
+  sourceDiversity: number;
+  sourceTypeDiversity: number;
+  score: number;
+  confidence: number;
+  bullishWeight: number;
+  bearishWeight: number;
+  contradictionCount: number;
+  contradictionSeverity: number;
+  weightedQuality: number;
+  freshness: number;
+  reasons: string[];
+}
+
 export interface PaperEntryAuditSnapshot {
   timestamp: number;
   eventScore: number | null;
+  evidence: EvidenceEntryAuditSnapshot | null;
   regime: string;
   regimeConfidence: number;
   structure: null | {
