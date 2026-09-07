@@ -3,6 +3,7 @@ import type { LiquiditySnapshot } from '../../src/trading/types';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
 import { buildMarketShadowResearch, buildPointInTimeRelativeStrengthContext } from './researchFeatures';
+import { researchPersistence } from './researchPersistence';
 import { researchFeatureStore } from './researchStore';
 import { buildKrwLiquidityUniverse, getMarketLiquidity } from './universe';
 
@@ -145,6 +146,7 @@ export class PaperLoopController {
       lastCycle: this.lastCycle,
       session: paperTradingSession.state(),
       research: researchFeatureStore.summary(),
+      researchPersistence: researchPersistence.status(),
     };
   }
 
@@ -303,6 +305,21 @@ export class PaperLoopController {
           result.researchErrors.push({
             market: target.market,
             error: error instanceof Error ? error.message : 'Unknown shadow research error.',
+          });
+        }
+      }
+
+      // PHASE 3: durable normalized research persistence. This phase is still
+      // downstream of every production decision and therefore has no execution authority.
+      const pending = researchFeatureStore.pendingPersistence();
+      if (pending.observations.length > 0 || pending.outcomes.length > 0) {
+        try {
+          const persisted = await researchPersistence.persist(pending);
+          if (persisted.persisted) researchFeatureStore.markPersisted(pending);
+        } catch (error) {
+          result.researchErrors.push({
+            market: 'PERSISTENCE',
+            error: error instanceof Error ? error.message : 'Unknown normalized research persistence error.',
           });
         }
       }
