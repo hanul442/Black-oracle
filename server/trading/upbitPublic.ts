@@ -159,14 +159,19 @@ export const getMinuteCandles = async (
   market: string,
   unit: SupportedUpbitMinuteUnit,
   count = 200,
+  toTimestamp?: number,
 ): Promise<Candle[]> => {
   assertKrwMarket(market);
   if (!SUPPORTED_UPBIT_MINUTE_UNITS.includes(unit)) throw new Error(`Unsupported Upbit minute unit: ${unit}`);
   if (!Number.isInteger(count) || count < 1 || count > 200) throw new Error('Candle count must be an integer between 1 and 200.');
+  if (toTimestamp !== undefined && (!Number.isFinite(toTimestamp) || toTimestamp <= 0)) {
+    throw new Error('Candle point-in-time cutoff must be a positive timestamp.');
+  }
 
   const url = new URL(`/v1/candles/minutes/${unit}`, UPBIT_API_BASE);
   url.searchParams.set('market', market);
   url.searchParams.set('count', String(count));
+  if (toTimestamp !== undefined) url.searchParams.set('to', new Date(toTimestamp).toISOString());
 
   const raw = await getJson<UpbitMinuteCandleResponse[]>(url);
   return raw
@@ -181,5 +186,6 @@ export const getMinuteCandles = async (
       volume: candle.candle_acc_trade_volume,
       quoteVolume: candle.candle_acc_trade_price,
     }))
+    .filter((candle) => toTimestamp === undefined || candle.timestamp <= toTimestamp)
     .sort((a, b) => a.timestamp - b.timestamp);
 };
