@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { EvidenceGateDecision } from './evidenceGate';
 import { buildExecutionDecision } from './executionPolicy';
 import { TradingLedger } from './ledger';
 import { evaluateLiquidity } from './liquidity';
@@ -39,6 +40,22 @@ const rangeRegime: RegimeSnapshot = {
   trendStrength: 0.2,
   highVolatility: false,
   reasons: [],
+};
+
+const passEvidenceGate: EvidenceGateDecision = {
+  status: 'PASS',
+  eligibleForNewRisk: true,
+  score: 70,
+  confidence: 0.8,
+  activeCount: 2,
+  uniqueEvidenceCount: 2,
+  sourceDiversity: 2,
+  sourceTypeDiversity: 2,
+  weightedQuality: 0.72,
+  freshness: 0.8,
+  contradictionSeverity: 0,
+  evidenceIds: ['e1', 'e2'],
+  reasons: ['PASS'],
 };
 
 const snapshotWithScore = (directionalScore: number, timeframeMinutes: number, confidence = 0.75): TradingSnapshot => ({
@@ -284,12 +301,26 @@ test('paper broker applies slippage and refuses duplicate order ids', () => {
     referencePrice: 100_000_000,
     timestamp: 1,
     strategyVersion: 'BO-CRYPTO-v0.1.0',
+    evidenceIds: ['e1'],
   };
 
   const fill = broker.executeMarketOrder(order);
   assert.ok(fill.fillPrice > order.referencePrice);
   assert.equal(fill.fee, 5);
   assert.throws(() => broker.executeMarketOrder(order), /Duplicate paper order id/);
+});
+
+test('paper broker rejects a BUY order without evidence ids', () => {
+  const broker = new PaperBroker({ feeBps: 5, slippageBps: 0 });
+  assert.throws(() => broker.executeMarketOrder({
+    id: 'no-evidence',
+    market: 'KRW-BTC',
+    side: 'BUY',
+    notional: 10_000,
+    referencePrice: 100,
+    timestamp: 1,
+    strategyVersion: 'test',
+  }), /Evidence ID/);
 });
 
 test('paper portfolio marks positions and realizes P&L on quantity exit', () => {
@@ -303,6 +334,7 @@ test('paper portfolio marks positions and realizes P&L on quantity exit', () => 
     referencePrice: 100,
     timestamp: 1,
     strategyVersion: 'test',
+    evidenceIds: ['e1'],
   });
   portfolio.applyFill(buy);
   portfolio.setProtection('KRW-BTC', 95, 110, 1);
@@ -328,7 +360,7 @@ test('paper portfolio marks positions and realizes P&L on quantity exit', () => 
   assert.ok(closed.realizedPnl > 0);
 });
 
-test('execution policy sizes a valid entry below the 2 percent hard cap', () => {
+test('execution policy blocks a valid technical BUY when evidence is absent', () => {
   const portfolio = new PaperPortfolio(1_000_000);
   const liquidity = evaluateLiquidity({
     market: 'KRW-BTC',
@@ -354,6 +386,37 @@ test('execution policy sizes a valid entry below the 2 percent hard cap', () => 
     position: null,
   });
 
+  assert.equal(decision.action, 'HOLD');
+  assert.match(decision.reasons.join(' '), /NO_ACTIVE_EVIDENCE/);
+});
+
+test('execution policy sizes a valid evidence-backed entry below the 2 percent hard cap', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-BTC',
+    tradePrice: 100_000_000,
+    accTradePrice24h: 800_000_000_000,
+    signedChangeRate: 0.02,
+    bestBid: 99_990_000,
+    bestAsk: 100_010_000,
+    top5BidDepthKrw: 500_000_000,
+    top5AskDepthKrw: 450_000_000,
+    warning: false,
+  });
+  const mtf = buildMultiTimeframeConsensus(
+    snapshotWithScore(75, 240, 0.82),
+    snapshotWithScore(70, 60, 0.8),
+    snapshotWithScore(60, 15, 0.78),
+  );
+  const decision = buildExecutionDecision({
+    liquidity,
+    multiTimeframe: mtf,
+    oneHour: mtf.frames.oneHour,
+    portfolio: portfolio.snapshot({}),
+    position: null,
+    evidenceGate: passEvidenceGate,
+  });
+
   assert.equal(decision.action, 'ENTER');
   assert.equal(decision.side, 'BUY');
   assert.ok(decision.notional > 0 && decision.notional <= 20_000);
@@ -361,20 +424,26 @@ test('execution policy sizes a valid entry below the 2 percent hard cap', () => 
   assert.ok((decision.takeProfitPrice ?? 0) > liquidity.tradePrice);
 });
 
-test('execution policy exits immediately when protective stop is breached', () => {
+const buildProtectedPortfolio = () => {
   const portfolio = new PaperPortfolio(1_000_000);
   const broker = new PaperBroker({ feeBps: 0, slippageBps: 0 });
   const fill = broker.executeMarketOrder({
-    id: 'protect-buy',
+    id: `protect-buy-${Math.random()}`,
     market: 'KRW-BTC',
     side: 'BUY',
     notional: 10_000,
     referencePrice: 100,
     timestamp: 1,
     strategyVersion: 'test',
+    evidenceIds: ['historical-entry-evidence'],
   });
   portfolio.applyFill(fill);
   portfolio.setProtection('KRW-BTC', 95, 110, 1);
+  return portfolio;
+};
+
+test('execution policy exits immediately when protective stop is breached even with no evidence', () => {
+  const portfolio = buildProtectedPortfolio();
   const liquidity = evaluateLiquidity({
     market: 'KRW-BTC',
     tradePrice: 94,
@@ -402,6 +471,36 @@ test('execution policy exits immediately when protective stop is breached', () =
   assert.equal(decision.action, 'EXIT');
   assert.equal(decision.side, 'SELL');
   assert.match(decision.reasons.join(' '), /stop-loss/i);
+});
+
+test('execution policy exits at take profit even with no evidence', () => {
+  const portfolio = buildProtectedPortfolio();
+  const liquidity = evaluateLiquidity({
+    market: 'KRW-BTC',
+    tradePrice: 111,
+    accTradePrice24h: 800_000_000_000,
+    signedChangeRate: 0.08,
+    bestBid: 110.99,
+    bestAsk: 111.01,
+    top5BidDepthKrw: 500_000_000,
+    top5AskDepthKrw: 450_000_000,
+    warning: false,
+  });
+  const mtf = buildMultiTimeframeConsensus(
+    snapshotWithScore(20, 240),
+    snapshotWithScore(20, 60),
+    snapshotWithScore(20, 15),
+  );
+  const decision = buildExecutionDecision({
+    liquidity,
+    multiTimeframe: mtf,
+    oneHour: mtf.frames.oneHour,
+    portfolio: portfolio.snapshot({ 'KRW-BTC': 111 }),
+    position: portfolio.getPosition('KRW-BTC'),
+  });
+
+  assert.equal(decision.action, 'EXIT');
+  assert.match(decision.reasons.join(' '), /take-profit/i);
 });
 
 test('trading ledger is append-only and sequence ordered', () => {
