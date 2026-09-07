@@ -58,6 +58,10 @@ Deno.serve(async (req: Request) => {
   const lastActivityAt = Math.max(savedAt ?? 0, lastInvokedAt ?? 0) || null;
   const ageMs = lastActivityAt === null ? null : Math.max(0, Date.now() - lastActivityAt);
   const cycleErrors = Array.isArray(lastCycle?.errors) ? lastCycle.errors.length : 0;
+  const activeEvidenceCount = Array.isArray(checkpoint?.evidence) ? checkpoint.evidence.length : 0;
+  const attachmentAudit = checkpoint?.evidenceAttachmentAudit && typeof checkpoint.evidenceAttachmentAudit === "object"
+    ? checkpoint.evidenceAttachmentAudit as Record<string, any>
+    : null;
 
   let state: "RUNNING" | "DEGRADED" | "STALLED" | "BLOCKED" | "UNKNOWN" = "UNKNOWN";
   let reason = "No persisted runtime activity is available yet.";
@@ -67,9 +71,13 @@ Deno.serve(async (req: Request) => {
   } else if (ageMs !== null && ageMs > STALE_AFTER_MS) {
     state = "STALLED";
     reason = `No persisted PAPER activity within ${Math.round(STALE_AFTER_MS / 60000)} minutes.`;
-  } else if (scheduler?.last_ok === false || cycleErrors > 0) {
+  } else if (scheduler?.last_ok === false || cycleErrors > 0 || attachmentAudit?.status === "FAIL") {
     state = "DEGRADED";
-    reason = scheduler?.last_ok === false ? "Latest scheduler invocation reported a failure." : "Latest PAPER cycle contains market errors.";
+    reason = scheduler?.last_ok === false
+      ? "Latest scheduler invocation reported a failure."
+      : attachmentAudit?.status === "FAIL"
+        ? "Evidence attachment invariant failed."
+        : "Latest PAPER cycle contains market errors.";
   } else if (savedAt !== null) {
     state = "RUNNING";
     reason = "Persisted PAPER runtime is updating within the expected cadence.";
@@ -81,7 +89,7 @@ Deno.serve(async (req: Request) => {
 
   return json({
     success: true,
-    version: "BO-RUNTIME-STATUS-v0.1",
+    version: "BO-RUNTIME-STATUS-v0.2",
     state,
     reason,
     runtimeId,
@@ -89,6 +97,16 @@ Deno.serve(async (req: Request) => {
     lastActivityAt,
     ageMs,
     cycleCount: Number.isFinite(loop?.cycleCount) ? Number(loop.cycleCount) : null,
+    evidence: {
+      activeCount: activeEvidenceCount,
+      attachmentAudit: attachmentAudit ? {
+        status: String(attachmentAudit.status || "UNKNOWN"),
+        decisions: Number.isFinite(attachmentAudit.decisions) ? Number(attachmentAudit.decisions) : null,
+        decisionsWithEvidence: Number.isFinite(attachmentAudit.decisionsWithEvidence) ? Number(attachmentAudit.decisionsWithEvidence) : null,
+        decisionsWithoutEvidence: Number.isFinite(attachmentAudit.decisionsWithoutEvidence) ? Number(attachmentAudit.decisionsWithoutEvidence) : null,
+        invalidEntryCount: Array.isArray(attachmentAudit.invalidEntries) ? attachmentAudit.invalidEntries.length : 0,
+      } : null,
+    },
     lastCycle: lastCycle ? {
       startedAt: Number.isFinite(lastCycle.startedAt) ? Number(lastCycle.startedAt) : null,
       finishedAt: Number.isFinite(lastCycle.finishedAt) ? Number(lastCycle.finishedAt) : null,
