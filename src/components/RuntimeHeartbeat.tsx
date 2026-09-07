@@ -22,7 +22,6 @@ const SLOTS: RuntimeSlot[] = [
   { key: 'legacy', label: 'LEGACY', runtime: null },
   { key: 'native', label: 'NATIVE', runtime: 'black-oracle-paper-native-shadow' },
 ];
-
 const ageText = (value: number | null | undefined) => {
   if (value == null || !Number.isFinite(value)) return '—';
   if (value < 60_000) return `${Math.max(0, Math.round(value / 1000))}s`;
@@ -40,7 +39,8 @@ export const RuntimeHeartbeat: React.FC = () => {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
 
   const baseEndpoint = useMemo(() => {
-    const configured = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+    const configured = String(viteEnv?.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
     return `${configured || DEFAULT_SUPABASE_URL}${STATUS_FUNCTION}`;
   }, []);
 
