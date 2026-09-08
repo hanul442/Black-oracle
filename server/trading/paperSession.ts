@@ -141,6 +141,7 @@ export class PaperTradingSession {
     eventScore?: number,
     precomputedLiquidity?: LiquiditySnapshot,
     newEntryAllowed = true,
+    externalEvidenceAvailable = true,
   ) {
     const normalized = market.toUpperCase();
     const [liquidity, multiTimeframe] = await Promise.all([
@@ -153,6 +154,11 @@ export class PaperTradingSession {
 
     const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
     const position = this.portfolio.getPosition(normalized);
+    const technicalEntryCandidate = !position
+      && newEntryAllowed
+      && liquidity.eligible
+      && multiTimeframe.action === 'BUY'
+      && multiTimeframe.confidence >= 0.62;
     const decision = buildExecutionDecision({
       liquidity,
       multiTimeframe,
@@ -161,6 +167,7 @@ export class PaperTradingSession {
       position,
       marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
       newEntryAllowed,
+      newRiskEvidenceAllowed: externalEvidenceAvailable,
     });
     const tradeMap = buildTradeMap({
       currentPrice: liquidity.tradePrice,
@@ -226,6 +233,8 @@ export class PaperTradingSession {
       liquidityScore: liquidity.score,
       multiTimeframeScore: multiTimeframe.oracleTradeScore,
       eventScore: eventScore ?? null,
+      externalEvidenceAvailable,
+      technicalEntryCandidate,
       structure: entryAudit.structure,
       cycle: entryAudit.cycle,
       microstructure: entryAudit.microstructure,
@@ -238,6 +247,8 @@ export class PaperTradingSession {
       directionalScore: multiTimeframe.directionalScore,
       oracleTradeScore: multiTimeframe.oracleTradeScore,
       confidence: decision.confidence,
+      externalEvidenceAvailable,
+      technicalEntryCandidate,
       technicalEvidence: entryAudit.technicalEvidence,
       tradeMap,
       microstructure: entryAudit.microstructure,
@@ -328,6 +339,8 @@ export class PaperTradingSession {
       microstructure,
       challenger,
       eventScore: eventScore ?? null,
+      externalEvidenceAvailable,
+      technicalEntryCandidate,
       decision,
       tradeMap,
       fill,
