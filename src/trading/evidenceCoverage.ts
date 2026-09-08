@@ -67,6 +67,22 @@ export const assessEvidenceCoverage = (
   };
 };
 
+/**
+ * Coverage means "we have source-backed information". Support means the analyzed
+ * information is sufficiently material, reliable and directionally compatible with
+ * a new long. These are deliberately different gates.
+ */
+export const evidenceSupportsNewLongRisk = (evidence: EvidenceAggregate) => ({
+  allowed: evidence.activeCount > 0 && evidence.score >= 10 && evidence.confidence >= 0.45,
+  reason: evidence.activeCount === 0
+    ? 'No active source-backed evidence is available.'
+    : evidence.score < 10
+      ? `Source-backed evidence does not support a new long (aggregate score ${evidence.score}).`
+      : evidence.confidence < 0.45
+        ? `Evidence confidence ${(evidence.confidence * 100).toFixed(0)}% is below the 45% new-risk floor.`
+        : `Source-backed evidence supports a new long with aggregate score ${evidence.score} and ${(evidence.confidence * 100).toFixed(0)}% confidence.`,
+});
+
 export const buildEvidenceCoverageRequest = (
   market: string,
   now = Date.now(),
