@@ -1,4 +1,4 @@
-import type { EvidenceCoverageRequest } from '../../src/trading/evidenceCoverage';
+import type { EvidenceCoverageRequest, EvidenceRequestStatus } from '../../src/trading/evidenceCoverage';
 
 export interface StoredEvidenceCoverageRequest extends EvidenceCoverageRequest {
   runtimeId: string;
@@ -46,10 +46,7 @@ export class EvidenceCoverageRequestStore {
 
     const response = await fetch(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests?on_conflict=request_key`, {
       method: 'POST',
-      headers: this.headers({
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      }),
+      headers: this.headers({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify({
         request_key: request.requestKey,
         runtime_id: this.runtimeId,
@@ -65,6 +62,7 @@ export class EvidenceCoverageRequestStore {
         requested_at: new Date(request.requestedAt).toISOString(),
         required_by: new Date(request.requiredBy).toISOString(),
         execution_authority: false,
+        updated_at: new Date().toISOString(),
       }),
     });
     if (!response.ok) {
@@ -74,12 +72,47 @@ export class EvidenceCoverageRequestStore {
     return clone(stored);
   }
 
+  async updateStatus(
+    requestKey: string,
+    status: EvidenceRequestStatus,
+    options: { evidenceIds?: string[]; reason?: string; attemptedAt?: number } = {},
+  ) {
+    const attemptedAt = options.attemptedAt ?? Date.now();
+    const existing = this.memory.get(requestKey);
+    if (existing) {
+      const next: StoredEvidenceCoverageRequest = {
+        ...existing,
+        status,
+        reason: options.reason ?? existing.reason,
+        lastAttemptAt: attemptedAt,
+        fulfilledAt: status === 'FULFILLED' ? attemptedAt : existing.fulfilledAt,
+        evidenceIds: options.evidenceIds?.slice() ?? existing.evidenceIds.slice(),
+      };
+      this.memory.set(requestKey, next);
+    }
+
+    if (!this.configured) return;
+    const response = await fetch(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests?request_key=eq.${encodeURIComponent(requestKey)}`, {
+      method: 'PATCH',
+      headers: this.headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        status,
+        reason: options.reason,
+        last_attempt_at: new Date(attemptedAt).toISOString(),
+        fulfilled_at: status === 'FULFILLED' ? new Date(attemptedAt).toISOString() : undefined,
+        evidence_ids: options.evidenceIds,
+        updated_at: new Date(attemptedAt).toISOString(),
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Evidence coverage status update failed (${response.status}): ${body.slice(0, 300)}`);
+    }
+  }
+
   async list(limit = 100): Promise<StoredEvidenceCoverageRequest[]> {
     if (!this.configured) {
-      return Array.from(this.memory.values())
-        .sort((a, b) => b.requestedAt - a.requestedAt)
-        .slice(0, limit)
-        .map(clone);
+      return Array.from(this.memory.values()).sort((a, b) => b.requestedAt - a.requestedAt).slice(0, limit).map(clone);
     }
 
     const url = new URL(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests`);
