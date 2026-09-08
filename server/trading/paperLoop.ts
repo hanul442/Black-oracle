@@ -1,3 +1,4 @@
+import { getAssetDecisionPolicy } from '../../src/trading/assetPolicy';
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import { buildEvidenceCoverageRequest } from '../../src/trading/evidenceCoverage';
 import type { LiquiditySnapshot } from '../../src/trading/types';
@@ -182,6 +183,7 @@ export class PaperLoopController {
           if (!liquidity) liquidity = await getMarketLiquidity(market);
           const evidence = tradingEvidenceStore.aggregate(market);
           const externalEvidenceAvailable = evidence.activeCount > 0;
+          const policy = getAssetDecisionPolicy(market);
           const step = await paperTradingSession.step(
             market,
             externalEvidenceAvailable ? evidence.score : undefined,
@@ -191,11 +193,11 @@ export class PaperLoopController {
           );
 
           let coverageRequestKey: string | null = null;
-          if (step.technicalEntryCandidate && !externalEvidenceAvailable) {
+          if (policy.evidenceRequestOnGap && step.technicalEntryCandidate && !externalEvidenceAvailable) {
             const request = buildEvidenceCoverageRequest(market, Date.now(), {
               trigger: 'ENTRY_CANDIDATE',
               strategyId: step.strategyVersion,
-              reason: 'Technical, liquidity and confidence gates produced an actionable entry candidate, but no active source-backed evidence was available. Acquire evidence and re-evaluate; do not execute from this request.',
+              reason: `${policy.assetClass} policy requires source-backed evidence for new risk. Acquire evidence and re-evaluate; do not execute from this request.`,
             });
             await evidenceCoverageRequestStore.enqueue(request);
             coverageRequestKey = request.requestKey;
@@ -213,6 +215,11 @@ export class PaperLoopController {
             tradeMap: step.tradeMap,
             hasOpenPositionAfterStep,
           });
+          trace.reasons.push(
+            policy.evidenceRequiredForNewRisk
+              ? `${policy.assetClass}: evidence-required new-risk policy.`
+              : `${policy.assetClass}: technical-first policy; external evidence is optional context.`,
+          );
           if (coverageRequestKey) {
             trace.reasons.push(`Evidence coverage request ${coverageRequestKey} queued for NARS acquisition/re-analysis.`);
           }
