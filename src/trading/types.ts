@@ -247,7 +247,14 @@ export interface PaperPosition {
   openedAt: number;
   updatedAt: number;
   stopLossPrice: number | null;
+  /** Legacy compatibility alias for final take-profit. */
   takeProfitPrice: number | null;
+  initialQuantity?: number;
+  takeProfit1Price?: number | null;
+  takeProfit2Price?: number | null;
+  takeProfit1Fraction?: number;
+  takeProfit1Taken?: boolean;
+  protectionBasis?: 'STRUCTURE_ATR' | 'ATR' | null;
 }
 
 export interface MarkedPaperPosition extends PaperPosition {
@@ -312,6 +319,12 @@ export interface ExecutionDecision {
   confidence: number;
   stopLossPrice: number | null;
   takeProfitPrice: number | null;
+  takeProfit1Price?: number | null;
+  takeProfit2Price?: number | null;
+  takeProfit1Fraction?: number;
+  protectionBasis?: 'STRUCTURE_ATR' | 'ATR' | null;
+  positionSizingMode?: 'EQUAL_NOTIONAL_RISK_CAPPED' | 'FIXED_RISK_AT_STOP';
+  expectedLossAtStop?: number;
   riskDisposition: RiskDisposition;
   riskReasons: string[];
   reasons: string[];
@@ -325,6 +338,8 @@ export interface TradeMapSnapshot {
   stopLossPrice: number | null;
   takeProfit1Price: number | null;
   takeProfit2Price: number | null;
+  takeProfit1Fraction?: number | null;
+  takeProfit2Fraction?: number | null;
   riskReward1: number | null;
   riskReward2: number | null;
   expectedRiskPct: number | null;
