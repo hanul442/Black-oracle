@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Black Oracle">
+  <rect width="512" height="512" rx="118" fill="#05070A"/>
+  <circle cx="256" cy="256" r="128" fill="none" stroke="#43D9E6" stroke-opacity="0.32" stroke-width="8"/>
+  <circle cx="256" cy="256" r="69" fill="none" stroke="#43D9E6" stroke-opacity="0.18" stroke-width="5"/>
+  <circle cx="256" cy="256" r="21" fill="#43D9E6"/>
+  <path d="M256 64v59M256 389v59M64 256h59M389 256h59" stroke="#77818C" stroke-opacity="0.55" stroke-width="8" stroke-linecap="round"/>
+</svg>
