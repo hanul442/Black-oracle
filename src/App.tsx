@@ -16,10 +16,11 @@ import { CasesView } from './views/CasesView';
 import { CouncilView } from './views/CouncilView';
 import { LedgerView } from './views/LedgerView';
 import { ForecastOrbitView } from './views/ForecastOrbitView';
-import { WatchlistView } from './views/WatchlistView';
 import { ForecastView } from './views/ForecastView';
 import { HypothesisSummaryView } from './views/HypothesisSummaryView';
 import { SettingsView } from './views/SettingsView';
+import { StrategiesView } from './views/StrategiesView';
+import { UnifiedLogView } from './views/UnifiedLogView';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CheckCircle, Info, Search, XCircle } from 'lucide-react';
 
@@ -40,9 +41,7 @@ const AppContent: React.FC = () => {
   } = useAppContext() as any;
 
   const [localQuery, setLocalQuery] = useState('');
-  const [hasSeenTutorial, setHasSeenTutorial] = useState(() => {
-    return localStorage.getItem('oracle_tutorial_seen') === 'true';
-  });
+  const [hasSeenTutorial, setHasSeenTutorial] = useState(() => localStorage.getItem('oracle_tutorial_seen') === 'true');
 
   const completeTutorial = () => {
     setHasSeenTutorial(true);
@@ -63,10 +62,7 @@ const AppContent: React.FC = () => {
         });
         const data = await response.json();
         if (data.success && (data.count > 0 || data.mergedCount > 0)) {
-          addNotification(
-            `Oracle Field updated: ${data.count || 0} new evidence items, ${data.mergedCount || 0} merged nodes.`,
-            'success',
-          );
+          addNotification(`Oracle Field updated: ${data.count || 0} new evidence items, ${data.mergedCount || 0} merged nodes.`, 'success');
         }
       } catch {
         // Autonomous collection remains silent when the network is unavailable.
@@ -82,6 +78,7 @@ const AppContent: React.FC = () => {
 
   const isFieldView = currentView === 'oracle-field' || currentView === 'oracle-feed';
   const isOperationsView = currentView === 'operations';
+  const isCoreOversightView = currentView === 'strategies' || currentView === 'log';
 
   const renderView = () => {
     let view: React.ReactNode;
@@ -90,7 +87,14 @@ const AppContent: React.FC = () => {
         view = <LoginView />;
         break;
       case 'command':
+      case 'watchlist':
         view = <CommandCenterView />;
+        break;
+      case 'strategies':
+        view = <StrategiesView />;
+        break;
+      case 'log':
+        view = <UnifiedLogView />;
         break;
       case 'operations':
         view = <OperationsWithValidationView />;
@@ -106,9 +110,6 @@ const AppContent: React.FC = () => {
         break;
       case 'cases':
         view = <CasesView />;
-        break;
-      case 'watchlist':
-        view = <WatchlistView />;
         break;
       case 'forecast':
         view = <ForecastOrbitView />;
@@ -162,7 +163,7 @@ const AppContent: React.FC = () => {
 
         <main className="relative flex flex-1 overflow-hidden pb-[58px] lg:pb-0">
           <div className="relative h-full min-w-0 flex-1">{renderView()}</div>
-          {currentView !== 'watchlist' && !isFieldView && !isOperationsView && <DetailBottomSheet />}
+          {currentView !== 'watchlist' && !isFieldView && !isOperationsView && !isCoreOversightView && <DetailBottomSheet />}
 
           <AnimatePresence>
             {workflowQuery && (
@@ -215,7 +216,7 @@ const AppContent: React.FC = () => {
             </AnimatePresence>
           </div>
 
-          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && !isOperationsView && (
+          {currentView !== 'settings' && currentView !== 'login' && currentView !== 'watchlist' && !isFieldView && !isOperationsView && !isCoreOversightView && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
