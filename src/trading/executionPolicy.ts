@@ -22,6 +22,11 @@ export interface ExecutionPolicyInput {
   ledgerInSync?: boolean;
   duplicateOrderDetected?: boolean;
   newEntryAllowed?: boolean;
+  /**
+   * Applies only to NEW risk. Protective exits are evaluated before this gate and
+   * must never be blocked because external evidence is missing.
+   */
+  newRiskEvidenceAllowed?: boolean;
 }
 
 const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDisposition' | 'riskReasons'>): ExecutionDecision => ({
@@ -34,6 +39,7 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
   const { liquidity, multiTimeframe, oneHour, portfolio, position } = input;
   const currentPrice = liquidity.tradePrice;
 
+  // Existing-risk protection always has priority over evidence acquisition.
   if (position) {
     if (position.stopLossPrice && currentPrice <= position.stopLossPrice) {
       return withoutRiskEvaluation({
@@ -126,6 +132,22 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     });
   }
 
+  if (input.newRiskEvidenceAllowed === false) {
+    return withoutRiskEvaluation({
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: multiTimeframe.confidence,
+      stopLossPrice: null,
+      takeProfitPrice: null,
+      reasons: [
+        'Source-backed evidence coverage is missing for this otherwise-actionable entry candidate.',
+        'Black Oracle must request NARS coverage and re-analyze the candidate before new risk can be opened.',
+      ],
+    });
+  }
+
   const conviction = clamp((multiTimeframe.directionalScore - 20) / 50, 0.35, 1);
   const requestedNotional = portfolio.equity * DEFAULT_RISK_LIMITS.maxPositionPct * conviction * multiTimeframe.positionRiskMultiplier;
   const estimatedSlippageBps = Math.max(8, liquidity.spreadBps / 2 + 5);
@@ -171,7 +193,7 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     riskDisposition: 'APPROVE',
     riskReasons: risk.reasons.slice(),
     reasons: [
-      'Liquidity, multi-timeframe consensus, confidence, and deterministic risk gates all passed.',
+      'Liquidity, multi-timeframe consensus, source-backed evidence, and deterministic risk gates all passed.',
       `Initial stop uses ${Math.round(stopDistancePct * 10_000)} bps; take-profit is set at 2R.`,
     ],
   };
