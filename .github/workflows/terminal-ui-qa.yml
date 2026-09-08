@@ -1,0 +1,71 @@
+name: Black Oracle Terminal UI QA
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-ui-qa:
+    if: startsWith(github.event.pull_request.head.ref, 'sprint/5r-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start loopback-only development server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > /tmp/black-oracle-terminal-qa.log 2>&1 &
+          echo $! > /tmp/black-oracle-terminal-qa.pid
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/black-oracle-terminal-qa.log >&2 || true
+          exit 1
+
+      - name: Run desktop and mobile operator QA
+        env:
+          LOCAL_QA_URL: http://127.0.0.1:3000
+        run: node scripts/localOperatorQa.mjs
+
+      - name: Stop local development server
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/black-oracle-terminal-qa.pid ]]; then
+            kill "$(cat /tmp/black-oracle-terminal-qa.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload terminal QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: black-oracle-terminal-ui-qa-${{ github.event.pull_request.head.sha }}
+          path: |
+            artifacts/local-operator-qa
+            /tmp/black-oracle-terminal-qa.log
+          if-no-files-found: warn
+          retention-days: 14

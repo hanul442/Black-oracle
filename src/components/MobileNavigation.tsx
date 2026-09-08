@@ -1,49 +1,38 @@
 import React from 'react';
-import { Activity, FlaskConical, ScrollText, WalletCards } from 'lucide-react';
-import { motion } from 'motion/react';
 import { useAppContext } from '../store';
 
 const items = [
-  { id: 'operations', label: 'MONITOR', icon: Activity },
-  { id: 'cases', label: 'POSITIONS', icon: WalletCards },
-  { id: 'ledger', label: 'AUDIT', icon: ScrollText },
-  { id: 'lab', label: 'LAB', icon: FlaskConical },
+  { id: 'operations', code: 'MON', label: 'MONITOR' },
+  { id: 'cases', code: 'POS', label: 'POSITIONS' },
+  { id: 'ledger', code: 'AUD', label: 'AUDIT' },
+  { id: 'lab', code: 'LAB', label: 'LAB' },
 ];
 
 export const MobileNavigation: React.FC = () => {
   const { currentView, setCurrentView } = useAppContext() as any;
 
   const isActive = (id: string) => {
-    if (id === 'operations') return currentView === 'operations' || currentView === 'command';
-    if (id === 'cases') return currentView === 'cases' || currentView === 'watchlist';
-    if (id === 'ledger') return currentView === 'ledger' || currentView === 'hypothesis-summary';
+    if (id === 'operations') return ['operations', 'command', 'oracle-field', 'oracle-feed'].includes(currentView);
+    if (id === 'cases') return ['cases', 'watchlist', 'forecast', 'council'].includes(currentView);
+    if (id === 'ledger') return ['ledger', 'hypothesis-summary'].includes(currentView);
     return currentView === id;
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-[85] border-t border-white/[0.07] bg-[#05070A]/96 px-1 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 backdrop-blur-2xl lg:hidden">
-      <div className="grid grid-cols-4">
+    <nav className="fixed bottom-0 left-0 right-0 z-[85] border-t border-[#202429] bg-[#070809] pb-[max(env(safe-area-inset-bottom),4px)] lg:hidden">
+      <div className="grid grid-cols-4 font-mono">
         {items.map((item) => {
           const active = isActive(item.id);
-          const Icon = item.icon;
           return (
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id)}
-              className="relative flex min-h-[50px] touch-manipulation flex-col items-center justify-center gap-1"
+              className={`min-h-[42px] border-r border-[#171b1f] px-1 py-1.5 text-center ${active ? 'bg-[#101113]' : 'bg-[#070809]'}`}
               aria-label={item.label}
               aria-current={active ? 'page' : undefined}
             >
-              {active && (
-                <motion.span
-                  layoutId="oracle-mobile-nav-active"
-                  className="absolute top-0 h-px w-9 bg-[#43D9E6]"
-                />
-              )}
-              <Icon className={`h-[18px] w-[18px] transition-colors ${active ? 'text-[#DCE2E8]' : 'text-[#515B65]'}`} />
-              <span className={`font-mono text-[6.5px] tracking-[0.07em] transition-colors ${active ? 'text-[#AEB7C0]' : 'text-[#56616B]'}`}>
-                {item.label}
-              </span>
+              <span className={`block text-[7px] font-semibold tracking-[0.08em] ${active ? 'text-[#f3a312]' : 'text-[#78828a]'}`}>{item.code}</span>
+              <span className="mt-0.5 block text-[5px] tracking-[0.06em] text-[#4f585f]">{item.label}</span>
             </button>
           );
         })}

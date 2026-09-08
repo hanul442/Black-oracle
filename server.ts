@@ -7,7 +7,9 @@ import searchOracleHandler from './api/search-oracle';
 import legacyRssShimHandler from './api/fetch-rss';
 import operatorLogHandler from './api/operator-log';
 import tradeCasesHandler from './api/trade-cases';
+import tradingGradeHandler from './api/trading-grade';
 import tradingReadinessHandler from './api/trading-readiness';
+import tradingResearchValidationHandler from './api/trading-research-validation';
 import tradingStatusHandler from './api/trading-status';
 import { registerTradingRoutes } from './server/trading/routes';
 
@@ -52,7 +54,9 @@ async function startServer() {
   if (!production) {
     app.get('/api/operator-log', (req, res) => void operatorLogHandler(req, res));
     app.get('/api/trade-cases', (req, res) => void tradeCasesHandler(req, res));
+    app.get('/api/trading-grade', (req, res) => void tradingGradeHandler(req, res));
     app.get('/api/trading-readiness', (req, res) => void tradingReadinessHandler(req, res));
+    app.get('/api/trading-research-validation', (req, res) => void tradingResearchValidationHandler(req, res));
     app.get('/api/trading-status', (req, res) => void tradingStatusHandler(req, res));
   }
 

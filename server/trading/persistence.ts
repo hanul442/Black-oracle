@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TradingEvidence } from '../../src/trading/evidence';
+import type { ExperimentLedgerEvent } from '../../src/trading/experimentLedger';
+import type { GradeSurveillanceCheckpoint } from '../../src/trading/gradeSurveillance';
 import type { TradeCaseRecord } from '../../src/trading/tradeCase';
 import type { PaperLoopCheckpoint } from './paperLoop';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
@@ -13,6 +15,9 @@ export interface TradingRuntimeCheckpoint {
   evidence: TradingEvidence[];
   loop: PaperLoopCheckpoint;
   tradeCases?: TradeCaseRecord[];
+  integrity?: unknown;
+  gradeSurveillance?: GradeSurveillanceCheckpoint;
+  experimentLedger?: ExperimentLedgerEvent[];
 }
 
 export type PersistenceBackend = 'json' | 'supabase';
@@ -51,6 +56,14 @@ export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => 
   }
   if (checkpoint.tradeCases !== undefined && !Array.isArray(checkpoint.tradeCases)) {
     throw new Error('Trading checkpoint tradeCases must be an array when present.');
+  }
+  if (checkpoint.gradeSurveillance !== undefined) {
+    if (!checkpoint.gradeSurveillance || checkpoint.gradeSurveillance.schemaVersion !== 1 || !Array.isArray(checkpoint.gradeSurveillance.history)) {
+      throw new Error('Trading checkpoint gradeSurveillance is invalid.');
+    }
+  }
+  if (checkpoint.experimentLedger !== undefined && !Array.isArray(checkpoint.experimentLedger)) {
+    throw new Error('Trading checkpoint experimentLedger must be an array when present.');
   }
   return checkpoint as TradingRuntimeCheckpoint;
 };
