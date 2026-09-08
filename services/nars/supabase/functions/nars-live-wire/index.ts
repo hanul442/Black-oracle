@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const VERSION = "4.2.1-evidence";
+const VERSION = "4.11.0-cutover-debt";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -52,6 +52,61 @@ Deno.serve(async (req: Request) => {
   const headers = { authorization: `Bearer ${serviceRole}`, apikey: serviceRole };
   const view = input.searchParams.get("view")?.trim() || "documents";
   const limit = parseLimit(input.searchParams.get("limit"));
+
+  if (view === "cutover_debt") {
+    const [readiness, debt] = await Promise.all([
+      restJson(supabaseUrl, headers, "nars_cutover_readiness_v1?select=*"),
+      restJson(
+        supabaseUrl,
+        headers,
+        "nars_cutover_evidence_debt_v1?select=*&order=gate_family.asc,debt_key.asc",
+      ),
+    ]);
+    if (!readiness.ok) return dbError("cutover_readiness_query_failed", readiness);
+    if (!debt.ok) return dbError("cutover_debt_query_failed", debt);
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      readiness: readiness.rows[0] ?? null,
+      count: debt.rows.length,
+      items: debt.rows,
+      automaticRetirement: false,
+    });
+  }
+
+  if (view === "cutover_samples") {
+    const gate = input.searchParams.get("gate")?.trim() || null;
+    const kind = input.searchParams.get("kind")?.trim() || null;
+    if (gate && !["pipeline", "calibration", "comparator", "evidence"].includes(gate)) {
+      return reply(400, { ok: false, error: "invalid_cutover_gate" });
+    }
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("order", "gate_family.asc,priority_rank.asc");
+    params.set("limit", String(limit));
+    if (gate) params.set("gate_family", "eq." + gate);
+    if (kind) params.set("sample_kind", "eq." + kind);
+    const result = await restJson(
+      supabaseUrl,
+      headers,
+      "nars_cutover_next_samples_v1?" + params.toString(),
+    );
+    if (!result.ok) return dbError("cutover_samples_query_failed", result);
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, gate, kind },
+      items: result.rows,
+      automaticRetirement: false,
+    });
+  }
 
   if (view === "metrics") {
     const [shadow, cluster] = await Promise.all([
