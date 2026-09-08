@@ -1,4 +1,5 @@
 import { UNIFIED_PAPER_INITIAL_EQUITY_KRW } from './config';
+import type { DynamicProtectionUpdate } from './protectionManager';
 import type { PaperFill, PaperPortfolioSnapshot, PaperPosition } from './types';
 
 export interface PaperPortfolioState {
@@ -60,14 +61,19 @@ export class PaperPortfolio {
     for (const rawPosition of state.positions) {
       if (!VALID_MARKET.test(rawPosition.market)) throw new Error(`Invalid restored paper market: ${rawPosition.market}`);
       if (!Number.isFinite(rawPosition.quantity) || rawPosition.quantity <= 0) throw new Error('Restored paper position quantity must be positive.');
+      const initialStop = rawPosition.initialStopLossPrice ?? rawPosition.stopLossPrice ?? null;
       const position: PaperPosition = {
         ...rawPosition,
         initialQuantity: rawPosition.initialQuantity ?? rawPosition.quantity,
+        initialStopLossPrice: initialStop,
+        initialRiskPerUnit: rawPosition.initialRiskPerUnit ?? (initialStop && initialStop < rawPosition.entryPrice ? rawPosition.entryPrice - initialStop : null),
+        highestPriceSinceEntry: Math.max(rawPosition.entryPrice, rawPosition.highestPriceSinceEntry ?? rawPosition.entryPrice),
         takeProfit1Price: rawPosition.takeProfit1Price ?? null,
         takeProfit2Price: rawPosition.takeProfit2Price ?? rawPosition.takeProfitPrice ?? null,
         takeProfit1Fraction: rawPosition.takeProfit1Fraction ?? 0.4,
         takeProfit1Taken: rawPosition.takeProfit1Taken ?? false,
         protectionBasis: rawPosition.protectionBasis ?? null,
+        protectionRevision: rawPosition.protectionRevision ?? 0,
       };
       portfolio.positions.set(position.market, position);
     }
@@ -120,11 +126,15 @@ export class PaperPortfolio {
         updatedAt: fill.timestamp,
         stopLossPrice: null,
         takeProfitPrice: null,
+        initialStopLossPrice: null,
+        initialRiskPerUnit: null,
+        highestPriceSinceEntry: fill.fillPrice,
         takeProfit1Price: null,
         takeProfit2Price: null,
         takeProfit1Fraction: 0.4,
         takeProfit1Taken: false,
         protectionBasis: null,
+        protectionRevision: 0,
       };
       this.positions.set(fill.market, position);
       return { ...position };
@@ -177,18 +187,48 @@ export class PaperPortfolio {
     if (plan.takeProfit1Price != null && !(plan.takeProfit1Price > position.entryPrice && plan.takeProfit1Price < plan.takeProfit2Price)) {
       throw new Error('TP1 must sit between entry and TP2.');
     }
+    const initialStopLossPrice = position.initialStopLossPrice ?? plan.stopLossPrice;
+    const initialRiskPerUnit = position.initialRiskPerUnit ?? Math.max(Number.EPSILON, position.entryPrice - initialStopLossPrice);
 
     this.positions.set(market, {
       ...position,
       stopLossPrice: plan.stopLossPrice,
       takeProfitPrice: plan.takeProfit2Price,
+      initialStopLossPrice,
+      initialRiskPerUnit,
+      highestPriceSinceEntry: Math.max(position.highestPriceSinceEntry ?? position.entryPrice, position.entryPrice),
       takeProfit1Price: plan.takeProfit1Price,
       takeProfit2Price: plan.takeProfit2Price,
       takeProfit1Fraction: Math.min(0.8, Math.max(0, plan.takeProfit1Fraction)),
-      takeProfit1Taken: false,
+      takeProfit1Taken: position.takeProfit1Taken ?? false,
       protectionBasis: plan.protectionBasis,
+      protectionRevision: position.protectionRevision ?? 0,
       updatedAt: timestamp,
     });
+  }
+
+  applyDynamicProtection(update: DynamicProtectionUpdate, timestamp = Date.now()) {
+    const position = this.positions.get(update.market);
+    if (!position) return null;
+    const nextStop = Math.max(position.stopLossPrice ?? 0, update.stopLossPrice);
+    const currentTp2 = position.takeProfit2Price ?? position.takeProfitPrice;
+    const nextTp2 = update.takeProfit2Price == null
+      ? currentTp2
+      : currentTp2 == null
+        ? update.takeProfit2Price
+        : Math.max(currentTp2, update.takeProfit2Price);
+
+    const next: PaperPosition = {
+      ...position,
+      highestPriceSinceEntry: Math.max(position.highestPriceSinceEntry ?? position.entryPrice, update.highestPriceSinceEntry),
+      stopLossPrice: nextStop,
+      takeProfitPrice: nextTp2,
+      takeProfit2Price: nextTp2,
+      protectionRevision: Math.max(position.protectionRevision ?? 0, update.protectionRevision),
+      updatedAt: timestamp,
+    };
+    this.positions.set(update.market, next);
+    return { ...next };
   }
 
   markTakeProfit1(market: string, timestamp = Date.now()) {
