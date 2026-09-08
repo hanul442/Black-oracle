@@ -43,7 +43,9 @@ export const loadActiveExternalEvidence = async (limit = 500): Promise<TradingEv
 export const syncAnalyzedNarsEvidence = async () => {
   const external = await loadActiveExternalEvidence();
   if (!external.length) return { imported: 0, total: tradingEvidenceStore.list().length };
-  const merged = new Map(tradingEvidenceStore.list(undefined, true).map((item) => [item.id, item]));
+  const merged = new Map<string, TradingEvidence>(
+    tradingEvidenceStore.list(undefined, true).map((item) => [item.id, item] as [string, TradingEvidence]),
+  );
   for (const item of external) merged.set(item.id, item);
   tradingEvidenceStore.replaceAll(Array.from(merged.values()));
   return { imported: external.length, total: tradingEvidenceStore.list().length };
