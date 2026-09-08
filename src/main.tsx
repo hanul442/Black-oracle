@@ -5,7 +5,17 @@ import './index.css';
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      const checkForUpdate = () => registration.update().catch(() => undefined);
+
+      // Installed PWAs can stay open for long periods. Check the app shell again
+      // when the user returns and periodically while it is running.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void checkForUpdate();
+      });
+      window.addEventListener('online', () => void checkForUpdate());
+      window.setInterval(() => void checkForUpdate(), 5 * 60 * 1000);
+    }).catch(() => {
       // PWA registration failure must never block the trading UI.
     });
   });
