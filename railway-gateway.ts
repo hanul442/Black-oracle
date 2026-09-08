@@ -3,6 +3,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import tradingStatusHandler from './api/trading-status';
 import activityBriefHandler from './api/activity-brief';
+import { tradingCheckpointStore } from './server/trading/persistence';
 
 const gatewayPort = Number(process.env.PORT || 3000);
 const internalPort = Number(process.env.INTERNAL_PORT || 3001);
@@ -21,6 +22,22 @@ child.on('exit', (code, signal) => {
 });
 
 const app = express();
+
+app.get('/health', async (_req, res) => {
+  try {
+    const checkpoint = await tradingCheckpointStore.load();
+    res.status(200).json({
+      ok: true,
+      tradingBackend: tradingCheckpointStore.status().backend,
+      tradingRuntimeAvailable: Boolean(checkpoint),
+      runtimeId: tradingCheckpointStore.status().runtimeId ?? null,
+      savedAt: checkpoint?.savedAt ?? null,
+    });
+  } catch (error) {
+    console.error('Railway trading healthcheck failed:', error);
+    res.status(503).json({ ok: false, tradingBackend: tradingCheckpointStore.status().backend });
+  }
+});
 
 app.get('/api/trading-status', (req, res) => {
   void tradingStatusHandler(req, res);
