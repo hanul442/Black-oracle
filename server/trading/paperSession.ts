@@ -5,6 +5,7 @@ import { buildMicrostructureChallenger } from '../../src/trading/microstructureC
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade, type PaperEntryAuditSnapshot } from '../../src/trading/performance';
+import { buildDynamicProtectionUpdate, type DynamicProtectionUpdate } from '../../src/trading/protectionManager';
 import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMicrostructure } from './microstructure';
@@ -156,8 +157,26 @@ export class PaperTradingSession {
     const challenger = buildMicrostructureChallenger(multiTimeframe, microstructure);
     this.markPrices.set(normalized, liquidity.tradePrice);
 
+    let position = this.portfolio.getPosition(normalized);
+    let protectionUpdate: DynamicProtectionUpdate | null = null;
+    if (position?.stopLossPrice) {
+      protectionUpdate = buildDynamicProtectionUpdate(position, multiTimeframe.frames.oneHour, liquidity.tradePrice);
+      if (protectionUpdate.changed) {
+        this.portfolio.applyDynamicProtection(protectionUpdate, multiTimeframe.asOf);
+        this.ledger.append('POSITION_UPDATED', {
+          market: normalized,
+          dynamicProtection: true,
+          currentPrice: liquidity.tradePrice,
+          stopLossPrice: protectionUpdate.stopLossPrice,
+          takeProfit2Price: protectionUpdate.takeProfit2Price,
+          protectionRevision: protectionUpdate.protectionRevision,
+          reasons: protectionUpdate.reasons,
+        });
+        position = this.portfolio.getPosition(normalized);
+      }
+    }
+
     const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
-    const position = this.portfolio.getPosition(normalized);
     const technicalEntryCandidate = !position
       && newEntryAllowed
       && liquidity.eligible
@@ -217,7 +236,6 @@ export class PaperTradingSession {
         takerImbalance: microstructure.takerImbalance,
         orderbookImbalanceTop5: microstructure.orderbookImbalanceTop5,
         orderbookImbalanceTop15: microstructure.orderbookImbalanceTop15,
-        orderbookImalanceTop30: undefined,
         orderbookImbalanceTop30: microstructure.orderbookImbalanceTop30,
         weightedOrderbookImbalance: microstructure.weightedOrderbookImbalance,
         pressureScore: microstructure.pressureScore,
@@ -227,7 +245,7 @@ export class PaperTradingSession {
         valueAreaLow: microstructure.profile.valueAreaLow,
         valueAreaHigh: microstructure.profile.valueAreaHigh,
         profileLocation: microstructure.profile.currentLocation,
-      } as any,
+      },
       challenger: { ...challenger, reasons: challenger.reasons.slice() },
       tradeMap: { ...tradeMap, reasons: tradeMap.reasons.slice() },
     };
@@ -244,6 +262,7 @@ export class PaperTradingSession {
       cycle: entryAudit.cycle,
       microstructure: entryAudit.microstructure,
       challenger: entryAudit.challenger,
+      protectionUpdate,
     });
     this.ledger.append('SIGNAL', {
       market: normalized,
@@ -260,6 +279,7 @@ export class PaperTradingSession {
       tradeMap,
       microstructure: entryAudit.microstructure,
       challenger: entryAudit.challenger,
+      protectionUpdate,
     });
 
     let fill: PaperFill | null = null;
@@ -398,13 +418,14 @@ export class PaperTradingSession {
       eventScore: eventScore ?? null,
       externalEvidenceAvailable,
       technicalEntryCandidate,
+      protectionUpdate,
       decision,
       tradeMap,
       fill,
       closedTrade,
       portfolio: after,
       performance,
-      ledgerTail: this.ledger.snapshot().slice(-8),
+      ledgerTail: this.ledger.snapshot().slice(-10),
     };
   }
 }
