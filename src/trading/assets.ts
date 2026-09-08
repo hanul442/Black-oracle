@@ -64,7 +64,7 @@ export const TRADING_INSTRUMENTS: TradingInstrument[] = [
   cryptoSpot('SOL', 'Solana', ['솔라나']),
   cryptoSpot('DOGE', 'Dogecoin', ['도지코인']),
   cryptoSpot('ADA', 'Cardano', ['카르다노']),
-  cryptoSpot('WLD', 'World', ['Worldcoin', 'World Network', 'WLD token', '월드코인']),
+  cryptoSpot('WLD', 'Worldcoin', ['World Network', 'WLD token', '월드코인']),
   cryptoSpot('USDT', 'Tether', ['Tether USD', '테더']),
 
   // Equity expansion begins as RESEARCH only. Trading authority remains disabled
