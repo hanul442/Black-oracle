@@ -14,6 +14,7 @@ export * from './multiTimeframe';
 export * from './paperBroker';
 export * from './paperPortfolio';
 export * from './performance';
+export * from './rating';
 export * from './regime';
 export * from './risk';
 export * from './signalFusion';
