@@ -11,13 +11,19 @@ export default async function handler(request: any, response: any) {
   }
 
   const configured = Boolean(resolveOpenAIKey());
-  const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.4-mini';
+  const councilModel = process.env.OPENAI_MODEL?.trim() || 'gpt-5.6-terra';
+  const activityModel = process.env.OPENAI_ACTIVITY_MODEL?.trim() || 'gpt-5.6-luna';
+  const fastModel = process.env.OPENAI_FAST_MODEL?.trim() || 'gpt-5.6-luna';
 
   return json(response, 200, {
     success: true,
     provider: 'openai',
     configured,
-    model,
+    models: {
+      council: councilModel,
+      activityBrief: activityModel,
+      legacyIntelligence: fastModel,
+    },
     councilMode: 'ADVISORY_ONLY',
     secretExposed: false,
   });
