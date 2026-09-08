@@ -1,5 +1,7 @@
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
+import { buildEvidenceCoverageRequest } from '../../src/trading/evidenceCoverage';
 import type { LiquiditySnapshot } from '../../src/trading/types';
+import { evidenceCoverageRequestStore } from './evidenceCoverageQueue';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperTradingSession } from './paperSession';
 import { buildKrwLiquidityUniverse, getMarketLiquidity } from './universe';
@@ -129,17 +131,13 @@ export class PaperLoopController {
   start(config: Partial<PaperLoopConfig> = {}) {
     const next: PaperLoopConfig = { ...this.config, ...config };
     validateConfig(next);
-
     this.config = next;
     if (this.timer) return this.status();
 
     this.timer = setInterval(() => {
-      void this.runCycle().catch((error) => {
-        console.error('Black Oracle paper loop cycle failed:', error);
-      });
+      void this.runCycle().catch((error) => console.error('Black Oracle paper loop cycle failed:', error));
     }, this.config.intervalMs);
     this.timer.unref?.();
-
     return this.status();
   }
 
@@ -153,7 +151,6 @@ export class PaperLoopController {
     if (this.cycleInProgress) throw new Error('A Paper loop cycle is already in progress.');
     this.cycleInProgress = true;
     const startedAt = Date.now();
-
     const result: PaperLoopCycleResult = {
       startedAt,
       finishedAt: startedAt,
@@ -184,12 +181,26 @@ export class PaperLoopController {
           let liquidity: LiquiditySnapshot | undefined = liquidityByMarket.get(market);
           if (!liquidity) liquidity = await getMarketLiquidity(market);
           const evidence = tradingEvidenceStore.aggregate(market);
+          const externalEvidenceAvailable = evidence.activeCount > 0;
           const step = await paperTradingSession.step(
             market,
-            evidence.activeCount > 0 ? evidence.score : undefined,
+            externalEvidenceAvailable ? evidence.score : undefined,
             liquidity,
             newEntryAllowed,
+            externalEvidenceAvailable,
           );
+
+          let coverageRequestKey: string | null = null;
+          if (step.technicalEntryCandidate && !externalEvidenceAvailable) {
+            const request = buildEvidenceCoverageRequest(market, Date.now(), {
+              trigger: 'ENTRY_CANDIDATE',
+              strategyId: step.strategyVersion,
+              reason: 'Technical, liquidity and confidence gates produced an actionable entry candidate, but no active source-backed evidence was available. Acquire evidence and re-evaluate; do not execute from this request.',
+            });
+            await evidenceCoverageRequestStore.enqueue(request);
+            coverageRequestKey = request.requestKey;
+          }
+
           const hasOpenPositionAfterStep = step.portfolio.positions.some((position) => position.market === market);
           const trace = buildDecisionTrace({
             timestamp: Date.now(),
@@ -202,6 +213,9 @@ export class PaperLoopController {
             tradeMap: step.tradeMap,
             hasOpenPositionAfterStep,
           });
+          if (coverageRequestKey) {
+            trace.reasons.push(`Evidence coverage request ${coverageRequestKey} queued for NARS acquisition/re-analysis.`);
+          }
 
           result.scanned += 1;
           if (trace.action === 'ENTER') result.entered += 1;
@@ -210,12 +224,8 @@ export class PaperLoopController {
           else result.noTrade += 1;
           result.markets.push({ ...trace, decision: trace.action });
         } catch (error) {
-          result.errors.push({
-            market,
-            error: error instanceof Error ? error.message : 'Unknown Paper loop error.',
-          });
+          result.errors.push({ market, error: error instanceof Error ? error.message : 'Unknown Paper loop error.' });
         }
-
         await sleep(350);
       }
 
