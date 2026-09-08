@@ -1,5 +1,6 @@
 import { getAssetDecisionPolicy } from './assetPolicy';
-import { DEFAULT_RISK_LIMITS } from './config';
+import { buildPositionSizingDecision } from './positionSizing';
+import { buildProtectionPlan } from './protectionPlan';
 import { evaluateRisk } from './risk';
 import type {
   ExecutionDecision,
@@ -9,8 +10,6 @@ import type {
   PaperPosition,
   TradingSnapshot,
 } from './types';
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export interface ExecutionPolicyInput {
   liquidity: LiquiditySnapshot;
@@ -47,24 +46,49 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
         reasons: ['Protective stop-loss was reached.'],
       });
     }
-    if (position.takeProfitPrice && currentPrice >= position.takeProfitPrice) {
+
+    const tp2 = position.takeProfit2Price ?? position.takeProfitPrice;
+    if (tp2 && currentPrice >= tp2) {
       return withoutRiskEvaluation({
         action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
-        confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
-        reasons: ['Protective take-profit was reached.'],
+        confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: tp2,
+        takeProfit1Price: position.takeProfit1Price ?? null,
+        takeProfit2Price: tp2,
+        reasons: ['Dynamic second take-profit target was reached; close the remaining position.'],
       });
     }
+
+    const tp1 = position.takeProfit1Price ?? null;
+    if (tp1 && !position.takeProfit1Taken && currentPrice >= tp1) {
+      const initialQuantity = position.initialQuantity ?? position.quantity;
+      const fraction = Math.min(0.8, Math.max(0.2, position.takeProfit1Fraction ?? 0.4));
+      const partialQuantity = Math.min(position.quantity, initialQuantity * fraction);
+      return withoutRiskEvaluation({
+        action: 'EXIT', side: 'SELL', notional: currentPrice * partialQuantity, quantity: partialQuantity,
+        confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: tp2,
+        takeProfit1Price: tp1,
+        takeProfit2Price: tp2,
+        takeProfit1Fraction: fraction,
+        reasons: [`Dynamic first take-profit target was reached; realize ${(fraction * 100).toFixed(0)}% and retain the remainder for TP2.`],
+      });
+    }
+
     if (multiTimeframe.action === 'SELL' || multiTimeframe.directionalScore <= -20) {
       return withoutRiskEvaluation({
         action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
-        confidence: multiTimeframe.confidence, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
+        confidence: multiTimeframe.confidence, stopLossPrice: position.stopLossPrice, takeProfitPrice: tp2,
+        takeProfit1Price: position.takeProfit1Price ?? null,
+        takeProfit2Price: tp2,
         reasons: ['Multi-timeframe direction reversed against the existing long spot position.'],
       });
     }
+
     return withoutRiskEvaluation({
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
-      stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
-      reasons: ['Existing position remains inside its protective levels and no exit signal is active.'],
+      stopLossPrice: position.stopLossPrice, takeProfitPrice: tp2,
+      takeProfit1Price: position.takeProfit1Price ?? null,
+      takeProfit2Price: tp2,
+      reasons: ['Existing position remains inside its dynamic protection plan and no exit signal is active.'],
     });
   }
 
@@ -105,12 +129,20 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     });
   }
 
-  const conviction = clamp((multiTimeframe.directionalScore - 20) / 50, 0.35, 1);
-  const requestedNotional = portfolio.equity * DEFAULT_RISK_LIMITS.maxPositionPct * conviction * multiTimeframe.positionRiskMultiplier;
+  const protection = buildProtectionPlan(oneHour, currentPrice);
+  const sizing = buildPositionSizingDecision({
+    equity: portfolio.equity,
+    cash: portfolio.cash,
+    stopDistancePct: protection.stopDistancePct,
+    mode: 'EQUAL_NOTIONAL_RISK_CAPPED',
+    targetNotionalPct: 0.10,
+    maxNotionalPct: 0.15,
+    maxRiskPerTradePct: 0.005,
+  });
   const estimatedSlippageBps = Math.max(8, liquidity.spreadBps / 2 + 5);
   const risk = evaluateRisk({
     equity: portfolio.equity,
-    requestedNotional,
+    requestedNotional: sizing.requestedNotional,
     dailyPnlPct: portfolio.dailyPnlPct,
     totalDrawdownPct: portfolio.drawdownPct,
     estimatedSlippageBps,
@@ -129,9 +161,6 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     };
   }
 
-  const stopDistancePct = clamp(oneHour.indicators.atrPct * 1.8, 0.012, 0.04);
-  const stopLossPrice = currentPrice * (1 - stopDistancePct);
-  const takeProfitPrice = currentPrice * (1 + stopDistancePct * 2);
   const evidenceReason = assetPolicy.evidenceRequiredForNewRisk
     ? 'Asset-specific source-backed evidence gate passed.'
     : input.newRiskEvidenceAllowed === false
@@ -144,14 +173,21 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     notional: risk.approvedNotional,
     quantity: 0,
     confidence: multiTimeframe.confidence,
-    stopLossPrice,
-    takeProfitPrice,
+    stopLossPrice: protection.stopLossPrice,
+    takeProfitPrice: protection.takeProfit2Price,
+    takeProfit1Price: protection.takeProfit1Price,
+    takeProfit2Price: protection.takeProfit2Price,
+    takeProfit1Fraction: protection.takeProfit1Fraction,
+    protectionBasis: protection.basis,
+    positionSizingMode: sizing.mode,
+    expectedLossAtStop: sizing.expectedLossAtStop,
     riskDisposition: 'APPROVE',
     riskReasons: risk.reasons.slice(),
     reasons: [
       'Liquidity, multi-timeframe technical consensus and deterministic risk gates passed.',
       evidenceReason,
-      `Initial stop uses ${Math.round(stopDistancePct * 10_000)} bps; take-profit is set at 2R.`,
+      ...sizing.reasons,
+      ...protection.reasons,
     ],
   };
 };
