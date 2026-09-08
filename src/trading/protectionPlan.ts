@@ -33,10 +33,14 @@ const regimeTargets = (regime: MarketRegime) => {
  */
 export const buildProtectionPlan = (oneHour: TradingSnapshot, entryPrice: number): ProtectionPlan => {
   if (!(entryPrice > 0)) throw new Error('Protection plan requires a positive entry price.');
-  const atrDistance = Math.max(entryPrice * 0.006, oneHour.indicators.atr14 * 1.6);
+  const atrPct = Number.isFinite(oneHour.indicators.atrPct) && oneHour.indicators.atrPct > 0 ? oneHour.indicators.atrPct : 0.01;
+  const atr14 = Number.isFinite(oneHour.indicators.atr14) && oneHour.indicators.atr14 > 0
+    ? oneHour.indicators.atr14
+    : entryPrice * atrPct;
+  const atrDistance = Math.max(entryPrice * 0.006, atr14 * 1.6);
   const structureLow = oneHour.structure?.lastSwingLow?.price ?? null;
   const structureDistance = structureLow && structureLow < entryPrice
-    ? entryPrice - structureLow + oneHour.indicators.atr14 * 0.18
+    ? entryPrice - structureLow + atr14 * 0.18
     : null;
 
   let rawDistance = atrDistance;
@@ -51,7 +55,6 @@ export const buildProtectionPlan = (oneHour: TradingSnapshot, entryPrice: number
   const stopLossPrice = entryPrice - riskPerUnit;
   const targets = regimeTargets(oneHour.regime.regime);
 
-  // If a confirmed prior swing-high gives a sensible first objective, respect it.
   const structureHigh = oneHour.structure?.lastSwingHigh?.price ?? null;
   const structureHighR = structureHigh && structureHigh > entryPrice
     ? (structureHigh - entryPrice) / riskPerUnit
