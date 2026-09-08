@@ -1,7 +1,9 @@
 import type { EvidenceAggregate } from './evidence';
 import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
+import type { EvidenceGateDecision } from './evidenceGate';
 import type { MicrostructureSnapshot } from './microstructure';
 import type { MicrostructureChallengerSnapshot } from './microstructureChallenger';
+import type { CrossTimeframeShadowConsensus, TechnicalFeatureShadowSnapshot } from './research/shadowFeatures';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
 import type {
   ExecutionDecision,
@@ -13,6 +15,16 @@ import type {
 } from './types';
 
 export type DecisionTraceAction = 'ENTER' | 'EXIT' | 'HOLD' | 'NO_TRADE';
+
+export interface DecisionTraceShadowResearch {
+  authority: 'OBSERVATION_ONLY';
+  frames: {
+    fourHour: TechnicalFeatureShadowSnapshot;
+    oneHour: TechnicalFeatureShadowSnapshot;
+    fifteenMinute: TechnicalFeatureShadowSnapshot;
+  };
+  consensus: CrossTimeframeShadowConsensus;
+}
 
 export interface DecisionTrace {
   timestamp: number;
@@ -27,8 +39,15 @@ export interface DecisionTrace {
   riskDisposition: RiskDisposition;
   eventScore: number | null;
   forecast: EvidenceForecast;
+  evidenceGate: EvidenceGateDecision | null;
   evidenceActiveCount: number;
+  evidenceScore: number;
+  evidenceConfidence: number;
+  evidenceBullishWeight: number;
+  evidenceBearishWeight: number;
   evidenceContradictionCount: number;
+  evidenceSourceDiversity: number;
+  evidenceFreshness: number;
   evidenceIds: string[];
   technicalEvidence: null | {
     rawSignalCount: number;
@@ -67,6 +86,7 @@ export interface DecisionTrace {
     profileLocation: 'ABOVE_VALUE' | 'IN_VALUE' | 'BELOW_VALUE' | 'AT_POC' | 'UNAVAILABLE';
   };
   challenger: MicrostructureChallengerSnapshot | null;
+  shadowResearch: DecisionTraceShadowResearch | null;
   tradeMap: TradeMapSnapshot | null;
   primaryReason: string;
   reasons: string[];
@@ -79,8 +99,10 @@ export interface DecisionTraceInput {
   decision: ExecutionDecision;
   multiTimeframe: MultiTimeframeSnapshot;
   evidence: EvidenceAggregate;
+  evidenceGate?: EvidenceGateDecision | null;
   microstructure?: MicrostructureSnapshot | null;
   challenger?: MicrostructureChallengerSnapshot | null;
+  shadowResearch?: DecisionTraceShadowResearch | null;
   tradeMap?: TradeMapSnapshot | null;
   hasOpenPositionAfterStep: boolean;
 }
@@ -93,6 +115,16 @@ export const classifyDecisionTraceAction = (
   return hasOpenPositionAfterStep ? 'HOLD' : 'NO_TRADE';
 };
 
+const cloneShadowResearch = (shadow?: DecisionTraceShadowResearch | null): DecisionTraceShadowResearch | null => shadow ? {
+  authority: 'OBSERVATION_ONLY',
+  frames: {
+    fourHour: structuredClone(shadow.frames.fourHour),
+    oneHour: structuredClone(shadow.frames.oneHour),
+    fifteenMinute: structuredClone(shadow.frames.fifteenMinute),
+  },
+  consensus: { ...shadow.consensus },
+} : null;
+
 export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => {
   const { decision, multiTimeframe, evidence } = input;
   const action = classifyDecisionTraceAction(decision.action, input.hasOpenPositionAfterStep);
@@ -104,6 +136,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const technical = oneHour.technicalEvidence;
   const structure = oneHour.structure;
   const micro = input.microstructure;
+  const gate = input.evidenceGate ?? null;
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -118,8 +151,15 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     riskDisposition: decision.riskDisposition,
     eventScore: evidence.activeCount > 0 ? evidence.score : null,
     forecast,
+    evidenceGate: gate ? { ...gate, evidenceIds: gate.evidenceIds.slice(), reasons: gate.reasons.slice() } : null,
     evidenceActiveCount: evidence.activeCount,
+    evidenceScore: evidence.score,
+    evidenceConfidence: evidence.confidence,
+    evidenceBullishWeight: evidence.bullishWeight,
+    evidenceBearishWeight: evidence.bearishWeight,
     evidenceContradictionCount: evidence.contradictionCount,
+    evidenceSourceDiversity: gate?.sourceDiversity ?? 0,
+    evidenceFreshness: gate?.freshness ?? 0,
     evidenceIds: evidence.evidenceIds.slice(),
     technicalEvidence: technical ? {
       rawSignalCount: technical.rawSignalCount,
@@ -162,6 +202,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
       profileLocation: micro.profile.currentLocation,
     } : null,
     challenger: input.challenger ? { ...input.challenger, reasons: input.challenger.reasons.slice() } : null,
+    shadowResearch: cloneShadowResearch(input.shadowResearch),
     tradeMap: input.tradeMap ? { ...input.tradeMap, reasons: input.tradeMap.reasons.slice() } : null,
     primaryReason,
     reasons: decision.reasons.slice(),

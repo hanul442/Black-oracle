@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { TradingEvidence } from '../../src/trading/evidence';
 import type { PaperLoopCheckpoint } from './paperLoop';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
+import type { ResearchStoreCheckpoint } from './researchStore';
 
 export interface TradingRuntimeCheckpoint {
   schemaVersion: 1;
@@ -10,6 +11,7 @@ export interface TradingRuntimeCheckpoint {
   reason: string;
   session: PaperTradingSessionCheckpoint;
   evidence: TradingEvidence[];
+  research?: ResearchStoreCheckpoint;
   loop: PaperLoopCheckpoint;
 }
 
@@ -46,6 +48,13 @@ export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => 
   if (typeof checkpoint.reason !== 'string') throw new Error('Trading checkpoint reason is invalid.');
   if (!checkpoint.session || !checkpoint.loop || !Array.isArray(checkpoint.evidence)) {
     throw new Error('Trading checkpoint payload is incomplete.');
+  }
+  if (checkpoint.research !== undefined) {
+    if (!checkpoint.research || checkpoint.research.schemaVersion !== 1
+      || !Array.isArray(checkpoint.research.observations)
+      || !Array.isArray(checkpoint.research.outcomes)) {
+      throw new Error('Trading checkpoint research payload is invalid.');
+    }
   }
   return checkpoint as TradingRuntimeCheckpoint;
 };

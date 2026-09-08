@@ -2,6 +2,7 @@ import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingCheckpointStore } from './persistence';
+import { researchFeatureStore } from './researchStore';
 
 let autosaveTimer: NodeJS.Timeout | null = null;
 let restoreSummary: {
@@ -22,6 +23,7 @@ export const buildRuntimeCheckpoint = (reason = 'manual') => ({
   reason,
   session: paperTradingSession.checkpoint(),
   evidence: tradingEvidenceStore.list(undefined, true),
+  research: researchFeatureStore.checkpoint(),
   loop: paperLoopController.checkpoint(),
 });
 
@@ -45,6 +47,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
 
   paperTradingSession.restore(checkpoint.session);
   tradingEvidenceStore.replaceAll(checkpoint.evidence);
+  researchFeatureStore.restore(checkpoint.research ?? null);
   paperLoopController.restore(checkpoint.loop, resumeLoop);
 
   restoreSummary = {
@@ -80,4 +83,5 @@ export const runtimePersistenceStatus = () => ({
   ...tradingCheckpointStore.status(),
   autosaveRunning: autosaveTimer !== null,
   restore: runtimeRestoreSummary(),
+  research: researchFeatureStore.summary(),
 });

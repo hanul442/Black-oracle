@@ -16,10 +16,16 @@ export default async function handler(request: any, response: any) {
       });
     }
 
-    const [{ tradingCheckpointStore }, { buildPaperPerformance }, { buildMonteCarloValidation }] = await Promise.all([
+    const [
+      { tradingCheckpointStore },
+      { buildPaperPerformance },
+      { buildMonteCarloValidation },
+      { ResearchFeatureStore },
+    ] = await Promise.all([
       import('../server/trading/persistence.js'),
       import('../src/trading/performance.js'),
       import('../src/trading/monteCarlo.js'),
+      import('../server/trading/researchStore.js'),
     ]);
 
     const checkpoint = await tradingCheckpointStore.load();
@@ -56,42 +62,59 @@ export default async function handler(request: any, response: any) {
     const validation = buildMonteCarloValidation(
       checkpoint.session.closedTrades.map((trade) => trade.returnPct),
     );
+    const researchStore = new ResearchFeatureStore();
+    researchStore.restore(checkpoint.research ?? null);
+    const research = researchStore.summary();
 
     const lastCycle = checkpoint.loop.lastCycle;
     const cycleAgeMs = lastCycle ? Math.max(0, now - lastCycle.finishedAt) : null;
     const staleThresholdMs = checkpoint.loop.config.intervalMs * 2.5;
     const stale = cycleAgeMs !== null ? cycleAgeMs > staleThresholdMs : true;
     const cycleErrors = lastCycle?.errors.length ?? 0;
+    const researchErrors = lastCycle?.researchErrors?.length ?? 0;
     const status = !lastCycle ? 'WAITING' : stale || cycleErrors > 0 ? 'DEGRADED' : 'OK';
 
-    const activeEvidence = checkpoint.evidence.filter((item) => item.expiresAt > now);
+    const activeEvidence = checkpoint.evidence.filter((item) => item.observedAt <= now && item.expiresAt > now);
     const expiredEvidence = checkpoint.evidence.length - activeEvidence.length;
 
-    const decisionTape = (lastCycle?.markets ?? []).map((item) => ({
-      timestamp: item.timestamp ?? lastCycle?.finishedAt ?? checkpoint.savedAt,
-      market: item.market,
-      decision: item.decision,
-      regime: item.regime ?? null,
-      regimeConfidence: item.regimeConfidence ?? null,
-      oracleTradeScore: item.oracleTradeScore,
-      confidence: item.confidence ?? null,
-      strategyDisposition: item.strategyDisposition ?? null,
-      riskDisposition: item.riskDisposition ?? 'NOT_EVALUATED',
-      eventScore: item.eventScore ?? null,
-      forecast: item.forecast ?? null,
-      evidenceActiveCount: item.evidenceActiveCount ?? 0,
-      evidenceContradictionCount: item.evidenceContradictionCount ?? 0,
-      evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
-      technicalEvidence: item.technicalEvidence ?? null,
-      structure: item.structure ?? null,
-      cycle: item.cycle ?? null,
-      microstructure: item.microstructure ?? null,
-      challenger: item.challenger ?? null,
-      tradeMap: item.tradeMap ?? null,
-      primaryReason: item.primaryReason ?? null,
-      reasons: Array.isArray(item.reasons) ? item.reasons : [],
-      riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
-    }));
+    const decisionTape = (lastCycle?.markets ?? []).map((item) => {
+      const gateStatus = item.evidenceGate?.status ?? (item.evidenceActiveCount > 0 ? 'WATCH' : 'NO_DATA');
+      const rawReason = item.primaryReason ?? 'Legacy checkpoint: detailed reason unavailable.';
+      return {
+        timestamp: item.timestamp ?? lastCycle?.finishedAt ?? checkpoint.savedAt,
+        market: item.market,
+        decision: item.decision,
+        regime: item.regime ?? null,
+        regimeConfidence: item.regimeConfidence ?? null,
+        oracleTradeScore: item.oracleTradeScore,
+        confidence: item.confidence ?? null,
+        strategyDisposition: item.strategyDisposition ?? null,
+        riskDisposition: item.riskDisposition ?? 'NOT_EVALUATED',
+        eventScore: item.eventScore ?? null,
+        forecast: item.forecast ?? null,
+        evidenceGate: item.evidenceGate ?? null,
+        evidenceGateStatus: gateStatus,
+        evidenceActiveCount: item.evidenceActiveCount ?? 0,
+        evidenceScore: item.evidenceScore ?? item.eventScore ?? 0,
+        evidenceConfidence: item.evidenceConfidence ?? 0,
+        evidenceBullishWeight: item.evidenceBullishWeight ?? 0,
+        evidenceBearishWeight: item.evidenceBearishWeight ?? 0,
+        evidenceContradictionCount: item.evidenceContradictionCount ?? 0,
+        evidenceSourceDiversity: item.evidenceSourceDiversity ?? 0,
+        evidenceFreshness: item.evidenceFreshness ?? 0,
+        evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+        technicalEvidence: item.technicalEvidence ?? null,
+        structure: item.structure ?? null,
+        cycle: item.cycle ?? null,
+        microstructure: item.microstructure ?? null,
+        challenger: item.challenger ?? null,
+        shadowResearch: item.shadowResearch ?? null,
+        tradeMap: item.tradeMap ?? null,
+        primaryReason: `EVIDENCE ${gateStatus} · ${rawReason}`,
+        reasons: Array.isArray(item.reasons) ? item.reasons : [],
+        riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
+      };
+    });
 
     const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
       id: trade.id,
@@ -141,6 +164,7 @@ export default async function handler(request: any, response: any) {
           held: lastCycle.held,
           noTrade: lastCycle.noTrade ?? 0,
           errors: lastCycle.errors,
+          researchErrors: lastCycle.researchErrors ?? [],
         } : null,
         ageMs: cycleAgeMs,
         stale,
@@ -157,6 +181,7 @@ export default async function handler(request: any, response: any) {
       },
       performance,
       validation,
+      research,
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
@@ -164,6 +189,9 @@ export default async function handler(request: any, response: any) {
         evidenceExpired: expiredEvidence,
         scannedMarketsLastCycle: lastCycle?.scanned ?? 0,
         lastCycleErrors: cycleErrors,
+        researchErrors,
+        researchObservations: research.observationCount,
+        researchOutcomes: research.outcomeCount,
       },
       equityCurve: portfolio.equityCurve.slice(-120),
       decisionTape,

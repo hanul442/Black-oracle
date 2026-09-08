@@ -223,6 +223,8 @@ export interface PaperOrderRequest {
   referencePrice: number;
   timestamp: number;
   strategyVersion: string;
+  /** Required by PaperBroker for BUY/new-risk orders; optional for SELL exits. */
+  evidenceIds?: string[];
 }
 
 export interface PaperFill {
@@ -331,19 +333,30 @@ export interface TradeMapSnapshot {
   reasons: string[];
 }
 
+export type TradingLedgerEventType =
+  | 'MARKET_SNAPSHOT'
+  | 'EVIDENCE_ATTACHED'
+  | 'EVIDENCE_GATE_PASS'
+  | 'EVIDENCE_GATE_REJECT'
+  | 'FORECAST_CREATED'
+  | 'STRATEGY_SELECTED'
+  | 'COUNCIL_DECISION'
+  | 'SIGNAL'
+  | 'RISK_PASS'
+  | 'RISK_REJECT'
+  | 'ORDER_SUBMITTED'
+  | 'ORDER_FILLED'
+  | 'POSITION_UPDATED'
+  | 'TRADE_CLOSED'
+  | 'RESEARCH_FEATURE_SNAPSHOT'
+  | 'PERFORMANCE_UPDATED'
+  | 'SYSTEM_HALT';
+
 export interface TradingLedgerEvent<T = Record<string, unknown>> {
   id: string;
   sequence: number;
   timestamp: number;
-  type:
-    | 'MARKET_SNAPSHOT'
-    | 'SIGNAL'
-    | 'RISK_PASS'
-    | 'RISK_REJECT'
-    | 'ORDER_SUBMITTED'
-    | 'ORDER_FILLED'
-    | 'POSITION_UPDATED'
-    | 'SYSTEM_HALT';
+  type: TradingLedgerEventType;
   strategyVersion: string;
   payload: T;
 }
