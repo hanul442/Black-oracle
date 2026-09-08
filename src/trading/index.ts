@@ -1,5 +1,7 @@
+export * from './assets';
 export * from './config';
 export * from './evidence';
+export * from './evidenceCoverage';
 export * from './executionPolicy';
 export * from './indicators';
 export * from './ledger';
