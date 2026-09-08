@@ -1,0 +1,36 @@
+name: NARS v4 CI
+
+on:
+  pull_request:
+    paths:
+      - 'services/nars/**'
+      - '.github/workflows/nars-ci.yml'
+  push:
+    branches:
+      - nars-v4-foundation
+    paths:
+      - 'services/nars/**'
+      - '.github/workflows/nars-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/nars
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/nars/package.json
+      - name: Install pinned dependencies
+        run: npm install --ignore-scripts
+      - name: Unit tests
+        run: npm test
+      - name: Type check
+        run: npm run check
