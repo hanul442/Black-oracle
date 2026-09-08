@@ -1,3 +1,4 @@
+import { getAssetDecisionPolicy } from './assetPolicy';
 import { DEFAULT_RISK_LIMITS } from './config';
 import { evaluateRisk } from './risk';
 import type {
@@ -22,10 +23,7 @@ export interface ExecutionPolicyInput {
   ledgerInSync?: boolean;
   duplicateOrderDetected?: boolean;
   newEntryAllowed?: boolean;
-  /**
-   * Applies only to NEW risk. Protective exits are evaluated before this gate and
-   * must never be blocked because external evidence is missing.
-   */
+  /** Applies only to NEW risk. Protective exits are evaluated before this gate. */
   newRiskEvidenceAllowed?: boolean;
 }
 
@@ -38,54 +36,34 @@ const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDispositio
 export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDecision => {
   const { liquidity, multiTimeframe, oneHour, portfolio, position } = input;
   const currentPrice = liquidity.tradePrice;
+  const assetPolicy = getAssetDecisionPolicy(oneHour.market);
 
   // Existing-risk protection always has priority over evidence acquisition.
   if (position) {
     if (position.stopLossPrice && currentPrice <= position.stopLossPrice) {
       return withoutRiskEvaluation({
-        action: 'EXIT',
-        side: 'SELL',
-        notional: currentPrice * position.quantity,
-        quantity: position.quantity,
-        confidence: 1,
-        stopLossPrice: position.stopLossPrice,
-        takeProfitPrice: position.takeProfitPrice,
+        action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
+        confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
         reasons: ['Protective stop-loss was reached.'],
       });
     }
     if (position.takeProfitPrice && currentPrice >= position.takeProfitPrice) {
       return withoutRiskEvaluation({
-        action: 'EXIT',
-        side: 'SELL',
-        notional: currentPrice * position.quantity,
-        quantity: position.quantity,
-        confidence: 1,
-        stopLossPrice: position.stopLossPrice,
-        takeProfitPrice: position.takeProfitPrice,
+        action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
+        confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
         reasons: ['Protective take-profit was reached.'],
       });
     }
     if (multiTimeframe.action === 'SELL' || multiTimeframe.directionalScore <= -20) {
       return withoutRiskEvaluation({
-        action: 'EXIT',
-        side: 'SELL',
-        notional: currentPrice * position.quantity,
-        quantity: position.quantity,
-        confidence: multiTimeframe.confidence,
-        stopLossPrice: position.stopLossPrice,
-        takeProfitPrice: position.takeProfitPrice,
+        action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
+        confidence: multiTimeframe.confidence, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
         reasons: ['Multi-timeframe direction reversed against the existing long spot position.'],
       });
     }
-
     return withoutRiskEvaluation({
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: multiTimeframe.confidence,
-      stopLossPrice: position.stopLossPrice,
-      takeProfitPrice: position.takeProfitPrice,
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
+      stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
       reasons: ['Existing position remains inside its protective levels and no exit signal is active.'],
     });
   }
@@ -93,57 +71,36 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
   if (input.newEntryAllowed === false) {
     const reason = 'Paper portfolio open-position limit rejected a new entry.';
     return {
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: multiTimeframe.confidence,
-      stopLossPrice: null,
-      takeProfitPrice: null,
-      riskDisposition: 'REJECT',
-      riskReasons: [reason],
-      reasons: [reason],
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
+      stopLossPrice: null, takeProfitPrice: null, riskDisposition: 'REJECT', riskReasons: [reason], reasons: [reason],
     };
   }
 
   if (!liquidity.eligible) {
     return withoutRiskEvaluation({
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: 0,
-      stopLossPrice: null,
-      takeProfitPrice: null,
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: 0,
+      stopLossPrice: null, takeProfitPrice: null,
       reasons: ['Liquidity gate rejected this market.', ...liquidity.reasons],
     });
   }
 
   if (multiTimeframe.action !== 'BUY' || multiTimeframe.confidence < 0.62) {
     return withoutRiskEvaluation({
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: multiTimeframe.confidence,
-      stopLossPrice: null,
-      takeProfitPrice: null,
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
+      stopLossPrice: null, takeProfitPrice: null,
       reasons: ['A new spot entry requires BUY consensus with at least 62% confidence.'],
     });
   }
 
-  if (input.newRiskEvidenceAllowed === false) {
+  // Crypto is technical-first and may open Paper risk without news/evidence.
+  // Equities remain evidence-first and must wait for source-backed context.
+  if (assetPolicy.evidenceRequiredForNewRisk && input.newRiskEvidenceAllowed === false) {
     return withoutRiskEvaluation({
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: multiTimeframe.confidence,
-      stopLossPrice: null,
-      takeProfitPrice: null,
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
+      stopLossPrice: null, takeProfitPrice: null,
       reasons: [
-        'Source-backed evidence coverage is missing for this otherwise-actionable entry candidate.',
-        'Black Oracle must request NARS coverage and re-analyze the candidate before new risk can be opened.',
+        `${assetPolicy.assetClass} policy requires source-backed evidence before new risk is opened.`,
+        'Request NARS coverage, analyze the returned evidence, then re-evaluate on a fresh market snapshot.',
       ],
     });
   }
@@ -165,15 +122,9 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
 
   if (risk.status === 'REJECT') {
     return {
-      action: 'HOLD',
-      side: null,
-      notional: 0,
-      quantity: 0,
-      confidence: multiTimeframe.confidence,
-      stopLossPrice: null,
-      takeProfitPrice: null,
-      riskDisposition: 'REJECT',
-      riskReasons: risk.reasons.slice(),
+      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
+      stopLossPrice: null, takeProfitPrice: null,
+      riskDisposition: 'REJECT', riskReasons: risk.reasons.slice(),
       reasons: ['Deterministic risk gate rejected the candidate.', ...risk.reasons],
     };
   }
@@ -181,6 +132,11 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
   const stopDistancePct = clamp(oneHour.indicators.atrPct * 1.8, 0.012, 0.04);
   const stopLossPrice = currentPrice * (1 - stopDistancePct);
   const takeProfitPrice = currentPrice * (1 + stopDistancePct * 2);
+  const evidenceReason = assetPolicy.evidenceRequiredForNewRisk
+    ? 'Asset-specific source-backed evidence gate passed.'
+    : input.newRiskEvidenceAllowed === false
+      ? 'Crypto technical-first policy allows Paper entry without external evidence; evidence remains supplementary.'
+      : 'External evidence is available as supplementary context under the crypto technical-first policy.';
 
   return {
     action: 'ENTER',
@@ -193,7 +149,8 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     riskDisposition: 'APPROVE',
     riskReasons: risk.reasons.slice(),
     reasons: [
-      'Liquidity, multi-timeframe consensus, source-backed evidence, and deterministic risk gates all passed.',
+      'Liquidity, multi-timeframe technical consensus and deterministic risk gates passed.',
+      evidenceReason,
       `Initial stop uses ${Math.round(stopDistancePct * 10_000)} bps; take-profit is set at 2R.`,
     ],
   };
