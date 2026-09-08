@@ -1,3 +1,4 @@
+import { UNIFIED_PAPER_INITIAL_EQUITY_KRW } from './config';
 import type { PaperFill, PaperPortfolioSnapshot, PaperPosition } from './types';
 
 export interface PaperPortfolioState {
@@ -12,6 +13,7 @@ export interface PaperPortfolioState {
 }
 
 const EQUITY_HEARTBEAT_MS = 60_000;
+const VALID_MARKET = /^(KRW-[A-Z0-9]+|KRX-\d{6})$/;
 
 const assertFiniteNonNegative = (value: number, label: string) => {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be finite and non-negative.`);
@@ -27,7 +29,7 @@ export class PaperPortfolio {
   private readonly positions = new Map<string, PaperPosition>();
   private readonly equityCurve: Array<{ timestamp: number; equity: number }> = [];
 
-  constructor(initialCash = 1_000_000) {
+  constructor(initialCash = UNIFIED_PAPER_INITIAL_EQUITY_KRW) {
     if (!Number.isFinite(initialCash) || initialCash <= 0) throw new Error('Initial paper cash must be positive and finite.');
     this.cash = initialCash;
     this.initialEquity = initialCash;
@@ -55,10 +57,19 @@ export class PaperPortfolio {
     portfolio.feesPaid = state.feesPaid;
     portfolio.peakEquity = Math.max(state.initialEquity, state.peakEquity);
 
-    for (const position of state.positions) {
-      if (!/^KRW-[A-Z0-9]+$/.test(position.market)) throw new Error(`Invalid restored paper market: ${position.market}`);
-      if (!Number.isFinite(position.quantity) || position.quantity <= 0) throw new Error('Restored paper position quantity must be positive.');
-      portfolio.positions.set(position.market, { ...position });
+    for (const rawPosition of state.positions) {
+      if (!VALID_MARKET.test(rawPosition.market)) throw new Error(`Invalid restored paper market: ${rawPosition.market}`);
+      if (!Number.isFinite(rawPosition.quantity) || rawPosition.quantity <= 0) throw new Error('Restored paper position quantity must be positive.');
+      const position: PaperPosition = {
+        ...rawPosition,
+        initialQuantity: rawPosition.initialQuantity ?? rawPosition.quantity,
+        takeProfit1Price: rawPosition.takeProfit1Price ?? null,
+        takeProfit2Price: rawPosition.takeProfit2Price ?? rawPosition.takeProfitPrice ?? null,
+        takeProfit1Fraction: rawPosition.takeProfit1Fraction ?? 0.4,
+        takeProfit1Taken: rawPosition.takeProfit1Taken ?? false,
+        protectionBasis: rawPosition.protectionBasis ?? null,
+      };
+      portfolio.positions.set(position.market, position);
     }
 
     const restoredCurve = state.equityCurve.slice(-2_000).map((point) => {
@@ -70,13 +81,9 @@ export class PaperPortfolio {
 
     for (const point of restoredCurve) {
       const lastPoint = portfolio.equityCurve[portfolio.equityCurve.length - 1];
-      if (lastPoint?.timestamp === point.timestamp) {
-        lastPoint.equity = point.equity;
-      } else {
-        portfolio.equityCurve.push(point);
-      }
+      if (lastPoint?.timestamp === point.timestamp) lastPoint.equity = point.equity;
+      else portfolio.equityCurve.push(point);
     }
-
     return portfolio;
   }
 
@@ -99,25 +106,31 @@ export class PaperPortfolio {
     if (fill.side === 'BUY') {
       const totalDebit = fill.notional + fill.fee;
       if (totalDebit > this.cash + 1e-9) throw new Error('Paper portfolio has insufficient cash for this buy fill.');
-      if (existing) throw new Error('Paper v0.1 does not pyramid into an existing position.');
+      if (existing) throw new Error('Paper Unified v0.2 does not pyramid into an existing position.');
 
       this.cash -= totalDebit;
       this.feesPaid += fill.fee;
       const position: PaperPosition = {
         market: fill.market,
         quantity: fill.quantity,
+        initialQuantity: fill.quantity,
         averageCost: totalDebit / fill.quantity,
         entryPrice: fill.fillPrice,
         openedAt: fill.timestamp,
         updatedAt: fill.timestamp,
         stopLossPrice: null,
         takeProfitPrice: null,
+        takeProfit1Price: null,
+        takeProfit2Price: null,
+        takeProfit1Fraction: 0.4,
+        takeProfit1Taken: false,
+        protectionBasis: null,
       };
       this.positions.set(fill.market, position);
       return { ...position };
     }
 
-    if (!existing) throw new Error('Paper v0.1 cannot sell without an existing spot position.');
+    if (!existing) throw new Error('Paper spot portfolio cannot sell without an existing position.');
     if (fill.quantity > existing.quantity + 1e-10) throw new Error('Paper sell quantity exceeds the current spot position.');
 
     const proceedsAfterFee = fill.notional - fill.fee;
@@ -132,26 +145,63 @@ export class PaperPortfolio {
       return null;
     }
 
-    const updated: PaperPosition = {
-      ...existing,
-      quantity: remainingQuantity,
-      updatedAt: fill.timestamp,
-    };
+    const updated: PaperPosition = { ...existing, quantity: remainingQuantity, updatedAt: fill.timestamp };
     this.positions.set(fill.market, updated);
     return { ...updated };
   }
 
   setProtection(market: string, stopLossPrice: number, takeProfitPrice: number, timestamp = Date.now()) {
+    this.setProtectionPlan(market, {
+      stopLossPrice,
+      takeProfit1Price: null,
+      takeProfit2Price: takeProfitPrice,
+      takeProfit1Fraction: 0,
+      protectionBasis: 'ATR',
+    }, timestamp);
+  }
+
+  setProtectionPlan(
+    market: string,
+    plan: {
+      stopLossPrice: number;
+      takeProfit1Price: number | null;
+      takeProfit2Price: number;
+      takeProfit1Fraction: number;
+      protectionBasis: 'STRUCTURE_ATR' | 'ATR';
+    },
+    timestamp = Date.now(),
+  ) {
     const position = this.positions.get(market);
     if (!position) throw new Error(`No paper position exists for ${market}.`);
-    if (!(stopLossPrice > 0 && takeProfitPrice > stopLossPrice)) throw new Error('Protection prices are invalid.');
+    if (!(plan.stopLossPrice > 0 && plan.takeProfit2Price > plan.stopLossPrice)) throw new Error('Protection prices are invalid.');
+    if (plan.takeProfit1Price != null && !(plan.takeProfit1Price > position.entryPrice && plan.takeProfit1Price < plan.takeProfit2Price)) {
+      throw new Error('TP1 must sit between entry and TP2.');
+    }
 
     this.positions.set(market, {
       ...position,
-      stopLossPrice,
-      takeProfitPrice,
+      stopLossPrice: plan.stopLossPrice,
+      takeProfitPrice: plan.takeProfit2Price,
+      takeProfit1Price: plan.takeProfit1Price,
+      takeProfit2Price: plan.takeProfit2Price,
+      takeProfit1Fraction: Math.min(0.8, Math.max(0, plan.takeProfit1Fraction)),
+      takeProfit1Taken: false,
+      protectionBasis: plan.protectionBasis,
       updatedAt: timestamp,
     });
+  }
+
+  markTakeProfit1(market: string, timestamp = Date.now()) {
+    const position = this.positions.get(market);
+    if (!position) throw new Error(`No paper position exists for ${market}.`);
+    this.positions.set(market, {
+      ...position,
+      takeProfit1Taken: true,
+      // After TP1, protect remaining capital at entry rather than returning a winner to a full loss.
+      stopLossPrice: Math.max(position.stopLossPrice ?? 0, position.entryPrice),
+      updatedAt: timestamp,
+    });
+    return this.getPosition(market);
   }
 
   getPosition(market: string): PaperPosition | null {
@@ -180,9 +230,8 @@ export class PaperPortfolio {
     const equityChanged = !lastPoint || Math.abs(lastPoint.equity - equity) > 1e-9;
     const heartbeatDue = !lastPoint || normalizedTimestamp - lastPoint.timestamp >= EQUITY_HEARTBEAT_MS;
 
-    if (!lastPoint) {
-      this.equityCurve.push({ timestamp: normalizedTimestamp, equity });
-    } else if (normalizedTimestamp === lastPoint.timestamp) {
+    if (!lastPoint) this.equityCurve.push({ timestamp: normalizedTimestamp, equity });
+    else if (normalizedTimestamp === lastPoint.timestamp) {
       if (equityChanged) lastPoint.equity = equity;
     } else if (equityChanged || heartbeatDue) {
       this.equityCurve.push({ timestamp: normalizedTimestamp, equity });
