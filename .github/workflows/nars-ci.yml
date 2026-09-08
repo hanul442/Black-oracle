@@ -17,6 +17,7 @@ on:
       - nars-v4-dynamic-connectors
       - nars-v4-official-feeds
       - nars-v4-calibration-cutover
+      - nars-v4-primary-evidence-acquisition
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'
