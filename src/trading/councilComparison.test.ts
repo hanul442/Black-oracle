@@ -21,7 +21,7 @@ const liquidity: LiquiditySnapshot = {
   warning: false, score: 90, eligible: true, reasons: [],
 };
 
-test('creates non-authoritative prospective council comparison observation', () => {
+test('creates non-authoritative prospective council comparison observation with reconstructable trace', () => {
   const challenger = buildCouncilV2Challenger({ market: 'KRW-BTC', evidence, multiTimeframe: mtf, liquidity, now: 1_000_000 });
   const observation = createCouncilComparisonObservation(challenger, 100, 60_000)!;
   assert.equal(observation.market, 'KRW-BTC');
@@ -30,18 +30,30 @@ test('creates non-authoritative prospective council comparison observation', () 
   assert.equal(observation.promotionAuthority, false);
   assert.ok(observation.v1.scenarioId);
   assert.ok(observation.v2.scenarioId);
+  assert.equal(observation.trace?.intelligencePackageId, challenger.base.id);
+  assert.equal(observation.trace?.councilRunId, challenger.base.council.id);
+  assert.equal(observation.trace?.scenarios.length, 4);
+  assert.equal(observation.trace?.v1.rankings.length, 4);
+  assert.equal(observation.trace?.v1.lensReviews.length, 16);
+  assert.equal(observation.trace?.v2.assessments.length, 4);
+  assert.equal(observation.trace?.v2.specialistReviews.length, 20);
+  assert.equal(observation.trace?.executionAuthority, false);
+  assert.equal(observation.trace?.promotionAuthority, false);
 });
 
-test('resolves outcome only after target timestamp and scores both councils', () => {
+test('resolves outcome only after target timestamp and preserves the original council trace', () => {
   const challenger = buildCouncilV2Challenger({ market: 'KRW-BTC', evidence, multiTimeframe: mtf, liquidity, now: 1_000_000 });
   const observation = createCouncilComparisonObservation(challenger, 100, 60_000)!;
   const unresolved = resolveCouncilComparisonObservations([observation], [{ timestamp: 1_030_000, prices: [['KRW-BTC', 110]] }]);
   assert.equal(unresolved[0].resolvedAt, null);
+  assert.equal(unresolved[0].trace?.councilRunId, observation.trace?.councilRunId);
   const resolved = resolveCouncilComparisonObservations([observation], [{ timestamp: 1_070_000, prices: [['KRW-BTC', 105]] }]);
   assert.equal(resolved[0].resolvedAt, 1_070_000);
   assert.equal(resolved[0].rawReturn, 0.05);
   assert.notEqual(resolved[0].v1DirectionalUtility, null);
   assert.notEqual(resolved[0].v2DirectionalUtility, null);
+  assert.equal(resolved[0].trace?.councilRunId, observation.trace?.councilRunId);
+  assert.notEqual(resolved[0].trace, observation.trace);
 });
 
 test('summary never grants promotion authority', () => {
