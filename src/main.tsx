@@ -3,7 +3,11 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+const canRegisterPwa =
+  'serviceWorker' in navigator &&
+  (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
+
+if (canRegisterPwa) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((registration) => {
       const checkForUpdate = () => registration.update().catch(() => undefined);
