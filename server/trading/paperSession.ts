@@ -1,4 +1,4 @@
-import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
+import { TRADING_STRATEGY_VERSION, UNIFIED_PAPER_INITIAL_EQUITY_KRW } from '../../src/trading/config';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { buildMicrostructureChallenger } from '../../src/trading/microstructureChallenger';
@@ -15,6 +15,12 @@ interface EntryMetadata {
   fill: PaperFill;
   oracleTradeScore: number;
   audit?: PaperEntryAuditSnapshot;
+  realizedQuantity?: number;
+  accumulatedGrossPnl?: number;
+  accumulatedNetPnl?: number;
+  accumulatedExitFees?: number;
+  weightedExitValue?: number;
+  partialExitCount?: number;
 }
 
 const cloneAudit = (audit?: PaperEntryAuditSnapshot): PaperEntryAuditSnapshot | undefined => audit ? {
@@ -26,6 +32,12 @@ const cloneAudit = (audit?: PaperEntryAuditSnapshot): PaperEntryAuditSnapshot | 
   challenger: audit.challenger ? { ...audit.challenger, reasons: audit.challenger.reasons.slice() } : null,
   tradeMap: { ...audit.tradeMap, reasons: audit.tradeMap.reasons.slice() },
 } : undefined;
+
+const cloneEntryMetadata = (metadata: EntryMetadata): EntryMetadata => ({
+  ...metadata,
+  fill: { ...metadata.fill },
+  audit: cloneAudit(metadata.audit),
+});
 
 export interface PaperTradingSessionCheckpoint {
   schemaVersion: 1;
@@ -45,7 +57,7 @@ export class PaperTradingSession {
   private readonly entryMetadata = new Map<string, EntryMetadata>();
   private readonly closedTrades: ClosedPaperTrade[] = [];
 
-  constructor(initialCash = 1_000_000) {
+  constructor(initialCash = UNIFIED_PAPER_INITIAL_EQUITY_KRW) {
     this.portfolio = new PaperPortfolio(initialCash);
     this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
     this.ledger = new TradingLedger();
@@ -56,11 +68,7 @@ export class PaperTradingSession {
       schemaVersion: 1,
       portfolio: this.portfolio.exportState(),
       markPrices: Array.from(this.markPrices.entries()),
-      entryMetadata: Array.from(this.entryMetadata.entries()).map(([market, metadata]) => [market, {
-        fill: { ...metadata.fill },
-        oracleTradeScore: metadata.oracleTradeScore,
-        audit: cloneAudit(metadata.audit),
-      }]),
+      entryMetadata: Array.from(this.entryMetadata.entries()).map(([market, metadata]) => [market, cloneEntryMetadata(metadata)]),
       closedTrades: this.closedTrades.map((trade) => ({ ...trade, entryAudit: cloneAudit(trade.entryAudit) })),
       ledger: this.ledger.snapshot().map((event) => ({ ...event, payload: { ...event.payload } })),
       processedOrderIds: this.broker.processedOrderIdsSnapshot(),
@@ -76,17 +84,13 @@ export class PaperTradingSession {
 
     this.markPrices.clear();
     for (const [market, price] of checkpoint.markPrices ?? []) {
-      if (/^KRW-[A-Z0-9]+$/.test(market) && Number.isFinite(price) && price > 0) this.markPrices.set(market, price);
+      if (/^(KRW-[A-Z0-9]+|KRX-\d{6})$/.test(market) && Number.isFinite(price) && price > 0) this.markPrices.set(market, price);
     }
 
     this.entryMetadata.clear();
     for (const [market, metadata] of checkpoint.entryMetadata ?? []) {
       if (!metadata?.fill || !Number.isFinite(metadata.oracleTradeScore)) continue;
-      this.entryMetadata.set(market, {
-        fill: { ...metadata.fill },
-        oracleTradeScore: metadata.oracleTradeScore,
-        audit: cloneAudit(metadata.audit),
-      });
+      this.entryMetadata.set(market, cloneEntryMetadata(metadata));
     }
 
     this.closedTrades.splice(
@@ -97,7 +101,7 @@ export class PaperTradingSession {
     return this.state();
   }
 
-  reset(initialCash = 1_000_000) {
+  reset(initialCash = UNIFIED_PAPER_INITIAL_EQUITY_KRW) {
     this.portfolio = new PaperPortfolio(initialCash);
     this.broker = new PaperBroker({ feeBps: 5, slippageBps: 8 });
     this.ledger = new TradingLedger();
@@ -213,6 +217,7 @@ export class PaperTradingSession {
         takerImbalance: microstructure.takerImbalance,
         orderbookImbalanceTop5: microstructure.orderbookImbalanceTop5,
         orderbookImbalanceTop15: microstructure.orderbookImbalanceTop15,
+        orderbookImalanceTop30: undefined,
         orderbookImbalanceTop30: microstructure.orderbookImbalanceTop30,
         weightedOrderbookImbalance: microstructure.weightedOrderbookImbalance,
         pressureScore: microstructure.pressureScore,
@@ -222,7 +227,7 @@ export class PaperTradingSession {
         valueAreaLow: microstructure.profile.valueAreaLow,
         valueAreaHigh: microstructure.profile.valueAreaHigh,
         profileLocation: microstructure.profile.currentLocation,
-      },
+      } as any,
       challenger: { ...challenger, reasons: challenger.reasons.slice() },
       tradeMap: { ...tradeMap, reasons: tradeMap.reasons.slice() },
     };
@@ -249,6 +254,8 @@ export class PaperTradingSession {
       confidence: decision.confidence,
       externalEvidenceAvailable,
       technicalEntryCandidate,
+      positionSizingMode: decision.positionSizingMode ?? null,
+      expectedLossAtStop: decision.expectedLossAtStop ?? null,
       technicalEvidence: entryAudit.technicalEvidence,
       tradeMap,
       microstructure: entryAudit.microstructure,
@@ -270,55 +277,105 @@ export class PaperTradingSession {
         strategyVersion: TRADING_STRATEGY_VERSION,
       });
       this.portfolio.applyFill(fill);
-      this.entryMetadata.set(normalized, { fill, oracleTradeScore: multiTimeframe.oracleTradeScore, audit: cloneAudit(entryAudit) });
-      if (decision.stopLossPrice && decision.takeProfitPrice) {
+      this.entryMetadata.set(normalized, {
+        fill,
+        oracleTradeScore: multiTimeframe.oracleTradeScore,
+        audit: cloneAudit(entryAudit),
+        realizedQuantity: 0,
+        accumulatedGrossPnl: 0,
+        accumulatedNetPnl: 0,
+        accumulatedExitFees: 0,
+        weightedExitValue: 0,
+        partialExitCount: 0,
+      });
+      if (decision.stopLossPrice && decision.takeProfit2Price) {
+        this.portfolio.setProtectionPlan(normalized, {
+          stopLossPrice: decision.stopLossPrice,
+          takeProfit1Price: decision.takeProfit1Price ?? null,
+          takeProfit2Price: decision.takeProfit2Price,
+          takeProfit1Fraction: decision.takeProfit1Fraction ?? 0.4,
+          protectionBasis: decision.protectionBasis ?? 'ATR',
+        }, fill.timestamp);
+      } else if (decision.stopLossPrice && decision.takeProfitPrice) {
         this.portfolio.setProtection(normalized, decision.stopLossPrice, decision.takeProfitPrice, fill.timestamp);
       }
       this.ledger.append('ORDER_FILLED', { ...fill });
       this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized) });
     } else if (decision.action === 'EXIT' && decision.side === 'SELL' && position) {
+      const exitQuantity = Math.min(position.quantity, decision.quantity > 0 ? decision.quantity : position.quantity);
       const orderId = `paper-${Date.now()}-${normalized}-sell`;
-      this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: position.quantity });
+      this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity: exitQuantity });
       fill = this.broker.executeMarketOrder({
         id: orderId,
         market: normalized,
         side: 'SELL',
-        quantity: position.quantity,
+        quantity: exitQuantity,
         referencePrice: liquidity.tradePrice,
         timestamp: Date.now(),
         strategyVersion: TRADING_STRATEGY_VERSION,
       });
 
       const entry = this.entryMetadata.get(normalized);
-      const costBasis = position.averageCost * fill.quantity;
-      const entryFee = entry?.fill.fee ?? Math.max(0, (position.averageCost - position.entryPrice) * fill.quantity);
-      const grossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity;
-      const netPnl = fill.notional - fill.fee - costBasis;
-      closedTrade = {
-        id: `trade-${normalized}-${position.openedAt}-${fill.timestamp}`,
-        market: normalized,
-        openedAt: position.openedAt,
-        closedAt: fill.timestamp,
-        entryPrice: position.entryPrice,
-        exitPrice: fill.fillPrice,
-        quantity: fill.quantity,
-        grossPnl,
-        fees: entryFee + fill.fee,
-        netPnl,
-        returnPct: costBasis > 0 ? netPnl / costBasis : 0,
-        exitReason: decision.reasons[0] ?? 'Exit policy triggered.',
-        strategyVersion: TRADING_STRATEGY_VERSION,
-        entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
-        exitOracleTradeScore: multiTimeframe.oracleTradeScore,
-        entryAudit: cloneAudit(entry?.audit),
-      };
+      const costBasisReleased = position.averageCost * fill.quantity;
+      const fillGrossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity;
+      const fillNetPnl = fill.notional - fill.fee - costBasisReleased;
+      const updatedMetadata: EntryMetadata | null = entry ? {
+        ...entry,
+        realizedQuantity: (entry.realizedQuantity ?? 0) + fill.quantity,
+        accumulatedGrossPnl: (entry.accumulatedGrossPnl ?? 0) + fillGrossPnl,
+        accumulatedNetPnl: (entry.accumulatedNetPnl ?? 0) + fillNetPnl,
+        accumulatedExitFees: (entry.accumulatedExitFees ?? 0) + fill.fee,
+        weightedExitValue: (entry.weightedExitValue ?? 0) + fill.fillPrice * fill.quantity,
+        partialExitCount: (entry.partialExitCount ?? 0) + (fill.quantity < position.quantity - 1e-10 ? 1 : 0),
+      } : null;
 
-      this.portfolio.applyFill(fill);
-      this.entryMetadata.delete(normalized);
-      this.closedTrades.push(closedTrade);
-      if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
-      this.ledger.append('ORDER_FILLED', { ...fill });
-      this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
+      const remainingPosition = this.portfolio.applyFill(fill);
+      const isPartial = remainingPosition !== null;
+      const hitTp1 = isPartial
+        && position.takeProfit1Price != null
+        && !position.takeProfit1Taken
+        && liquidity.tradePrice >= position.takeProfit1Price;
+
+      if (isPartial) {
+        if (updatedMetadata) this.entryMetadata.set(normalized, updatedMetadata);
+        if (hitTp1) this.portfolio.markTakeProfit1(normalized, fill.timestamp);
+        this.ledger.append('ORDER_FILLED', { ...fill, partialExit: true, reason: decision.reasons[0] ?? 'Partial exit.' });
+        this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized), partialExit: true });
+      } else {
+        const totalQuantity = updatedMetadata?.realizedQuantity ?? fill.quantity;
+        const totalGrossPnl = updatedMetadata?.accumulatedGrossPnl ?? fillGrossPnl;
+        const totalNetPnl = updatedMetadata?.accumulatedNetPnl ?? fillNetPnl;
+        const exitFees = updatedMetadata?.accumulatedExitFees ?? fill.fee;
+        const weightedExitValue = updatedMetadata?.weightedExitValue ?? fill.fillPrice * fill.quantity;
+        const entryNotionalWithFee = entry ? entry.fill.notional + entry.fill.fee : position.averageCost * totalQuantity;
+        const weightedExitPrice = totalQuantity > 0 ? weightedExitValue / totalQuantity : fill.fillPrice;
+        closedTrade = {
+          id: `trade-${normalized}-${position.openedAt}-${fill.timestamp}`,
+          market: normalized,
+          openedAt: position.openedAt,
+          closedAt: fill.timestamp,
+          entryPrice: position.entryPrice,
+          exitPrice: weightedExitPrice,
+          quantity: totalQuantity,
+          grossPnl: totalGrossPnl,
+          fees: (entry?.fill.fee ?? 0) + exitFees,
+          netPnl: totalNetPnl,
+          returnPct: entryNotionalWithFee > 0 ? totalNetPnl / entryNotionalWithFee : 0,
+          exitReason: (updatedMetadata?.partialExitCount ?? 0) > 0
+            ? `Staged exit completed. Final reason: ${decision.reasons[0] ?? 'Exit policy triggered.'}`
+            : decision.reasons[0] ?? 'Exit policy triggered.',
+          strategyVersion: TRADING_STRATEGY_VERSION,
+          entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
+          exitOracleTradeScore: multiTimeframe.oracleTradeScore,
+          entryAudit: cloneAudit(entry?.audit),
+        };
+
+        this.entryMetadata.delete(normalized);
+        this.closedTrades.push(closedTrade);
+        if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
+        this.ledger.append('ORDER_FILLED', { ...fill, partialExit: false });
+        this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade });
+      }
     }
 
     const after = this.portfolio.snapshot(Object.fromEntries(this.markPrices), Date.now());
