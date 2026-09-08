@@ -250,11 +250,15 @@ export interface PaperPosition {
   /** Legacy compatibility alias for final take-profit. */
   takeProfitPrice: number | null;
   initialQuantity?: number;
+  initialStopLossPrice?: number | null;
+  initialRiskPerUnit?: number | null;
+  highestPriceSinceEntry?: number;
   takeProfit1Price?: number | null;
   takeProfit2Price?: number | null;
   takeProfit1Fraction?: number;
   takeProfit1Taken?: boolean;
   protectionBasis?: 'STRUCTURE_ATR' | 'ATR' | null;
+  protectionRevision?: number;
 }
 
 export interface MarkedPaperPosition extends PaperPosition {
