@@ -11,11 +11,10 @@ export interface DynamicProtectionUpdate {
   reasons: string[];
 }
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
 /**
  * Ratchets protection in the profitable direction only.
  * - stop-loss never moves lower for an existing long
+ * - a breached stop is never recalculated away; execution keeps the old stop
  * - TP1 is intentionally fixed for qualification comparability
  * - TP2 may extend only in a strong trend, with a hard cap in R units
  */
@@ -27,23 +26,39 @@ export const buildDynamicProtectionUpdate = (
   if (!(currentPrice > 0)) throw new Error('Dynamic protection requires a positive current price.');
   const initialStop = position.initialStopLossPrice ?? position.stopLossPrice ?? position.entryPrice * 0.98;
   const initialRisk = position.initialRiskPerUnit ?? Math.max(Number.EPSILON, position.entryPrice - initialStop);
-  const highest = Math.max(position.highestPriceSinceEntry ?? position.entryPrice, currentPrice);
   const currentStop = position.stopLossPrice ?? initialStop;
-  const reasons: string[] = [];
+  const priorHigh = position.highestPriceSinceEntry ?? position.entryPrice;
+  const highest = Math.max(priorHigh, currentPrice);
+  const currentTp2 = position.takeProfit2Price ?? position.takeProfitPrice ?? null;
 
+  if (currentPrice <= currentStop) {
+    return {
+      market: position.market,
+      currentPrice,
+      highestPriceSinceEntry: priorHigh,
+      stopLossPrice: currentStop,
+      takeProfit2Price: currentTp2,
+      protectionRevision: position.protectionRevision ?? 0,
+      changed: false,
+      reasons: ['Current price has reached/breached the existing stop; do not move the stop away. Execution policy must evaluate the protective exit.'],
+    };
+  }
+
+  const reasons: string[] = [];
   let candidateStop = currentStop;
-  const profitR = (currentPrice - position.entryPrice) / initialRisk;
   const highestR = (highest - position.entryPrice) / initialRisk;
 
   const swingLow = oneHour.structure?.lastSwingLow?.price ?? null;
+  const atr14 = Number.isFinite(oneHour.indicators.atr14) && oneHour.indicators.atr14 > 0
+    ? oneHour.indicators.atr14
+    : Math.max(Number.EPSILON, currentPrice * Math.max(0.001, oneHour.indicators.atrPct ?? 0.01));
   const structureTrail = swingLow && swingLow < currentPrice
-    ? swingLow - oneHour.indicators.atr14 * 0.12
+    ? swingLow - atr14 * 0.12
     : null;
   const atrMultiple = oneHour.regime.regime === 'STRONG_UPTREND' ? 1.8 : oneHour.regime.regime === 'UPTREND' ? 1.55 : 1.3;
-  const atrTrail = currentPrice - oneHour.indicators.atr14 * atrMultiple;
+  const atrTrail = currentPrice - atr14 * atrMultiple;
 
   if (highestR >= 0.75) {
-    // Once meaningful profit exists, remove most initial downside without choking the trade.
     candidateStop = Math.max(candidateStop, position.entryPrice - initialRisk * 0.15);
     reasons.push('Profit exceeded 0.75R; stop ratcheted close to breakeven.');
   }
@@ -57,11 +72,9 @@ export const buildDynamicProtectionUpdate = (
     reasons.push(`Runner mode active; stop trails ${atrMultiple.toFixed(2)} ATR and confirmed structure.`);
   }
 
-  // Never place a stop at/above current price; preserve a small execution buffer.
-  candidateStop = Math.min(candidateStop, currentPrice * 0.998);
-  candidateStop = Math.max(currentStop, candidateStop);
+  candidateStop = Math.max(currentStop, Math.min(candidateStop, currentPrice * 0.998));
 
-  let takeProfit2Price = position.takeProfit2Price ?? position.takeProfitPrice ?? null;
+  let takeProfit2Price = currentTp2;
   const strongTrend = oneHour.regime.regime === 'STRONG_UPTREND'
     && oneHour.momentum.directionalScore >= 35
     && oneHour.trend.directionalScore >= 45;
@@ -78,15 +91,16 @@ export const buildDynamicProtectionUpdate = (
     reasons.push('No TP2 extension: trend persistence is insufficient.');
   }
 
-  const changed = candidateStop > currentStop + Number.EPSILON
-    || (takeProfit2Price != null && takeProfit2Price > (position.takeProfit2Price ?? position.takeProfitPrice ?? 0) + Number.EPSILON)
-    || highest > (position.highestPriceSinceEntry ?? position.entryPrice);
+  const stopChanged = candidateStop > currentStop + Number.EPSILON;
+  const tpChanged = takeProfit2Price != null && takeProfit2Price > (currentTp2 ?? 0) + Number.EPSILON;
+  const highChanged = highest > priorHigh + Number.EPSILON;
+  const changed = stopChanged || tpChanged || highChanged;
 
   return {
     market: position.market,
     currentPrice,
     highestPriceSinceEntry: highest,
-    stopLossPrice: clamp(candidateStop, initialStop, currentPrice * 0.998),
+    stopLossPrice: candidateStop,
     takeProfit2Price,
     protectionRevision: (position.protectionRevision ?? 0) + (changed ? 1 : 0),
     changed,
