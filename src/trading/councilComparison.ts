@@ -1,4 +1,5 @@
 import type { CouncilV2ChallengerPackage } from './councilV2.ts';
+import { retainLatestCouncilTracePerMarket } from './councilTraceRetention.ts';
 import type { CouncilScenarioDisposition, TradingScenarioBranch } from './intelligencePipeline.ts';
 import type { MarketPriceSnapshot } from './marketHistory.ts';
 
@@ -287,7 +288,7 @@ export const resolveCouncilComparisonObservations = (
   history: MarketPriceSnapshot[],
 ): CouncilComparisonObservation[] => {
   const orderedHistory = history.slice().sort((a, b) => a.timestamp - b.timestamp);
-  return observations.map((item) => {
+  const resolved = observations.map((item) => {
     if (item.resolvedAt != null) return cloneObservation(item);
     const target = firstTarget(orderedHistory, item.market, item.targetTimestamp);
     if (!target) return cloneObservation(item);
@@ -305,6 +306,7 @@ export const resolveCouncilComparisonObservations = (
       v2Favorable: v2Utility > 0,
     };
   });
+  return retainLatestCouncilTracePerMarket(resolved);
 };
 
 const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
