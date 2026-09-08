@@ -13,6 +13,50 @@ export interface CouncilPredictionSnapshot {
   score: number;
 }
 
+export interface CouncilComparisonTrace {
+  intelligencePackageId: string;
+  scenarioSetId: string;
+  councilRunId: string;
+  generatedAt: number;
+  impact: {
+    disposition: CouncilV2ChallengerPackage['base']['impact']['disposition'];
+    direction: CouncilV2ChallengerPackage['base']['impact']['direction'];
+    materiality: number;
+    confidence: number;
+    evidenceIds: string[];
+    reasons: string[];
+  };
+  scenarios: Array<{
+    id: string;
+    label: TradingScenarioBranch['label'];
+    direction: TradingScenarioBranch['direction'];
+    probability: number;
+    confidence: number;
+    thesis: string;
+    triggerConditions: string[];
+    invalidationConditions: string[];
+    watchItems: string[];
+    evidenceIds: string[];
+  }>;
+  v1: {
+    recommendedScenarioId: string | null;
+    rankings: CouncilV2ChallengerPackage['base']['council']['rankings'];
+    lensReviews: CouncilV2ChallengerPackage['base']['council']['lensReviews'];
+    crossScenarioObservations: string[];
+    executionAuthority: false;
+  };
+  v2: {
+    protocolVersion: CouncilV2ChallengerPackage['challenger']['protocolVersion'];
+    recommendedScenarioId: string | null;
+    assessments: CouncilV2ChallengerPackage['challenger']['assessments'];
+    specialistReviews: CouncilV2ChallengerPackage['challenger']['specialistReviews'];
+    executionAuthority: false;
+    promotionAuthority: false;
+  };
+  executionAuthority: false;
+  promotionAuthority: false;
+}
+
 export interface CouncilComparisonObservation {
   id: string;
   market: string;
@@ -21,6 +65,7 @@ export interface CouncilComparisonObservation {
   anchorPrice: number;
   v1: CouncilPredictionSnapshot;
   v2: CouncilPredictionSnapshot;
+  trace?: CouncilComparisonTrace;
   resolvedAt: number | null;
   targetPrice: number | null;
   rawReturn: number | null;
@@ -75,6 +120,118 @@ const predictionFrom = (
   score: clamp01(score),
 });
 
+const buildTrace = (value: CouncilV2ChallengerPackage): CouncilComparisonTrace => ({
+  intelligencePackageId: value.base.id,
+  scenarioSetId: value.base.scenarios.id,
+  councilRunId: value.base.council.id,
+  generatedAt: value.base.generatedAt,
+  impact: {
+    disposition: value.base.impact.disposition,
+    direction: value.base.impact.direction,
+    materiality: value.base.impact.materiality,
+    confidence: value.base.impact.confidence,
+    evidenceIds: value.base.impact.evidenceIds.slice(),
+    reasons: value.base.impact.reasons.slice(),
+  },
+  scenarios: value.base.scenarios.branches.map((branch) => ({
+    id: branch.id,
+    label: branch.label,
+    direction: branch.direction,
+    probability: branch.probability,
+    confidence: branch.confidence,
+    thesis: branch.thesis,
+    triggerConditions: branch.triggerConditions.slice(),
+    invalidationConditions: branch.invalidationConditions.slice(),
+    watchItems: branch.watchItems.slice(),
+    evidenceIds: branch.evidenceIds.slice(),
+  })),
+  v1: {
+    recommendedScenarioId: value.base.council.recommendedScenarioId,
+    rankings: value.base.council.rankings.map((item) => ({
+      ...item,
+      unresolvedUncertainty: item.unresolvedUncertainty.slice(),
+      preservedDissent: item.preservedDissent.slice(),
+    })),
+    lensReviews: value.base.council.lensReviews.map((item) => ({
+      ...item,
+      reasons: item.reasons.slice(),
+    })),
+    crossScenarioObservations: value.base.council.crossScenarioObservations.slice(),
+    executionAuthority: false,
+  },
+  v2: {
+    protocolVersion: value.challenger.protocolVersion,
+    recommendedScenarioId: value.challenger.recommendedScenarioId,
+    assessments: value.challenger.assessments.map((item) => ({
+      ...item,
+      preservedDissent: item.preservedDissent.slice(),
+      unresolvedUncertainty: item.unresolvedUncertainty.slice(),
+    })),
+    specialistReviews: value.challenger.specialistReviews.map((item) => ({
+      ...item,
+      reasons: item.reasons.slice(),
+      blindFirstPass: true,
+    })),
+    executionAuthority: false,
+    promotionAuthority: false,
+  },
+  executionAuthority: false,
+  promotionAuthority: false,
+});
+
+const cloneTrace = (trace: CouncilComparisonTrace | undefined): CouncilComparisonTrace | undefined => trace ? ({
+  ...trace,
+  impact: {
+    ...trace.impact,
+    evidenceIds: trace.impact.evidenceIds.slice(),
+    reasons: trace.impact.reasons.slice(),
+  },
+  scenarios: trace.scenarios.map((item) => ({
+    ...item,
+    triggerConditions: item.triggerConditions.slice(),
+    invalidationConditions: item.invalidationConditions.slice(),
+    watchItems: item.watchItems.slice(),
+    evidenceIds: item.evidenceIds.slice(),
+  })),
+  v1: {
+    ...trace.v1,
+    rankings: trace.v1.rankings.map((item) => ({
+      ...item,
+      unresolvedUncertainty: item.unresolvedUncertainty.slice(),
+      preservedDissent: item.preservedDissent.slice(),
+    })),
+    lensReviews: trace.v1.lensReviews.map((item) => ({ ...item, reasons: item.reasons.slice() })),
+    crossScenarioObservations: trace.v1.crossScenarioObservations.slice(),
+    executionAuthority: false,
+  },
+  v2: {
+    ...trace.v2,
+    assessments: trace.v2.assessments.map((item) => ({
+      ...item,
+      preservedDissent: item.preservedDissent.slice(),
+      unresolvedUncertainty: item.unresolvedUncertainty.slice(),
+    })),
+    specialistReviews: trace.v2.specialistReviews.map((item) => ({
+      ...item,
+      reasons: item.reasons.slice(),
+      blindFirstPass: true,
+    })),
+    executionAuthority: false,
+    promotionAuthority: false,
+  },
+  executionAuthority: false,
+  promotionAuthority: false,
+}) : undefined;
+
+const cloneObservation = (item: CouncilComparisonObservation): CouncilComparisonObservation => ({
+  ...item,
+  v1: { ...item.v1 },
+  v2: { ...item.v2 },
+  trace: cloneTrace(item.trace),
+  executionAuthority: false,
+  promotionAuthority: false,
+});
+
 export const createCouncilComparisonObservation = (
   value: CouncilV2ChallengerPackage,
   anchorPrice: number,
@@ -96,6 +253,7 @@ export const createCouncilComparisonObservation = (
     anchorPrice,
     v1: predictionFrom('COUNCIL_V1', v1Branch, v1Ranking.confidence, v1Ranking.disposition, v1Ranking.consensusScore),
     v2: predictionFrom('COUNCIL_V2_CHALLENGER', v2Branch, v2Assessment.confidence, v2Assessment.disposition, v2Assessment.synthesisScore),
+    trace: buildTrace(value),
     resolvedAt: null,
     targetPrice: null,
     rawReturn: null,
@@ -130,16 +288,14 @@ export const resolveCouncilComparisonObservations = (
 ): CouncilComparisonObservation[] => {
   const orderedHistory = history.slice().sort((a, b) => a.timestamp - b.timestamp);
   return observations.map((item) => {
-    if (item.resolvedAt != null) return { ...item, v1: { ...item.v1 }, v2: { ...item.v2 } };
+    if (item.resolvedAt != null) return cloneObservation(item);
     const target = firstTarget(orderedHistory, item.market, item.targetTimestamp);
-    if (!target) return { ...item, v1: { ...item.v1 }, v2: { ...item.v2 } };
+    if (!target) return cloneObservation(item);
     const rawReturn = target.price / item.anchorPrice - 1;
     const v1Utility = directionalUtility(item.v1.direction, rawReturn);
     const v2Utility = directionalUtility(item.v2.direction, rawReturn);
     return {
-      ...item,
-      v1: { ...item.v1 },
-      v2: { ...item.v2 },
+      ...cloneObservation(item),
       resolvedAt: target.timestamp,
       targetPrice: target.price,
       rawReturn: round(rawReturn),
