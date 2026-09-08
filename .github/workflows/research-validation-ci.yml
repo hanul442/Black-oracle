@@ -41,6 +41,9 @@ jobs:
       - name: Research-validation API bundle smoke
         run: npx esbuild api/trading-research-validation.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-research-validation.mjs
 
+      - name: Council trace API bundle smoke
+        run: npx esbuild api/trading-council-trace.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-council-trace.mjs
+
       - name: Paper-cycle bundle smoke
         run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
 
