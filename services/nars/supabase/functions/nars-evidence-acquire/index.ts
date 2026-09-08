@@ -7,7 +7,7 @@ const VERSION="4.9.1-evidence-acquisition-v2";
 const JSON_HEADERS={"content-type":"application/json; charset=utf-8"};
 const MAX_BYTES=2_000_000;
 const reply=(status:number,body:Record<string,unknown>)=>new Response(JSON.stringify(body),{status,headers:JSON_HEADERS});
-async function sha256Bytes(bytes:Uint8Array){const d=await crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");}
+async function sha256Bytes(bytes:Uint8Array){const stable=Uint8Array.from(bytes);const d=await crypto.subtle.digest("SHA-256",stable.buffer);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");}
 async function sha256Text(v:string){return sha256Bytes(new TextEncoder().encode(v));}
 async function fetchTimeout(url:string,ms:number,init:RequestInit={}){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{...init,signal:c.signal});}finally{clearTimeout(t);}}
 function hostAllowed(url:string,domains:string[]){try{const h=new URL(url).hostname.toLowerCase().replace(/^www\./,"");return domains.some(d=>{const x=d.toLowerCase().replace(/^www\./,"");return h===x||h.endsWith(`.${x}`);});}catch{return false;}}
