@@ -112,11 +112,21 @@ export const OperationsWithValidationView: React.FC = () => {
       }
     };
 
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    const refreshWhenOnline = () => void load();
+
     void load();
-    const interval = window.setInterval(() => void load(), 60_000);
+    const interval = window.setInterval(() => void load(), 30_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenOnline);
+
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenOnline);
     };
   }, []);
 
