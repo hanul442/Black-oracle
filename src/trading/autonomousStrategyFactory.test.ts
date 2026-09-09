@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runAutonomousStrategyFactoryResearch } from './autonomousStrategyFactory';
+import { clearStrategyFactoryGuidedSeeds, setStrategyFactoryGuidedSeeds } from './strategyFactory';
 import type { Candle } from './types';
 
 const syntheticCandles = (count = 900, blindShock = 0): Candle[] => {
@@ -45,6 +46,7 @@ const config = {
 } as const;
 
 test('Autonomous Strategy Factory is deterministic for identical historical input and seed', () => {
+  clearStrategyFactoryGuidedSeeds();
   const candles = syntheticCandles();
   const first = runAutonomousStrategyFactoryResearch(candles, config);
   const second = runAutonomousStrategyFactoryResearch(candles, config);
@@ -57,11 +59,33 @@ test('Autonomous Strategy Factory is deterministic for identical historical inpu
   assert.equal(first.candidateCount, 16);
 });
 
+test('AI-guided factor combinations are injected into generation one without gaining authority', () => {
+  setStrategyFactoryGuidedSeeds([
+    {
+      indicators: ['EMA_STACK', 'RSI14', 'BOLLINGER_PERCENT_B'],
+      reversionIndicators: ['RSI14', 'BOLLINGER_PERCENT_B'],
+    },
+  ]);
+  try {
+    const result = runAutonomousStrategyFactoryResearch(syntheticCandles(), { ...config, generations: 1 });
+    const guided = result.experiments.filter((item) =>
+      item.candidate.genome.indicators.join('|') === ['BOLLINGER_PERCENT_B', 'EMA_STACK', 'RSI14'].join('|'),
+    );
+    assert.ok(guided.length >= 1);
+    assert.ok((guided[0].candidate.genome.indicatorWeights.RSI14 ?? 0) < 0);
+    assert.ok((guided[0].candidate.genome.indicatorWeights.BOLLINGER_PERCENT_B ?? 0) < 0);
+    assert.equal(guided[0].candidate.genome.executionAuthority, false);
+    assert.equal(guided[0].candidate.genome.promotionAuthority, false);
+  } finally {
+    clearStrategyFactoryGuidedSeeds();
+  }
+});
+
 test('Locked Blind data cannot influence generation or parent-selection decisions', () => {
+  clearStrategyFactoryGuidedSeeds();
   const calmBlind = syntheticCandles(900, 0);
   const hostileBlind = syntheticCandles(900, -0.018);
 
-  // Both datasets are byte-for-byte identical before the locked final 20% holdout.
   assert.deepEqual(calmBlind.slice(0, 720), hostileBlind.slice(0, 720));
 
   const first = runAutonomousStrategyFactoryResearch(calmBlind, config);
@@ -71,13 +95,13 @@ test('Locked Blind data cannot influence generation or parent-selection decision
   assert.equal(second.blindStartIndex, 720);
   assert.deepEqual(first.generationGenomeIds, second.generationGenomeIds);
 
-  // The locked holdout is allowed to change final validation outcomes, but never the research population.
   const firstBlind = first.experiments.map((item) => item.validation.blind.expectancy);
   const secondBlind = second.experiments.map((item) => item.validation.blind.expectancy);
   assert.notDeepEqual(firstBlind, secondBlind);
 });
 
 test('Every autonomous candidate remains research-only and human-gated', () => {
+  clearStrategyFactoryGuidedSeeds();
   const result = runAutonomousStrategyFactoryResearch(syntheticCandles(), config);
   const allowed = new Set(['REJECT', 'INCUBATOR', 'CHALLENGER', 'CHAMPION_CANDIDATE']);
 
@@ -99,6 +123,7 @@ test('Every autonomous candidate remains research-only and human-gated', () => {
 });
 
 test('Cost, walk-forward and regime stress evidence is retained for every candidate', () => {
+  clearStrategyFactoryGuidedSeeds();
   const result = runAutonomousStrategyFactoryResearch(syntheticCandles(), config);
   const sample = result.experiments[0];
   assert.ok(sample);

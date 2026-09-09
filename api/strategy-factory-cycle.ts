@@ -58,9 +58,17 @@ export default async function handler(request: any, response: any) {
     const seed = explicitSeed
       ?? aiResearch?.guidedSeed
       ?? dailyDeterministicStrategySeed(market);
+    const guidedSeeds = aiResearch && !aiResearch.skipped
+      ? aiResearch.hypotheses.map((hypothesis) => ({
+          indicators: hypothesis.indicators,
+          reversionIndicators: hypothesis.interpretations
+            .filter((row) => row.mode === 'REVERSION')
+            .map((row) => row.indicator),
+        }))
+      : [];
 
-    // Scheduler defaults are deliberately bounded. Research can be autonomous without being allowed
-    // to consume unbounded compute or touch execution authority.
+    // Scheduler defaults are deliberately bounded. AI hypotheses occupy a bounded part of generation 1;
+    // the rest remains seeded systematic/random exploration. Research cannot touch execution authority.
     const run = await runtime.runCryptoStrategyFactory({
       market,
       unit: normalizedUnit,
@@ -72,6 +80,7 @@ export default async function handler(request: any, response: any) {
       walkForwardFolds: integer(body.walkForwardFolds, 4, 2, 6),
       seed,
       topN: integer(body.topN, 20, 1, 30),
+      guidedSeeds,
     });
 
     return json(response, 200, {
@@ -79,6 +88,7 @@ export default async function handler(request: any, response: any) {
       researchOnly: true,
       aiResearch,
       seedSource: explicitSeed != null ? 'EXPLICIT' : aiResearch && !aiResearch.skipped ? 'AI_GUIDED' : 'DAILY_DETERMINISTIC',
+      guidedFactorSetsInjected: guidedSeeds.length,
       automaticChampionPromotion: false,
       automaticLiveDeployment: false,
       run,

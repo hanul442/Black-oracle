@@ -22,6 +22,7 @@ export type AiStrategyResearchResult = {
   hypotheses: AiStrategyHypothesis[];
   responseId: string | null;
   skipped: boolean;
+  reused?: boolean;
   reason?: string;
 };
 
@@ -50,6 +51,36 @@ const stableSeed = (value: string) => {
     hash = Math.imul(hash, 16777619) >>> 0;
   }
   return (hash & 0x7fffffff) || 4_420_623;
+};
+
+const researchId = (market: string, date = new Date()) => `sf-ai-${market}-${date.toISOString().slice(0, 10)}`;
+
+const loadCachedDailyResearch = async (market: string): Promise<AiStrategyResearchResult | null> => {
+  const db = dbConfig();
+  if (!db) return null;
+  const id = researchId(market);
+  const query = new URL(`${db.base}/rest/v1/black_oracle_strategy_research_hypotheses`);
+  query.searchParams.set('id', `eq.${id}`);
+  query.searchParams.set('select', 'id,market,model,response_id,guided_seed,hypotheses,blind_metrics_exposed,execution_authority,promotion_authority');
+  query.searchParams.set('limit', '1');
+  const response = await fetch(query, { headers: db.headers, cache: 'no-store' });
+  if (!response.ok) return null;
+  const rows = await response.json() as any[];
+  const row = rows[0];
+  if (!row || row.blind_metrics_exposed !== false || row.execution_authority !== false || row.promotion_authority !== false) return null;
+  const hypotheses = Array.isArray(row.hypotheses) ? row.hypotheses as AiStrategyHypothesis[] : [];
+  if (!hypotheses.length) return null;
+  return {
+    id: String(row.id),
+    market: String(row.market),
+    model: String(row.model),
+    guidedSeed: Number(row.guided_seed) || dailyDeterministicStrategySeed(market),
+    hypotheses,
+    responseId: row.response_id ? String(row.response_id) : null,
+    skipped: false,
+    reused: true,
+    reason: 'Reused the persisted daily AI research packet; no additional model call was made.',
+  };
 };
 
 const loadDevelopmentResearchMemory = async (market: string) => {
@@ -134,12 +165,15 @@ export const dailyDeterministicStrategySeed = (market = 'KRW-BTC', date = new Da
 export const runAiStrategyHypothesisResearch = async (market = 'KRW-BTC'): Promise<AiStrategyResearchResult> => {
   const normalizedMarket = market.trim().toUpperCase();
   const fallbackSeed = dailyDeterministicStrategySeed(normalizedMarket);
+  const cached = await loadCachedDailyResearch(normalizedMarket).catch(() => null);
+  if (cached) return cached;
+
   if (!(await allowNonCriticalAiCall())) {
-    return { id: `sf-ai-${normalizedMarket}-${new Date().toISOString().slice(0, 10)}`, market: normalizedMarket, model: 'none', guidedSeed: fallbackSeed, hypotheses: [], responseId: null, skipped: true, reason: 'AI hard cap reached; deterministic daily seed will be used.' };
+    return { id: researchId(normalizedMarket), market: normalizedMarket, model: 'none', guidedSeed: fallbackSeed, hypotheses: [], responseId: null, skipped: true, reason: 'AI hard cap reached; deterministic daily seed will be used.' };
   }
   const apiKey = String(process.env.OPENAI_API_KEY ?? '').trim();
   if (!apiKey) {
-    return { id: `sf-ai-${normalizedMarket}-${new Date().toISOString().slice(0, 10)}`, market: normalizedMarket, model: 'none', guidedSeed: fallbackSeed, hypotheses: [], responseId: null, skipped: true, reason: 'OPENAI_API_KEY is unavailable; deterministic daily seed will be used.' };
+    return { id: researchId(normalizedMarket), market: normalizedMarket, model: 'none', guidedSeed: fallbackSeed, hypotheses: [], responseId: null, skipped: true, reason: 'OPENAI_API_KEY is unavailable; deterministic daily seed will be used.' };
   }
 
   const budget = await getAiBudgetStatus().catch(() => null);
@@ -197,13 +231,14 @@ export const runAiStrategyHypothesisResearch = async (market = 'KRW-BTC'): Promi
   const responseId = typeof payload?.id === 'string' ? payload.id : null;
   const guidedSeed = stableSeed(`${fallbackSeed}|${JSON.stringify(hypotheses.map((item) => [item.indicators, item.interpretations.map((row) => row.mode)]))}`);
   const result: AiStrategyResearchResult = {
-    id: `sf-ai-${normalizedMarket}-${new Date().toISOString().slice(0, 10)}`,
+    id: researchId(normalizedMarket),
     market: normalizedMarket,
     model,
     guidedSeed,
     hypotheses,
     responseId,
     skipped: false,
+    reused: false,
   };
 
   await recordOpenAIUsage(payload?.usage, {

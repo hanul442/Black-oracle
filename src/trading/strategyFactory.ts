@@ -9,7 +9,7 @@ export interface StrategyGenome {
   seed: number;
   assetClass: AssetClass;
   indicators: string[];
-  /** Signed normalized weights. Negative oscillator/location weights represent mean-reversion interpretations. */
+  /** Signed normalized weights. Negative weights represent mean-reversion interpretations. */
   indicatorWeights: Record<string, number>;
   entryThreshold: number;
   exitThreshold: number;
@@ -19,6 +19,11 @@ export interface StrategyGenome {
   correlationPenalty: number;
   executionAuthority: false;
   promotionAuthority: false;
+}
+
+export interface StrategyFactoryGuidedSeed {
+  indicators: string[];
+  reversionIndicators?: string[];
 }
 
 export interface StrategyFactoryConfig {
@@ -92,7 +97,20 @@ const normalizeWeights = (items: IndicatorDefinition[], random: () => number) =>
     const polarity = REVERSIBLE_INDICATORS.has(item.id) && random() < 0.45 ? -1 : 1;
     return magnitude * polarity;
   });
-  const sumAbs = raw.reduce((total, value) => total + Math.abs(value), 0);
+  const sumAbs = raw.reduce((total, value) => total + Math.abs(value), 0) || 1;
+  return Object.fromEntries(items.map((item, index) => [item.id, round(raw[index] / sumAbs, 6)]));
+};
+
+const normalizeGuidedWeights = (
+  items: IndicatorDefinition[],
+  reversionIndicators: Set<string>,
+  random: () => number,
+) => {
+  const raw = items.map((item) => {
+    const magnitude = 0.55 + random() * 0.45;
+    return reversionIndicators.has(item.id) ? -magnitude : magnitude;
+  });
+  const sumAbs = raw.reduce((total, value) => total + Math.abs(value), 0) || 1;
   return Object.fromEntries(items.map((item, index) => [item.id, round(raw[index] / sumAbs, 6)]));
 };
 
@@ -109,9 +127,85 @@ const calculateCorrelationPenalty = (selected: IndicatorDefinition[]) => {
 const stableGenomeId = (generation: number, seed: number, indicators: string[], ordinal: number) =>
   `SF-G${generation}-${seed.toString(36)}-${ordinal.toString().padStart(4, '0')}-${indicators.join('_')}`;
 
+let guidedSeeds: StrategyFactoryGuidedSeed[] = [];
+
+/**
+ * Research-only guidance for the next Strategy Factory run. The server runner
+ * owns the single-run lock and clears guidance in a finally block, preventing
+ * AI research from becoming persistent execution configuration.
+ */
+export const setStrategyFactoryGuidedSeeds = (seeds: StrategyFactoryGuidedSeed[]) => {
+  guidedSeeds = seeds.slice(0, 16).map((seed) => ({
+    indicators: [...new Set(seed.indicators.map(String))],
+    reversionIndicators: [...new Set((seed.reversionIndicators ?? []).map(String))],
+  }));
+};
+
+export const clearStrategyFactoryGuidedSeeds = () => {
+  guidedSeeds = [];
+};
+
+const addGuidedCandidates = (
+  unique: Map<string, StrategyGenome>,
+  context: {
+    seed: number;
+    generation: number;
+    assetClass: AssetClass;
+    candidateLimit: number;
+    minIndicators: number;
+    maxIndicators: number;
+    eligible: IndicatorDefinition[];
+    random: () => number;
+  },
+) => {
+  if (context.generation !== 1 || !guidedSeeds.length) return;
+  const eligibleById = new Map(context.eligible.map((item) => [item.id, item]));
+  for (const guidance of guidedSeeds) {
+    if (unique.size >= context.candidateLimit) break;
+    const picked = [...new Set(guidance.indicators)]
+      .map((id) => eligibleById.get(id))
+      .filter((item): item is IndicatorDefinition => Boolean(item))
+      .slice(0, context.maxIndicators)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (picked.length < context.minIndicators || new Set(picked.map((item) => item.family)).size < 2) continue;
+
+    const reversion = new Set((guidance.reversionIndicators ?? []).filter((id) => picked.some((item) => item.id === id)));
+    // Two bounded parameter variants per AI hypothesis when candidate capacity permits.
+    for (let variant = 0; variant < 2 && unique.size < context.candidateLimit; variant += 1) {
+      const entryThreshold = round(0.50 + context.random() * 0.18, 4);
+      const exitThreshold = round(0.24 + context.random() * 0.20, 4);
+      const stopAtrMultiple = round(1.15 + context.random() * 1.45, 3);
+      const takeProfitR = round(1.5 + context.random() * 2.1, 3);
+      const maxHoldingBars = 16 + Math.floor(context.random() * 72);
+      const weights = normalizeGuidedWeights(picked, reversion, context.random);
+      const signature = `GUIDED|${picked.map((item) => item.id).join('|')}|${entryThreshold}|${exitThreshold}|${stopAtrMultiple}|${takeProfitR}|${maxHoldingBars}|${Object.values(weights).join(',')}`;
+      if (unique.has(signature)) continue;
+      const ordinal = unique.size + 1;
+      unique.set(signature, {
+        id: stableGenomeId(context.generation, context.seed, picked.map((item) => item.id), ordinal),
+        generation: context.generation,
+        seed: context.seed,
+        assetClass: context.assetClass,
+        indicators: picked.map((item) => item.id),
+        indicatorWeights: weights,
+        entryThreshold,
+        exitThreshold,
+        maxHoldingBars,
+        stopAtrMultiple,
+        takeProfitR,
+        correlationPenalty: calculateCorrelationPenalty(picked),
+        executionAuthority: false,
+        promotionAuthority: false,
+      });
+    }
+  }
+};
+
 /**
  * Generates many reproducible strategy candidates. Randomness is seeded and is
  * used only for research/experimentation. It never changes Paper/live execution logic.
+ * AI-guided factor sets, when supplied, occupy only a bounded portion of generation 1;
+ * the remaining population is still systematic/random exploration.
  */
 export const generateStrategyFactoryCandidates = (config: StrategyFactoryConfig = {}): StrategyGenome[] => {
   const seed = Math.trunc(config.seed ?? 4420623);
@@ -123,6 +217,17 @@ export const generateStrategyFactoryCandidates = (config: StrategyFactoryConfig 
   const maxIndicators = Math.max(minIndicators, Math.min(eligible.length, Math.trunc(config.maxIndicators ?? 6)));
   const random = mulberry32(seed);
   const unique = new Map<string, StrategyGenome>();
+
+  addGuidedCandidates(unique, {
+    seed,
+    generation,
+    assetClass,
+    candidateLimit: candidates,
+    minIndicators,
+    maxIndicators,
+    eligible,
+    random,
+  });
 
   let attempts = 0;
   while (unique.size < candidates && attempts < candidates * 40) {
