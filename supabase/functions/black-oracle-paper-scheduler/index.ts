@@ -1,57 +1,75 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const RUNTIME_ID = "black-oracle-paper";
+const DEFAULT_RUNTIME_ID = "black-oracle-paper";
 const CONFIG_TABLE = "black_oracle_trading_scheduler_config";
 const AUTH_TABLE = "black_oracle_scheduler_auth";
-const RAILWAY_TARGET = "https://black-oracle-web-production.up.railway.app";
+const APPROVED_TARGETS: Record<string, string> = {
+  "black-oracle-paper": "https://black-oracle-web-production.up.railway.app",
+  "black-oracle-paper-vnext": "https://black-oracle-paper-vnext-production.up.railway.app",
+};
 
 const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: { "content-type": "application/json; charset=utf-8" },
 });
 
-type RequestMode = { action: "cycle" | "status"; targetBaseUrl?: string };
+type RequestMode = { action: "cycle" | "status"; runtimeId: string; targetBaseUrl?: string };
 
 const readMode = async (req: Request): Promise<RequestMode> => {
-  if (req.method !== "POST") return { action: "cycle" };
+  const url = new URL(req.url);
+  const queryRuntime = url.searchParams.get("runtime")?.trim() || "";
+  if (req.method !== "POST") return {
+    action: "cycle",
+    runtimeId: queryRuntime || DEFAULT_RUNTIME_ID,
+  };
   try {
-    const body = await req.json() as { action?: unknown; targetBaseUrl?: unknown };
-    if (body?.action === "status") return {
-      action: "status",
-      targetBaseUrl: typeof body.targetBaseUrl === "string" ? body.targetBaseUrl.trim() : undefined,
+    const body = await req.json() as { action?: unknown; runtimeId?: unknown; targetBaseUrl?: unknown };
+    return {
+      action: body?.action === "status" ? "status" : "cycle",
+      runtimeId: typeof body?.runtimeId === "string" && body.runtimeId.trim()
+        ? body.runtimeId.trim()
+        : queryRuntime || DEFAULT_RUNTIME_ID,
+      targetBaseUrl: typeof body?.targetBaseUrl === "string" ? body.targetBaseUrl.trim() : undefined,
     };
-  } catch {}
-  return { action: "cycle" };
+  } catch {
+    return { action: "cycle", runtimeId: queryRuntime || DEFAULT_RUNTIME_ID };
+  }
 };
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST" && req.method !== "GET") return json({ success: false, error: "Method not allowed." }, 405);
 
   const mode = await readMode(req);
+  const runtimeId = mode.runtimeId;
+  const approvedTarget = APPROVED_TARGETS[runtimeId];
+  if (!approvedTarget) return json({ success: false, runtimeId, error: "Unsupported Black Oracle Paper runtime." }, 400);
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) return json({ success: false, error: "Supabase server credentials are unavailable." }, 500);
+  if (!supabaseUrl || !serviceRoleKey) return json({ success: false, runtimeId, error: "Supabase server credentials are unavailable." }, 500);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: config, error: configError } = await admin.from(CONFIG_TABLE)
-    .select("runtime_id, enabled, target_base_url").eq("runtime_id", RUNTIME_ID).single();
-  if (configError) return json({ success: false, error: `Scheduler config read failed: ${configError.message}` }, 500);
-  if (mode.action === "cycle" && (!config.enabled || !config.target_base_url)) return json({ success: true, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
+    .select("runtime_id, enabled, target_base_url").eq("runtime_id", runtimeId).single();
+  if (configError) return json({ success: false, runtimeId, error: `Scheduler config read failed: ${configError.message}` }, 500);
+  if (mode.action === "cycle" && (!config.enabled || !config.target_base_url)) {
+    return json({ success: true, runtimeId, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
+  }
 
   const baseUrl = mode.action === "status" ? (mode.targetBaseUrl || config.target_base_url) : config.target_base_url;
-  if (!baseUrl) return json({ success: false, error: "Target URL is unset." }, 500);
+  if (!baseUrl) return json({ success: false, runtimeId, error: "Target URL is unset." }, 500);
 
   let target: URL;
-  try { target = new URL(baseUrl); } catch { return json({ success: false, error: "Configured Railway target URL is invalid." }, 500); }
+  try { target = new URL(baseUrl); } catch { return json({ success: false, runtimeId, error: "Configured Railway target URL is invalid." }, 500); }
   const normalizedBase = `${target.protocol}//${target.host}`;
-  if (target.protocol !== "https:" || normalizedBase !== RAILWAY_TARGET) {
-    return json({ success: false, error: "Configured target must be the approved Black Oracle Railway production deployment." }, 500);
+  if (target.protocol !== "https:" || normalizedBase !== approvedTarget) {
+    return json({ success: false, runtimeId, error: "Configured target does not match the approved Railway deployment for this runtime." }, 500);
   }
 
   const { data: auth, error: authError } = await admin.from(AUTH_TABLE)
-    .select("scheduler_token").eq("runtime_id", RUNTIME_ID).single();
-  if (authError || !auth?.scheduler_token) return json({ success: false, error: "Railway scheduler auth token is unavailable." }, 500);
+    .select("scheduler_token").eq("runtime_id", runtimeId).single();
+  if (authError || !auth?.scheduler_token) return json({ success: false, runtimeId, error: "Railway scheduler auth token is unavailable." }, 500);
   const bearer = String(auth.scheduler_token);
 
   target.pathname = mode.action === "status" ? "/api/trading-status" : "/api/trading-paper-cycle";
@@ -80,8 +98,8 @@ Deno.serve(async (req: Request) => {
   } finally { clearTimeout(timeout); }
 
   if (mode.action === "status") {
-    if (!downstreamOk) return json({ success: false, action: mode.action, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Trading status probe failed." }, 502);
-    return json({ success: true, action: mode.action, target: normalizedBase, downstreamStatus, data: downstreamBody });
+    if (!downstreamOk) return json({ success: false, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Trading status probe failed." }, 502);
+    return json({ success: true, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, data: downstreamBody });
   }
 
   const now = new Date().toISOString();
@@ -91,8 +109,8 @@ Deno.serve(async (req: Request) => {
     last_ok: downstreamOk,
     last_error: downstreamError,
     updated_at: now,
-  }).eq("runtime_id", RUNTIME_ID);
-  if (updateError) return json({ success: false, downstreamOk, downstreamStatus, error: `Scheduler telemetry update failed: ${updateError.message}` }, 500);
-  if (!downstreamOk) return json({ success: false, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Scheduled Black Oracle Paper cycle failed." }, 502);
-  return json({ success: true, target: normalizedBase, downstreamStatus });
+  }).eq("runtime_id", runtimeId);
+  if (updateError) return json({ success: false, runtimeId, downstreamOk, downstreamStatus, error: `Scheduler telemetry update failed: ${updateError.message}` }, 500);
+  if (!downstreamOk) return json({ success: false, runtimeId, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Scheduled Black Oracle Paper cycle failed." }, 502);
+  return json({ success: true, runtimeId, target: normalizedBase, downstreamStatus });
 });
