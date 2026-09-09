@@ -64,6 +64,9 @@ const parseIsoTimestamp = (value: string | undefined, label: string) => {
   return new Date(parsed).toISOString();
 };
 
+export const isVNextQualificationRuntimeId = (runtimeId: string) =>
+  runtimeId === VNEXT_PAPER_RUNTIME_ID || runtimeId.startsWith(`${VNEXT_PAPER_RUNTIME_ID}-`);
+
 export const buildRiskConfigHash = () => createHash('sha256')
   .update(JSON.stringify({ strategyVersion: TRADING_STRATEGY_VERSION, riskLimits: DEFAULT_RISK_LIMITS }))
   .digest('hex')
@@ -89,14 +92,14 @@ export const readTradingRuntimeProfile = (env: EnvLike = process.env): TradingRu
     ?? normalizeOptional(env.APP_REV)
     ?? 'unversioned';
 
-  if (runtimeId === VNEXT_PAPER_RUNTIME_ID) {
-    if (!qualificationId) throw new Error('black-oracle-paper-vnext requires PAPER_QUALIFICATION_ID.');
-    if (!qualificationArmedAt) throw new Error('black-oracle-paper-vnext requires PAPER_QUALIFICATION_ARMED_AT.');
+  if (isVNextQualificationRuntimeId(runtimeId)) {
+    if (!qualificationId) throw new Error('vNext qualification runtime requires PAPER_QUALIFICATION_ID.');
+    if (!qualificationArmedAt) throw new Error('vNext qualification runtime requires PAPER_QUALIFICATION_ARMED_AT.');
     if (initialEquityKrw !== VNEXT_QUALIFICATION_INITIAL_EQUITY_KRW) {
-      throw new Error('black-oracle-paper-vnext requires TRADING_INITIAL_EQUITY_KRW=100000000.');
+      throw new Error('vNext qualification runtime requires TRADING_INITIAL_EQUITY_KRW=100000000.');
     }
     if (systemRevision === 'unversioned') {
-      throw new Error('black-oracle-paper-vnext requires a pinned PAPER_SYSTEM_REVISION or deployment revision.');
+      throw new Error('vNext qualification runtime requires a pinned PAPER_SYSTEM_REVISION or deployment revision.');
     }
   }
 

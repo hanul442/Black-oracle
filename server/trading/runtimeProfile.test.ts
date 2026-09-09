@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   assessRuntimeCheckpointCompatibility,
   checkpointIdentityFromProfile,
+  isVNextQualificationRuntimeId,
   readTradingRuntimeProfile,
   VNEXT_PAPER_RUNTIME_ID,
 } from './runtimeProfile';
@@ -13,6 +14,14 @@ const qualificationEnv = {
   PAPER_QUALIFICATION_ID: 'paper-100m-20260909',
   PAPER_QUALIFICATION_ARMED_AT: '2026-09-09T09:00:00Z',
   PAPER_SYSTEM_REVISION: 'git:abc123',
+};
+
+const s1r2Env = {
+  ...qualificationEnv,
+  TRADING_RUNTIME_ID: 'black-oracle-paper-vnext-s1r2',
+  PAPER_QUALIFICATION_ID: 'paper-100m-20260909-s1r2',
+  PAPER_QUALIFICATION_ARMED_AT: '2026-09-09T12:00:00Z',
+  PAPER_SYSTEM_REVISION: 'git:def456',
 };
 
 test('vNext qualification profile pins 100M capital and identity', () => {
@@ -92,6 +101,43 @@ test('vNext cannot start without an armed timestamp', () => {
 test('vNext cannot start with capital other than 100M KRW', () => {
   assert.throws(() => readTradingRuntimeProfile({
     ...qualificationEnv,
+    TRADING_INITIAL_EQUITY_KRW: '1000000',
+  }), /requires TRADING_INITIAL_EQUITY_KRW=100000000/);
+});
+
+test('S1R2 runtime id is treated as a strict vNext qualification runtime', () => {
+  assert.equal(isVNextQualificationRuntimeId('black-oracle-paper-vnext-s1r2'), true);
+  assert.equal(isVNextQualificationRuntimeId('black-oracle-paper-vnext-s1r3'), true);
+  assert.equal(isVNextQualificationRuntimeId('black-oracle-paper-vnextish'), false);
+
+  const profile = readTradingRuntimeProfile(s1r2Env);
+  assert.equal(profile.runtimeId, 'black-oracle-paper-vnext-s1r2');
+  assert.equal(profile.initialEquityKrw, 100_000_000);
+  assert.equal(profile.qualificationMode, true);
+  assert.equal(profile.qualificationId, 'paper-100m-20260909-s1r2');
+  assert.equal(profile.qualificationArmedAt, '2026-09-09T12:00:00.000Z');
+  assert.equal(profile.systemRevision, 'git:def456');
+
+  const assessment = assessRuntimeCheckpointCompatibility(
+    profile,
+    checkpointIdentityFromProfile(profile),
+    100_000_000,
+  );
+  assert.equal(assessment.status, 'MATCH');
+  assert.equal(assessment.strict, true);
+});
+
+test('S1R2 cannot bypass vNext qualification identity or capital gates', () => {
+  assert.throws(() => readTradingRuntimeProfile({
+    ...s1r2Env,
+    PAPER_QUALIFICATION_ID: undefined,
+  }), /requires PAPER_QUALIFICATION_ID/);
+  assert.throws(() => readTradingRuntimeProfile({
+    ...s1r2Env,
+    PAPER_QUALIFICATION_ARMED_AT: undefined,
+  }), /requires PAPER_QUALIFICATION_ARMED_AT/);
+  assert.throws(() => readTradingRuntimeProfile({
+    ...s1r2Env,
     TRADING_INITIAL_EQUITY_KRW: '1000000',
   }), /requires TRADING_INITIAL_EQUITY_KRW=100000000/);
 });
