@@ -36,6 +36,17 @@ const hasLegacyWebSearch = (options: any) =>
   Array.isArray(options?.config?.tools) &&
   options.config.tools.some((tool: any) => Boolean(tool?.googleSearch));
 
+const inferUsageLabels = (prompt: string, fallbackFeature: string, fallbackOperation: string) => {
+  if (fallbackFeature !== 'legacy_openai_adapter') return { feature: fallbackFeature, operation: fallbackOperation };
+  if (prompt.includes('Analyze ONLY the supplied NARS EvidencePacket')) {
+    return { feature: 'nars_impact', operation: 'evidence_packet_market_impact' };
+  }
+  if (prompt.includes('discovery stage of NARS')) {
+    return { feature: 'evidence_coverage_discovery', operation: 'grounded_source_discovery' };
+  }
+  return { feature: fallbackFeature, operation: fallbackOperation };
+};
+
 class OpenAICompatError extends Error {
   status?: number;
   code?: string;
@@ -88,6 +99,7 @@ export class LegacyOpenAIAdapter {
       const prompt = typeof options?.contents === 'string'
         ? options.contents
         : JSON.stringify(options?.contents ?? '');
+      const labels = inferUsageLabels(prompt, this.usageContext.feature, this.usageContext.operation);
       const model = process.env.OPENAI_FAST_MODEL?.trim() || 'gpt-5.6-luna';
       const webSearch = hasLegacyWebSearch(options);
 
@@ -120,8 +132,8 @@ export class LegacyOpenAIAdapter {
       const responseId = typeof payload?.id === 'string' ? payload.id : null;
       const webSearchCalls = countWebSearchCalls(payload);
       await recordOpenAIUsage(payload?.usage, {
-        feature: this.usageContext.feature,
-        operation: this.usageContext.operation,
+        feature: labels.feature,
+        operation: labels.operation,
         model,
         responseId,
         webSearchCalls,
