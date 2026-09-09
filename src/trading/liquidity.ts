@@ -29,6 +29,10 @@ export const evaluateLiquidity = (input: LiquidityInput): LiquiditySnapshot => {
   const eligible = reasons.length === 0;
   if (eligible) reasons.push('Turnover, spread, depth, and warning filters all passed.');
 
+  const marketDataTimestamp = Number.isFinite(input.marketDataTimestamp) && Number(input.marketDataTimestamp) > 0
+    ? Number(input.marketDataTimestamp)
+    : undefined;
+
   return {
     market: input.market,
     tradePrice: input.tradePrice,
@@ -42,5 +46,6 @@ export const evaluateLiquidity = (input: LiquidityInput): LiquiditySnapshot => {
     score,
     eligible,
     reasons,
+    marketDataTimestamp,
   };
 };

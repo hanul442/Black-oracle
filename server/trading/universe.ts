@@ -10,6 +10,12 @@ const top5Depth = (units: Array<{ bidPrice: number; askPrice: number; bidSize: n
   };
 };
 
+const conservativeMarketTimestamp = (tickerTimestamp: number, orderbookTimestamp: number) => {
+  if (!Number.isFinite(tickerTimestamp) || tickerTimestamp <= 0) return undefined;
+  if (!Number.isFinite(orderbookTimestamp) || orderbookTimestamp <= 0) return undefined;
+  return Math.min(tickerTimestamp, orderbookTimestamp);
+};
+
 export const getMarketLiquidity = async (market: string): Promise<LiquiditySnapshot> => {
   const normalized = market.toUpperCase();
   const [metadata, tickers, orderbooks] = await Promise.all([
@@ -34,6 +40,7 @@ export const getMarketLiquidity = async (market: string): Promise<LiquiditySnaps
     top5BidDepthKrw: depth.bid,
     top5AskDepthKrw: depth.ask,
     warning: marketMetadata?.warning ?? false,
+    marketDataTimestamp: conservativeMarketTimestamp(ticker.timestamp, orderbook.timestamp),
   });
 };
 
@@ -68,6 +75,7 @@ export const buildKrwLiquidityUniverse = async (
         top5BidDepthKrw: depth.bid,
         top5AskDepthKrw: depth.ask,
         warning: warnings.get(ticker.market) ?? false,
+        marketDataTimestamp: conservativeMarketTimestamp(ticker.timestamp, orderbook.timestamp),
       });
     })
     .filter((item): item is LiquiditySnapshot => Boolean(item))

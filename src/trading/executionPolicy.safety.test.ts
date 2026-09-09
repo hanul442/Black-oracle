@@ -96,6 +96,38 @@ test('stale market data fails closed and persists as NO_TRADE with risk provenan
   assert.equal(trace.forecast.direction, 'UNAVAILABLE');
 });
 
+test('fresh live liquidity timestamp overrides stale candle-derived fallback age', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const decision = buildExecutionDecision({
+    liquidity: { ...liquidity, marketDataTimestamp: Date.now() - 1_000 } as any,
+    multiTimeframe: multiTimeframe as any,
+    oneHour: oneHour as any,
+    portfolio: portfolio.snapshot({}),
+    position: null,
+    marketDataAgeMs: 10 * 60 * 1000,
+  });
+
+  assert.equal(decision.action, 'ENTER');
+  assert.equal(decision.riskDisposition, 'APPROVE');
+  assert.doesNotMatch(decision.riskReasons.join(' '), /stale/i);
+});
+
+test('stale live liquidity timestamp cannot be bypassed by a fresh fallback age', () => {
+  const portfolio = new PaperPortfolio(1_000_000);
+  const decision = buildExecutionDecision({
+    liquidity: { ...liquidity, marketDataTimestamp: Date.now() - 10 * 60 * 1000 } as any,
+    multiTimeframe: multiTimeframe as any,
+    oneHour: oneHour as any,
+    portfolio: portfolio.snapshot({}),
+    position: null,
+    marketDataAgeMs: 0,
+  });
+
+  assert.equal(decision.action, 'HOLD');
+  assert.equal(decision.riskDisposition, 'REJECT');
+  assert.match(decision.riskReasons.join(' '), /stale/i);
+});
+
 test('feed, ledger, and duplicate-order safety faults all reject new entries', () => {
   const portfolio = new PaperPortfolio(1_000_000);
   const cases = [

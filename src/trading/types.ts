@@ -170,6 +170,8 @@ export interface LiquidityInput {
   top5BidDepthKrw: number;
   top5AskDepthKrw: number;
   warning: boolean;
+  /** Conservative live-source timestamp: the older of the ticker and orderbook snapshots. */
+  marketDataTimestamp?: number;
 }
 
 export interface LiquiditySnapshot {
@@ -185,6 +187,8 @@ export interface LiquiditySnapshot {
   score: number;
   eligible: boolean;
   reasons: string[];
+  /** Conservative live-source timestamp used by the deterministic freshness gate. */
+  marketDataTimestamp?: number;
 }
 
 export interface RiskLimits {
