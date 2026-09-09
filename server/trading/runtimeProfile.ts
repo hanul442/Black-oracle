@@ -3,6 +3,7 @@ import { DEFAULT_RISK_LIMITS, TRADING_STRATEGY_VERSION, UNIFIED_PAPER_INITIAL_EQ
 
 export const LEGACY_PAPER_RUNTIME_ID = 'black-oracle-paper';
 export const VNEXT_PAPER_RUNTIME_ID = 'black-oracle-paper-vnext';
+export const VNEXT_QUALIFICATION_INITIAL_EQUITY_KRW = 100_000_000;
 
 export interface TradingRuntimeProfile {
   runtimeId: string;
@@ -82,14 +83,26 @@ export const readTradingRuntimeProfile = (env: EnvLike = process.env): TradingRu
     throw new Error('PAPER_QUALIFICATION_ARMED_AT requires PAPER_QUALIFICATION_ID.');
   }
 
+  const initialEquityKrw = parseInitialEquity(env.TRADING_INITIAL_EQUITY_KRW);
   const systemRevision = normalizeOptional(env.PAPER_SYSTEM_REVISION)
     ?? normalizeOptional(env.RAILWAY_GIT_COMMIT_SHA)
     ?? normalizeOptional(env.APP_REV)
     ?? 'unversioned';
 
+  if (runtimeId === VNEXT_PAPER_RUNTIME_ID) {
+    if (!qualificationId) throw new Error('black-oracle-paper-vnext requires PAPER_QUALIFICATION_ID.');
+    if (!qualificationArmedAt) throw new Error('black-oracle-paper-vnext requires PAPER_QUALIFICATION_ARMED_AT.');
+    if (initialEquityKrw !== VNEXT_QUALIFICATION_INITIAL_EQUITY_KRW) {
+      throw new Error('black-oracle-paper-vnext requires TRADING_INITIAL_EQUITY_KRW=100000000.');
+    }
+    if (systemRevision === 'unversioned') {
+      throw new Error('black-oracle-paper-vnext requires a pinned PAPER_SYSTEM_REVISION or deployment revision.');
+    }
+  }
+
   return {
     runtimeId,
-    initialEquityKrw: parseInitialEquity(env.TRADING_INITIAL_EQUITY_KRW),
+    initialEquityKrw,
     qualificationId,
     qualificationArmedAt,
     systemRevision,
