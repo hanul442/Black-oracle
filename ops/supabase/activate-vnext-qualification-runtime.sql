@@ -1,7 +1,16 @@
 -- BLACK ORACLE vNext qualification runtime activation.
 -- Operational configuration only; no schema DDL.
--- This script is intentionally fail-closed and may run only after the pristine
--- qualification checkpoint has been verified.
+-- Fail-closed: this script may run only against the exact pristine qualification
+-- checkpoint created by the pinned Railway runtime below.
+
+-- Pinned S1R1 identity
+-- runtime_id: black-oracle-paper-vnext
+-- qualification_id: paper-100m-20260909-s1r1
+-- qualification_armed_at: 2026-09-09T11:15:49.000Z
+-- system_revision: fdca8ad13daf9cf71a775a80e93116ae8c96c81d
+-- strategy_version: BO-UNIFIED-v0.2.0
+-- risk_config_hash: 0f6ae8c3cb3d6d93
+-- initial_equity_krw: 100000000
 
 do $$
 declare
@@ -19,14 +28,31 @@ begin
   if v_reason <> 'qualification-runtime-initialized' then
     raise exception 'vNext qualification checkpoint is not pristine: reason=%', v_reason;
   end if;
+
   if v_checkpoint #>> '{runtime,runtimeId}' <> 'black-oracle-paper-vnext' then
     raise exception 'vNext runtime identity mismatch';
   end if;
-  if v_checkpoint #>> '{runtime,qualificationId}' <> 'paper-100m-20260909-s1' then
+  if v_checkpoint #>> '{runtime,qualificationId}' <> 'paper-100m-20260909-s1r1' then
     raise exception 'vNext qualification id mismatch';
   end if;
+  if v_checkpoint #>> '{runtime,qualificationArmedAt}' <> '2026-09-09T11:15:49.000Z' then
+    raise exception 'vNext qualification armed timestamp mismatch';
+  end if;
+  if v_checkpoint #>> '{runtime,systemRevision}' <> 'fdca8ad13daf9cf71a775a80e93116ae8c96c81d' then
+    raise exception 'vNext system revision mismatch';
+  end if;
+  if v_checkpoint #>> '{runtime,strategyVersion}' <> 'BO-UNIFIED-v0.2.0' then
+    raise exception 'vNext strategy version mismatch';
+  end if;
+  if v_checkpoint #>> '{runtime,riskConfigHash}' <> '0f6ae8c3cb3d6d93' then
+    raise exception 'vNext risk configuration hash mismatch';
+  end if;
+  if (v_checkpoint #>> '{runtime,initialEquityKrw}')::numeric <> 100000000 then
+    raise exception 'vNext checkpoint identity initial equity is not 100m KRW';
+  end if;
+
   if (v_checkpoint #>> '{session,portfolio,initialEquity}')::numeric <> 100000000 then
-    raise exception 'vNext initial equity is not 100m KRW';
+    raise exception 'vNext portfolio initial equity is not 100m KRW';
   end if;
   if (v_checkpoint #>> '{session,portfolio,cash}')::numeric <> 100000000 then
     raise exception 'vNext pristine cash is not 100m KRW';
@@ -37,11 +63,27 @@ begin
   if jsonb_array_length(coalesce(v_checkpoint #> '{session,closedTrades}', '[]'::jsonb)) <> 0 then
     raise exception 'vNext checkpoint already has closed trades';
   end if;
+  if jsonb_array_length(coalesce(v_checkpoint #> '{session,ledger}', '[]'::jsonb)) <> 0 then
+    raise exception 'vNext checkpoint already has trading ledger events';
+  end if;
+  if jsonb_array_length(coalesce(v_checkpoint #> '{evidence}', '[]'::jsonb)) <> 0 then
+    raise exception 'vNext checkpoint already has runtime evidence';
+  end if;
   if coalesce((v_checkpoint #>> '{loop,cycleCount}')::integer, -1) <> 0 then
     raise exception 'vNext checkpoint already has completed cycles';
   end if;
-  if v_checkpoint #> '{loop,lastCycle}' is not null then
+  if coalesce(v_checkpoint #> '{loop,lastCycle}', 'null'::jsonb) <> 'null'::jsonb then
     raise exception 'vNext checkpoint already has a last cycle';
+  end if;
+  if coalesce((v_checkpoint #>> '{loop,running}')::boolean, true) then
+    raise exception 'vNext checkpoint loop is already running';
+  end if;
+
+  if exists (
+    select 1 from cron.job
+    where jobname = 'black-oracle-paper-vnext-scheduler-15m'
+  ) then
+    raise exception 'vNext scheduler cron already exists; activation must not overwrite it';
   end if;
 end $$;
 
@@ -52,6 +94,19 @@ where runtime_id = 'black-oracle-paper'
 on conflict (runtime_id) do update
 set scheduler_token = excluded.scheduler_token,
     updated_at = now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.black_oracle_scheduler_auth
+    where runtime_id = 'black-oracle-paper-vnext'
+      and scheduler_token is not null
+      and length(scheduler_token) >= 32
+  ) then
+    raise exception 'vNext scheduler auth token is unavailable';
+  end if;
+end $$;
 
 insert into public.black_oracle_trading_scheduler_config (
   runtime_id,
@@ -79,16 +134,15 @@ set enabled = true,
     updated_at = now();
 
 do $$
-declare
-  existing_job bigint;
 begin
-  select jobid into existing_job
-  from cron.job
-  where jobname = 'black-oracle-paper-vnext-scheduler-15m'
-  limit 1;
-
-  if existing_job is not null then
-    perform cron.unschedule(existing_job);
+  if not exists (
+    select 1
+    from public.black_oracle_trading_scheduler_config
+    where runtime_id = 'black-oracle-paper-vnext'
+      and enabled = true
+      and target_base_url = 'https://black-oracle-paper-vnext-production.up.railway.app'
+  ) then
+    raise exception 'vNext scheduler config does not match approved Railway target';
   end if;
 end $$;
 
