@@ -11,7 +11,7 @@
     "start": "node dist/gateway.cjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts",
+    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts server/eventLedger*.test.ts",
     "smoke:trading": "tsx scripts/trading-smoke.ts"
   },
   "dependencies": {
@@ -24,7 +24,7 @@
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "d3-sankey": "^0.12.3",
-    "d3-shape": "^3.2.0",
+    "d3-shape": "^3.1.8",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.13.0",

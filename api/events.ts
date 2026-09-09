@@ -1,4 +1,5 @@
 import { readCanonicalEvents } from '../server/eventLedger';
+import { readCanonicalLedgerHealth } from '../server/eventLedgerHealth';
 
 const boundedInt = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value ?? fallback);
@@ -22,15 +23,20 @@ export default async function handler(request: any, response: any) {
       ? request.query.market.trim().toUpperCase()
       : null;
     const limit = boundedInt(request.query?.limit, 300, 1, 500);
-    const events = await readCanonicalEvents({ limit, type, market });
+    const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+    const [events, health] = await Promise.all([
+      readCanonicalEvents({ limit, type, market }),
+      readCanonicalLedgerHealth(runtimeId),
+    ]);
 
     return response.status(200).json({
       success: true,
       canonical: true,
       appendOnly: true,
-      coverage: 'CUTOVER_FORWARD',
+      coverage: `CUTOVER_FORWARD · ${health.status}`,
       source: 'black_oracle_events',
       count: events.length,
+      health,
       events,
     });
   } catch (error) {
