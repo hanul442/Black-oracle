@@ -46,6 +46,22 @@ const parseKstDate = (value: string) => {
   return Date.UTC(y, m - 1, d, 6, 30, 0, 0); // 15:30 KST daily close anchor.
 };
 
+const parseKstMinute = (date: string, time: string) => {
+  if (!/^\d{8}$/.test(date) || !/^\d{6}$/.test(time)) return 0;
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(4, 6));
+  const d = Number(date.slice(6, 8));
+  const hh = Number(time.slice(0, 2));
+  const mm = Number(time.slice(2, 4));
+  const ss = Number(time.slice(4, 6));
+  return Date.UTC(y, m - 1, d, hh - 9, mm, ss, 0);
+};
+
+const hhmmssKst = (timestamp = Date.now()) => {
+  const date = new Date(timestamp + 9 * 60 * 60_000);
+  return `${String(date.getUTCHours()).padStart(2, '0')}${String(date.getUTCMinutes()).padStart(2, '0')}${String(date.getUTCSeconds()).padStart(2, '0')}`;
+};
+
 export class KisDomesticStockMarketData {
   private readonly appKey: string;
   private readonly appSecret: string;
@@ -114,9 +130,9 @@ export class KisDomesticStockMarketData {
       FID_COND_SCR_DIV_CODE: '20171',
       FID_INPUT_ISCD: '0000',
       FID_DIV_CLS_CODE: '1',
-      FID_BLNG_CLS_CODE: '3', // transaction-value ranking reduces penny-stock volume distortion.
+      FID_BLNG_CLS_CODE: '3',
       FID_TRGT_CLS_CODE: '111111111',
-      FID_TRGT_EXLS_CLS_CODE: '1111111111', // exclude warnings, halted names, ETFs/ETNs, SPACs, etc.
+      FID_TRGT_EXLS_CLS_CODE: '1111111111',
       FID_INPUT_PRICE_1: '',
       FID_INPUT_PRICE_2: '',
       FID_VOL_CNT: '',
@@ -165,6 +181,50 @@ export class KisDomesticStockMarketData {
     };
   }
 
+  /**
+   * Loads current-session 1-minute candles from KIS. The official endpoint returns
+   * at most 30 bars per call and only current-day intraday history, so requests are
+   * paged backward by timestamp. These bars are for entry/exit timing, not daily
+   * stock selection.
+   */
+  async minuteCandles(symbol: string, targetBars = 120): Promise<Candle[]> {
+    if (!/^\d{6}$/.test(symbol)) throw new Error('Korean equity symbol must be a six-digit code.');
+    const desired = Math.max(30, Math.min(300, Math.trunc(targetBars)));
+    const rows = new Map<string, Candle>();
+    let cursor = hhmmssKst();
+
+    for (let page = 0; page < 10 && rows.size < desired; page += 1) {
+      const payload = await this.get('/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice', 'FHKST03010200', {
+        FID_COND_MRKT_DIV_CODE: 'J',
+        FID_INPUT_ISCD: symbol,
+        FID_INPUT_HOUR_1: cursor,
+        FID_PW_DATA_INCU_YN: 'Y',
+        FID_ETC_CLS_CODE: '',
+      });
+      const pageRows = Array.isArray(payload?.output2) ? payload.output2 : [];
+      if (!pageRows.length) break;
+      let oldest = Number.POSITIVE_INFINITY;
+      for (const row of pageRows) {
+        const date = String(row?.stck_bsop_date ?? '');
+        const time = String(row?.stck_cntg_hour ?? '');
+        const timestamp = parseKstMinute(date, time);
+        const open = asNumber(row?.stck_oprc);
+        const high = asNumber(row?.stck_hgpr);
+        const low = asNumber(row?.stck_lwpr);
+        const close = asNumber(row?.stck_prpr);
+        const volume = asNumber(row?.cntg_vol);
+        if (!timestamp || open == null || high == null || low == null || close == null || volume == null) continue;
+        rows.set(`${date}-${time}`, { market: `KRX-${symbol}`, timeframeMinutes: 1, timestamp, open, high, low, close, volume });
+        oldest = Math.min(oldest, timestamp);
+      }
+      if (!Number.isFinite(oldest)) break;
+      cursor = hhmmssKst(oldest - 60_000);
+      await new Promise((resolve) => setTimeout(resolve, this.environment === 'demo' ? 1_050 : 120));
+    }
+
+    return [...rows.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-desired);
+  }
+
   async dailyCandles(symbol: string, targetBars = 240): Promise<Candle[]> {
     if (!/^\d{6}$/.test(symbol)) throw new Error('Korean equity symbol must be a six-digit code.');
     const desired = Math.max(200, Math.min(1_000, Math.trunc(targetBars)));
@@ -198,7 +258,6 @@ export class KisDomesticStockMarketData {
       }
       if (!Number.isFinite(oldest)) break;
       endAt = oldest - 24 * 60 * 60 * 1_000;
-      // Demo REST is rate-limited; avoid burst requests.
       await new Promise((resolve) => setTimeout(resolve, this.environment === 'demo' ? 1_050 : 120));
     }
 
