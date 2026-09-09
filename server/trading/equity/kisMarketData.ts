@@ -11,8 +11,18 @@ export interface KisQuote {
   asOf: number;
 }
 
-type KisEnvironment = 'demo' | 'real';
+export interface KisRankedStock {
+  symbol: string;
+  name: string;
+  price: number;
+  volume: number;
+  turnoverKrw: number;
+  changeRate: number | null;
+  rank: number;
+  marketName: string | null;
+}
 
+type KisEnvironment = 'demo' | 'real';
 type TokenState = { value: string; expiresAt: number } | null;
 
 const asNumber = (value: unknown): number | null => {
@@ -94,6 +104,46 @@ export class KisDomesticStockMarketData {
     return payload;
   }
 
+  /**
+   * Discovers liquid ordinary shares across KRX using the official KIS volume/turnover ranking endpoint.
+   * KRX covers both KOSPI and KOSDAQ; exact market labels are kept when KIS returns one.
+   */
+  async volumeRank(limit = 30): Promise<KisRankedStock[]> {
+    const payload = await this.get('/uapi/domestic-stock/v1/quotations/volume-rank', 'FHPST01710000', {
+      FID_COND_MRKT_DIV_CODE: 'J',
+      FID_COND_SCR_DIV_CODE: '20171',
+      FID_INPUT_ISCD: '0000',
+      FID_DIV_CLS_CODE: '1',
+      FID_BLNG_CLS_CODE: '3', // transaction-value ranking reduces penny-stock volume distortion.
+      FID_TRGT_CLS_CODE: '111111111',
+      FID_TRGT_EXLS_CLS_CODE: '1111111111', // exclude warnings, halted names, ETFs/ETNs, SPACs, etc.
+      FID_INPUT_PRICE_1: '',
+      FID_INPUT_PRICE_2: '',
+      FID_VOL_CNT: '',
+      FID_INPUT_DATE_1: '',
+    });
+    const rows = Array.isArray(payload?.output) ? payload.output : [];
+    return rows.map((row: any, index: number) => {
+      const symbol = String(row?.mksc_shrn_iscd ?? row?.stck_shrn_iscd ?? '').trim();
+      const name = String(row?.hts_kor_isnm ?? row?.prdt_name ?? symbol).trim();
+      const price = asNumber(row?.stck_prpr) ?? 0;
+      const volume = asNumber(row?.acml_vol) ?? 0;
+      const turnoverKrw = asNumber(row?.acml_tr_pbmn ?? row?.avrg_tr_pbmn) ?? 0;
+      const changeRateRaw = asNumber(row?.prdy_ctrt);
+      return {
+        symbol,
+        name,
+        price,
+        volume,
+        turnoverKrw,
+        changeRate: changeRateRaw == null ? null : changeRateRaw / 100,
+        rank: Math.max(1, Math.trunc(asNumber(row?.data_rank) ?? index + 1)),
+        marketName: row?.mrkt_div_cls_name ? String(row.mrkt_div_cls_name) : row?.rprs_mrkt_kor_name ? String(row.rprs_mrkt_kor_name) : null,
+      };
+    }).filter((item: KisRankedStock) => /^\d{6}$/.test(item.symbol) && item.price > 0)
+      .slice(0, Math.max(1, Math.min(100, Math.trunc(limit))));
+  }
+
   async quote(symbol: string): Promise<KisQuote> {
     if (!/^\d{6}$/.test(symbol)) throw new Error('Korean equity symbol must be a six-digit code.');
     const payload = await this.get('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
@@ -118,7 +168,7 @@ export class KisDomesticStockMarketData {
   async dailyCandles(symbol: string, targetBars = 240): Promise<Candle[]> {
     if (!/^\d{6}$/.test(symbol)) throw new Error('Korean equity symbol must be a six-digit code.');
     const desired = Math.max(200, Math.min(1_000, Math.trunc(targetBars)));
-    const rows = new Map<string, any>();
+    const rows = new Map<string, Candle>();
     let endAt = Date.now();
 
     for (let page = 0; page < 8 && rows.size < desired; page += 1) {
