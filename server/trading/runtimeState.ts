@@ -2,24 +2,34 @@ import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingCheckpointStore } from './persistence';
+import {
+  assessRuntimeCheckpointCompatibility,
+  checkpointIdentityFromProfile,
+  tradingRuntimeProfile,
+  type RuntimeCompatibilityAssessment,
+} from './runtimeProfile';
 
 let autosaveTimer: NodeJS.Timeout | null = null;
+let runtimeCompatibility: RuntimeCompatibilityAssessment | null = null;
 let restoreSummary: {
   restored: boolean;
   savedAt: number | null;
   reason: string | null;
   resumedLoop: boolean;
+  compatibility: RuntimeCompatibilityAssessment | null;
 } = {
   restored: false,
   savedAt: null,
   reason: null,
   resumedLoop: false,
+  compatibility: null,
 };
 
 export const buildRuntimeCheckpoint = (reason = 'manual') => ({
   schemaVersion: 1 as const,
   savedAt: Date.now(),
   reason,
+  runtime: checkpointIdentityFromProfile(tradingRuntimeProfile),
   session: paperTradingSession.checkpoint(),
   evidence: tradingEvidenceStore.list(undefined, true),
   loop: paperLoopController.checkpoint(),
@@ -28,19 +38,46 @@ export const buildRuntimeCheckpoint = (reason = 'manual') => ({
 export const saveRuntimeCheckpoint = async (reason = 'manual') => {
   const checkpoint = buildRuntimeCheckpoint(reason);
   const persistence = await tradingCheckpointStore.save(checkpoint);
-  return { checkpoint, persistence };
+  runtimeCompatibility = assessRuntimeCheckpointCompatibility(
+    tradingRuntimeProfile,
+    checkpoint.runtime,
+    checkpoint.session.portfolio.initialEquity,
+  );
+  return { checkpoint, persistence, compatibility: runtimeCompatibility };
 };
 
 export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   const checkpoint = await tradingCheckpointStore.load();
   if (!checkpoint) {
+    runtimeCompatibility = null;
     restoreSummary = {
       restored: false,
       savedAt: null,
       reason: null,
       resumedLoop: false,
+      compatibility: null,
     };
-    return { ...restoreSummary, persistence: tradingCheckpointStore.status() };
+    return {
+      ...restoreSummary,
+      profile: checkpointIdentityFromProfile(tradingRuntimeProfile),
+      persistence: tradingCheckpointStore.status(),
+    };
+  }
+
+  runtimeCompatibility = assessRuntimeCheckpointCompatibility(
+    tradingRuntimeProfile,
+    checkpoint.runtime,
+    checkpoint.session.portfolio.initialEquity,
+  );
+  if (!runtimeCompatibility.compatible) {
+    restoreSummary = {
+      restored: false,
+      savedAt: checkpoint.savedAt,
+      reason: checkpoint.reason,
+      resumedLoop: false,
+      compatibility: runtimeCompatibility,
+    };
+    throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${runtimeCompatibility.reasons.join(' ')}`);
   }
 
   paperTradingSession.restore(checkpoint.session);
@@ -52,11 +89,22 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
     savedAt: checkpoint.savedAt,
     reason: checkpoint.reason,
     resumedLoop: checkpoint.loop.running && resumeLoop,
+    compatibility: runtimeCompatibility,
   };
-  return { ...restoreSummary, persistence: tradingCheckpointStore.status() };
+  return {
+    ...restoreSummary,
+    profile: checkpointIdentityFromProfile(tradingRuntimeProfile),
+    persistence: tradingCheckpointStore.status(),
+  };
 };
 
 export const runtimeRestoreSummary = () => ({ ...restoreSummary });
+
+export const runtimeProfileStatus = () => ({
+  ...checkpointIdentityFromProfile(tradingRuntimeProfile),
+  qualificationMode: tradingRuntimeProfile.qualificationMode,
+  compatibility: runtimeCompatibility,
+});
 
 export const startRuntimeAutosave = (intervalMs = 60_000) => {
   if (!Number.isInteger(intervalMs) || intervalMs < 15_000) {
@@ -79,5 +127,6 @@ export const stopRuntimeAutosave = () => {
 export const runtimePersistenceStatus = () => ({
   ...tradingCheckpointStore.status(),
   autosaveRunning: autosaveTimer !== null,
+  profile: runtimeProfileStatus(),
   restore: runtimeRestoreSummary(),
 });
