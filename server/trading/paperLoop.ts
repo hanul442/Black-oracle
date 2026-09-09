@@ -4,6 +4,9 @@ import { buildEvidenceCoverageRequest } from '../../src/trading/evidenceCoverage
 import type { LiquiditySnapshot } from '../../src/trading/types';
 import { evidenceCoverageRequestStore } from './evidenceCoverageQueue';
 import { tradingEvidenceStore } from './evidenceStore';
+import { syncAnalyzedNarsEvidence } from './externalEvidenceSource';
+import { consumeNarsEvidencePackets } from './narsConsumer';
+import { acquirePendingEvidenceCoverage } from './narsCoverageAcquirer';
 import { paperTradingSession } from './paperSession';
 import { buildKrwLiquidityUniverse, getMarketLiquidity } from './universe';
 
@@ -11,6 +14,15 @@ export interface PaperLoopConfig {
   intervalMs: number;
   maxMarkets: number;
   maxOpenPositions: number;
+}
+
+export interface PaperLoopEvidenceOps {
+  importedBeforeConsume: number;
+  consumedPackets: number;
+  importedAfterConsume: number;
+  acquisitionRequests: number;
+  acquisitionSourcesIngested: number;
+  errors: string[];
 }
 
 export interface PaperLoopCycleResult {
@@ -21,6 +33,7 @@ export interface PaperLoopCycleResult {
   exited: number;
   held: number;
   noTrade: number;
+  evidenceOps: PaperLoopEvidenceOps;
   errors: Array<{ market: string; error: string }>;
   markets: Array<DecisionTrace & { decision: DecisionTrace['action'] }>;
 }
@@ -40,6 +53,24 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const emptyEvidenceOps = (): PaperLoopEvidenceOps => ({
+  importedBeforeConsume: 0,
+  consumedPackets: 0,
+  importedAfterConsume: 0,
+  acquisitionRequests: 0,
+  acquisitionSourcesIngested: 0,
+  errors: [],
+});
+
+const cloneEvidenceOps = (value?: Partial<PaperLoopEvidenceOps> | null): PaperLoopEvidenceOps => ({
+  importedBeforeConsume: Number(value?.importedBeforeConsume ?? 0),
+  consumedPackets: Number(value?.consumedPackets ?? 0),
+  importedAfterConsume: Number(value?.importedAfterConsume ?? 0),
+  acquisitionRequests: Number(value?.acquisitionRequests ?? 0),
+  acquisitionSourcesIngested: Number(value?.acquisitionSourcesIngested ?? 0),
+  errors: Array.isArray(value?.errors) ? value!.errors!.map(String) : [],
+});
 
 const cloneTrace = <T extends DecisionTrace & { decision: DecisionTrace['action'] }>(item: T): T => ({
   ...item,
@@ -83,6 +114,7 @@ export class PaperLoopController {
       cycleCount: this.cycleCount,
       lastCycle: this.lastCycle ? {
         ...this.lastCycle,
+        evidenceOps: cloneEvidenceOps(this.lastCycle.evidenceOps),
         errors: this.lastCycle.errors.map((item) => ({ ...item })),
         markets: this.lastCycle.markets.map((item) => cloneTrace(item)),
       } : null,
@@ -98,6 +130,7 @@ export class PaperLoopController {
     this.lastCycle = checkpoint.lastCycle ? {
       ...checkpoint.lastCycle,
       noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0,
+      evidenceOps: cloneEvidenceOps((checkpoint.lastCycle as any).evidenceOps),
       errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
       markets: checkpoint.lastCycle.markets.map((item) => ({
         ...cloneTrace({
@@ -125,6 +158,10 @@ export class PaperLoopController {
       config: { ...this.config },
       cycleCount: this.cycleCount,
       lastCycle: this.lastCycle,
+      evidence: {
+        activeCount: tradingEvidenceStore.list().length,
+        requests: evidenceCoverageRequestStore.list(20),
+      },
       session: paperTradingSession.state(),
     };
   }
@@ -148,6 +185,40 @@ export class PaperLoopController {
     return this.status();
   }
 
+  private async runEvidenceOps(target: PaperLoopEvidenceOps) {
+    try {
+      const before = await syncAnalyzedNarsEvidence();
+      target.importedBeforeConsume = before.imported;
+    } catch (error) {
+      target.errors.push(`pre-sync: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+
+    try {
+      const consumed = await consumeNarsEvidencePackets(12);
+      target.consumedPackets = consumed.filter((item) => item.status === 'ANALYZED').length;
+    } catch (error) {
+      target.errors.push(`consume: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+
+    try {
+      const after = await syncAnalyzedNarsEvidence();
+      target.importedAfterConsume = after.imported;
+    } catch (error) {
+      target.errors.push(`post-sync: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+
+    try {
+      const acquisitions = await acquirePendingEvidenceCoverage(2);
+      target.acquisitionRequests = acquisitions.length;
+      target.acquisitionSourcesIngested = acquisitions.reduce((sum, item) => sum + item.ingested, 0);
+      for (const item of acquisitions) {
+        if (item.error) target.errors.push(`acquire ${item.market}: ${item.error}`);
+      }
+    } catch (error) {
+      target.errors.push(`acquire: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  }
+
   async runCycle(): Promise<PaperLoopCycleResult> {
     if (this.cycleInProgress) throw new Error('A Paper loop cycle is already in progress.');
     this.cycleInProgress = true;
@@ -160,11 +231,16 @@ export class PaperLoopController {
       exited: 0,
       held: 0,
       noTrade: 0,
+      evidenceOps: emptyEvidenceOps(),
       errors: [],
       markets: [],
     };
 
     try {
+      // Evidence operations are best-effort and never grant execution authority by themselves.
+      // Crypto can continue technical-first if NARS is unavailable; evidence-required assets fail closed at their own entry gate.
+      await this.runEvidenceOps(result.evidenceOps);
+
       const universe = await buildKrwLiquidityUniverse(Math.max(this.config.maxMarkets, 8), 30);
       const liquidityByMarket = new Map(universe.map((item) => [item.market, item]));
       const state = paperTradingSession.state();
