@@ -48,8 +48,10 @@ export default async function handler(request: any, response: any) {
   try {
     // The full Paper runtime is bundled during the build step so Railway's Node ESM
     // loader never has to resolve the runtime's extensionless TypeScript imports.
+    // Keep this import as an explicit `any` boundary because the generated bundle on
+    // disk may lag the source entrypoint during pre-build TypeScript validation.
     // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
-    const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
+    const runtimeModule: any = await import('../server/trading/runtime-bundle.mjs');
 
     paperLoopController = runtimeModule.paperLoopController;
     claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
