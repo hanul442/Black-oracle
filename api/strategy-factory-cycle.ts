@@ -1,4 +1,5 @@
 import { dailyDeterministicStrategySeed, runAiStrategyHypothesisResearch } from '../server/trading/strategyHypothesisResearcher';
+import { appendCanonicalEvents, buildStrategyFactoryCanonicalEvents } from '../server/eventLedger';
 
 const json = (response: any, status: number, body: Record<string, unknown>) => response.status(status).json(body);
 
@@ -66,6 +67,7 @@ export default async function handler(request: any, response: any) {
             .map((row) => row.indicator),
         }))
       : [];
+    const seedSource = explicitSeed != null ? 'EXPLICIT' : aiResearch && !aiResearch.skipped ? 'AI_GUIDED' : 'DAILY_DETERMINISTIC';
 
     // Scheduler defaults are deliberately bounded. AI hypotheses occupy a bounded part of generation 1;
     // the rest remains seeded systematic/random exploration. Research cannot touch execution authority.
@@ -83,14 +85,33 @@ export default async function handler(request: any, response: any) {
       guidedSeeds,
     });
 
+    let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
+    try {
+      eventLedger = await appendCanonicalEvents(buildStrategyFactoryCanonicalEvents(run, {
+        market,
+        unit: normalizedUnit,
+        seed,
+        seedSource,
+        aiResearch,
+      }));
+    } catch (ledgerError) {
+      console.error('Strategy Factory canonical event append failed:', ledgerError);
+      eventLedger = {
+        persisted: false,
+        attempted: 0,
+        error: ledgerError instanceof Error ? ledgerError.message : 'Unknown canonical event ledger error.',
+      };
+    }
+
     return json(response, 200, {
       success: true,
       researchOnly: true,
       aiResearch,
-      seedSource: explicitSeed != null ? 'EXPLICIT' : aiResearch && !aiResearch.skipped ? 'AI_GUIDED' : 'DAILY_DETERMINISTIC',
+      seedSource,
       guidedFactorSetsInjected: guidedSeeds.length,
       automaticChampionPromotion: false,
       automaticLiveDeployment: false,
+      eventLedger,
       run,
     });
   } catch (error) {
