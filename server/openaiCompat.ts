@@ -1,3 +1,5 @@
+import { allowNonCriticalAiCall, recordOpenAIUsage, type OpenAIUsageContext } from './aiUsageLedger';
+
 const OPENAI_URL = 'https://api.openai.com/v1/responses';
 
 const extractOutputText = (payload: any) => {
@@ -25,6 +27,11 @@ const extractUrls = (payload: any) => {
   return [...urls];
 };
 
+const countWebSearchCalls = (payload: any) =>
+  Array.isArray(payload?.output)
+    ? payload.output.filter((item: any) => item?.type === 'web_search_call').length
+    : 0;
+
 const hasLegacyWebSearch = (options: any) =>
   Array.isArray(options?.config?.tools) &&
   options.config.tools.some((tool: any) => Boolean(tool?.googleSearch));
@@ -41,22 +48,41 @@ class OpenAICompatError extends Error {
   }
 }
 
+type AdapterUsageContext = Omit<OpenAIUsageContext, 'model' | 'responseId' | 'webSearchCalls'> & {
+  critical?: boolean;
+};
+
 /**
  * Compatibility layer used while the original Oracle/RSS server is being
  * migrated away from the historical GoogleGenAI call shape. Production
- * calls are sent only to the OpenAI Responses API.
+ * calls are sent only to the OpenAI Responses API and metered into the
+ * Black Oracle AI Cost Ledger when Supabase persistence is configured.
  */
 export class LegacyOpenAIAdapter {
   private apiKey: string;
+  private usageContext: AdapterUsageContext;
 
-  constructor({ apiKey }: { apiKey?: string }) {
+  constructor({ apiKey, usageContext }: { apiKey?: string; usageContext?: Partial<AdapterUsageContext> }) {
     this.apiKey = String(apiKey || '').trim();
+    this.usageContext = {
+      feature: usageContext?.feature || 'legacy_openai_adapter',
+      operation: usageContext?.operation || 'generate_content',
+      critical: Boolean(usageContext?.critical),
+      traceId: usageContext?.traceId ?? null,
+      market: usageContext?.market ?? null,
+      strategyId: usageContext?.strategyId ?? null,
+      evidenceId: usageContext?.evidenceId ?? null,
+      metadata: usageContext?.metadata ?? {},
+    };
   }
 
   models = {
     generateContent: async (options: any) => {
       if (!this.apiKey) {
         throw new OpenAICompatError('OpenAI API key is not configured.', 503, 'missing_api_key');
+      }
+      if (!this.usageContext.critical && !(await allowNonCriticalAiCall())) {
+        throw new OpenAICompatError('Black Oracle AI monthly hard cap reached; non-critical AI call suppressed.', 429, 'ai_budget_hard_cap');
       }
 
       const prompt = typeof options?.contents === 'string'
@@ -91,11 +117,26 @@ export class LegacyOpenAIAdapter {
         throw new OpenAICompatError(`${code}: ${message}`, response.status, code);
       }
 
+      const responseId = typeof payload?.id === 'string' ? payload.id : null;
+      const webSearchCalls = countWebSearchCalls(payload);
+      await recordOpenAIUsage(payload?.usage, {
+        feature: this.usageContext.feature,
+        operation: this.usageContext.operation,
+        model,
+        responseId,
+        webSearchCalls,
+        traceId: this.usageContext.traceId,
+        market: this.usageContext.market,
+        strategyId: this.usageContext.strategyId,
+        evidenceId: this.usageContext.evidenceId,
+        metadata: { ...this.usageContext.metadata, requestedWebSearch: webSearch },
+      }).catch((error) => console.warn('Black Oracle AI usage ledger write failed:', error));
+
       const text = extractOutputText(payload);
       const urls = extractUrls(payload);
       return {
         text,
-        responseId: typeof payload?.id === 'string' ? payload.id : null,
+        responseId,
         usage: payload?.usage ?? null,
         candidates: [{
           groundingMetadata: {
