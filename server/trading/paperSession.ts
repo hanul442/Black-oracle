@@ -10,7 +10,6 @@ import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
 import { buildMarketMicrostructure } from './microstructure';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
-import { tradingRuntimeProfile } from './runtimeProfile';
 import { getMarketLiquidity } from './universe';
 
 interface EntryMetadata {
@@ -245,32 +244,45 @@ export class PaperTradingSession {
       takeProfit1Fraction: plan.takeProfit1Fraction,
       protectionBasis: plan.protectionBasis,
     }, timestamp);
-    this.ledger.append('ORDER_FILLED', { ...fill, source: 'EXTERNAL_ASSET_LOOP' });
+    this.ledger.append('ORDER_FILLED', { ...fill, source: 'EXTERNAL_ASSET_LOOP', reason: plan.reason });
     this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized), source: 'EXTERNAL_ASSET_LOOP' });
-    return { fill, portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp) };
+    return {
+      fill,
+      position: this.portfolio.getPosition(normalized),
+      portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp),
+      ledgerTail: this.ledger.snapshot().slice(-8),
+    };
   }
 
   executeApprovedExternalExit(plan: ApprovedExternalPaperExit) {
     const normalized = plan.market.toUpperCase();
     if (!VALID_MARKET.test(normalized)) throw new Error(`Unsupported Paper market: ${normalized}`);
-    if (!plan.riskApproved) throw new Error('External Paper exit requires deterministic risk approval.');
+    if (!plan.riskApproved) throw new Error('External Paper exit requires explicit deterministic approval.');
     const position = this.portfolio.getPosition(normalized);
     if (!position) throw new Error(`No Paper position exists for ${normalized}.`);
-    if (!(plan.referencePrice > 0)) throw new Error('External Paper exit requires a positive price.');
+    if (!(plan.referencePrice > 0)) throw new Error('External Paper exit requires a positive reference price.');
     const timestamp = plan.timestamp ?? Date.now();
-    const quantity = Math.min(position.quantity, plan.quantity && plan.quantity > 0 ? plan.quantity : position.quantity);
-    const orderId = `paper-ext-${timestamp}-${normalized}-sell`;
     this.markPrices.set(normalized, plan.referencePrice);
-    this.ledger.append('ORDER_SUBMITTED', { orderId, market: normalized, side: 'SELL', quantity, source: 'EXTERNAL_ASSET_LOOP', reason: plan.reason });
+    const exitQuantity = Math.min(position.quantity, plan.quantity && plan.quantity > 0 ? plan.quantity : position.quantity);
+    const orderId = `paper-ext-${timestamp}-${normalized}-sell`;
+    this.ledger.append('ORDER_SUBMITTED', {
+      orderId,
+      market: normalized,
+      side: 'SELL',
+      quantity: exitQuantity,
+      source: 'EXTERNAL_ASSET_LOOP',
+      reason: plan.reason,
+    });
     const fill = this.broker.executeMarketOrder({
       id: orderId,
       market: normalized,
       side: 'SELL',
-      quantity,
+      quantity: exitQuantity,
       referencePrice: plan.referencePrice,
       timestamp,
       strategyVersion: TRADING_STRATEGY_VERSION,
     });
+
     const entry = this.entryMetadata.get(normalized);
     const costBasisReleased = position.averageCost * fill.quantity;
     const fillGrossPnl = (fill.fillPrice - position.entryPrice) * fill.quantity;
@@ -284,79 +296,136 @@ export class PaperTradingSession {
       weightedExitValue: (entry.weightedExitValue ?? 0) + fill.fillPrice * fill.quantity,
       partialExitCount: (entry.partialExitCount ?? 0) + (fill.quantity < position.quantity - 1e-10 ? 1 : 0),
     } : null;
+
     const remainingPosition = this.portfolio.applyFill(fill);
-    let closedTrade: ClosedPaperTrade | null = null;
     if (remainingPosition) {
       if (updatedMetadata) this.entryMetadata.set(normalized, updatedMetadata);
       if (plan.markTakeProfit1) this.portfolio.markTakeProfit1(normalized, timestamp);
-      this.ledger.append('ORDER_FILLED', { ...fill, source: 'EXTERNAL_ASSET_LOOP', partialExit: true });
-      this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized), source: 'EXTERNAL_ASSET_LOOP', partialExit: true });
-    } else {
-      const totalQuantity = updatedMetadata?.realizedQuantity ?? fill.quantity;
-      const totalGrossPnl = updatedMetadata?.accumulatedGrossPnl ?? fillGrossPnl;
-      const totalNetPnl = updatedMetadata?.accumulatedNetPnl ?? fillNetPnl;
-      const exitFees = updatedMetadata?.accumulatedExitFees ?? fill.fee;
-      const weightedExitValue = updatedMetadata?.weightedExitValue ?? fill.fillPrice * fill.quantity;
-      const entryNotionalWithFee = entry ? entry.fill.notional + entry.fill.fee : position.averageCost * totalQuantity;
-      closedTrade = {
-        id: `trade-${normalized}-${position.openedAt}-${fill.timestamp}`,
-        market: normalized,
-        openedAt: position.openedAt,
-        closedAt: fill.timestamp,
-        entryPrice: position.entryPrice,
-        exitPrice: totalQuantity > 0 ? weightedExitValue / totalQuantity : fill.fillPrice,
-        quantity: totalQuantity,
-        grossPnl: totalGrossPnl,
-        fees: (entry?.fill.fee ?? 0) + exitFees,
-        netPnl: totalNetPnl,
-        returnPct: entryNotionalWithFee > 0 ? totalNetPnl / entryNotionalWithFee : 0,
-        exitReason: plan.reason,
-        strategyVersion: TRADING_STRATEGY_VERSION,
-        entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
-        exitOracleTradeScore: plan.oracleTradeScore,
-        entryAudit: cloneAudit(entry?.audit),
+      this.ledger.append('ORDER_FILLED', { ...fill, partialExit: true, source: 'EXTERNAL_ASSET_LOOP', reason: plan.reason });
+      this.ledger.append('POSITION_UPDATED', { market: normalized, position: this.portfolio.getPosition(normalized), partialExit: true, source: 'EXTERNAL_ASSET_LOOP' });
+      return {
+        fill,
+        partial: true,
+        closedTrade: null,
+        position: this.portfolio.getPosition(normalized),
+        portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp),
       };
-      this.entryMetadata.delete(normalized);
-      this.closedTrades.push(closedTrade);
-      if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
-      this.ledger.append('ORDER_FILLED', { ...fill, source: 'EXTERNAL_ASSET_LOOP', partialExit: false });
-      this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade, source: 'EXTERNAL_ASSET_LOOP' });
     }
-    return { fill, closedTrade, position: this.portfolio.getPosition(normalized), portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp) };
+
+    const totalQuantity = updatedMetadata?.realizedQuantity ?? fill.quantity;
+    const totalGrossPnl = updatedMetadata?.accumulatedGrossPnl ?? fillGrossPnl;
+    const totalNetPnl = updatedMetadata?.accumulatedNetPnl ?? fillNetPnl;
+    const exitFees = updatedMetadata?.accumulatedExitFees ?? fill.fee;
+    const weightedExitValue = updatedMetadata?.weightedExitValue ?? fill.fillPrice * fill.quantity;
+    const entryNotionalWithFee = entry ? entry.fill.notional + entry.fill.fee : position.averageCost * totalQuantity;
+    const weightedExitPrice = totalQuantity > 0 ? weightedExitValue / totalQuantity : fill.fillPrice;
+    const closedTrade: ClosedPaperTrade = {
+      id: `trade-${normalized}-${position.openedAt}-${timestamp}`,
+      market: normalized,
+      openedAt: position.openedAt,
+      closedAt: timestamp,
+      entryPrice: position.entryPrice,
+      exitPrice: weightedExitPrice,
+      quantity: totalQuantity,
+      grossPnl: totalGrossPnl,
+      fees: (entry?.fill.fee ?? 0) + exitFees,
+      netPnl: totalNetPnl,
+      returnPct: entryNotionalWithFee > 0 ? totalNetPnl / entryNotionalWithFee : 0,
+      exitReason: (updatedMetadata?.partialExitCount ?? 0) > 0
+        ? `Staged exit completed. Final reason: ${plan.reason}`
+        : plan.reason,
+      strategyVersion: TRADING_STRATEGY_VERSION,
+      entryOracleTradeScore: entry?.oracleTradeScore ?? 50,
+      exitOracleTradeScore: plan.oracleTradeScore,
+      entryAudit: cloneAudit(entry?.audit),
+    };
+    this.entryMetadata.delete(normalized);
+    this.closedTrades.push(closedTrade);
+    if (this.closedTrades.length > 5_000) this.closedTrades.splice(0, this.closedTrades.length - 5_000);
+    this.ledger.append('ORDER_FILLED', { ...fill, partialExit: false, source: 'EXTERNAL_ASSET_LOOP', reason: plan.reason });
+    this.ledger.append('POSITION_UPDATED', { market: normalized, position: null, closedTrade, source: 'EXTERNAL_ASSET_LOOP' });
+    return {
+      fill,
+      partial: false,
+      closedTrade,
+      position: null,
+      portfolio: this.portfolio.snapshot(Object.fromEntries(this.markPrices), timestamp),
+    };
   }
 
-  async processMarket(market: string, eventScore?: number) {
+  async step(
+    market: string,
+    eventScore?: number,
+    precomputedLiquidity?: LiquiditySnapshot,
+    newEntryAllowed = true,
+    externalEvidenceAvailable = true,
+  ) {
     const normalized = market.toUpperCase();
-    if (!VALID_MARKET.test(normalized)) throw new Error(`Unsupported Paper market: ${normalized}`);
-    const liquidity = await getMarketLiquidity(normalized);
-    if (!liquidity) throw new Error(`No liquidity snapshot available for ${normalized}.`);
+    const [liquidity, multiTimeframe] = await Promise.all([
+      precomputedLiquidity ? Promise.resolve(precomputedLiquidity) : getMarketLiquidity(normalized),
+      buildMarketMultiTimeframe(normalized, eventScore),
+    ]);
+    const microstructure = await buildMarketMicrostructure(normalized, liquidity.tradePrice);
+    const challenger = buildMicrostructureChallenger(multiTimeframe, microstructure);
     this.markPrices.set(normalized, liquidity.tradePrice);
 
-    const position = this.portfolio.getPosition(normalized);
+    let position = this.portfolio.getPosition(normalized);
     let protectionUpdate: DynamicProtectionUpdate | null = null;
-    if (position) {
-      protectionUpdate = buildDynamicProtectionUpdate(position, liquidity.tradePrice);
-      if (protectionUpdate.changed) this.portfolio.applyDynamicProtection(protectionUpdate, Date.now());
+    if (position?.stopLossPrice) {
+      protectionUpdate = buildDynamicProtectionUpdate(position, multiTimeframe.frames.oneHour, liquidity.tradePrice);
+      if (protectionUpdate.changed) {
+        this.portfolio.applyDynamicProtection(protectionUpdate, multiTimeframe.asOf);
+        this.ledger.append('POSITION_UPDATED', {
+          market: normalized,
+          dynamicProtection: true,
+          currentPrice: liquidity.tradePrice,
+          stopLossPrice: protectionUpdate.stopLossPrice,
+          takeProfit2Price: protectionUpdate.takeProfit2Price,
+          protectionRevision: protectionUpdate.protectionRevision,
+          reasons: protectionUpdate.reasons,
+        });
+        position = this.portfolio.getPosition(normalized);
+      }
     }
 
-    const multiTimeframe = await buildMarketMultiTimeframe(normalized);
-    const microstructure = await buildMarketMicrostructure(normalized);
-    const challenger = buildMicrostructureChallenger(microstructure);
-    const tradeMap = buildTradeMap(liquidity, multiTimeframe, microstructure);
-    const externalEvidenceAvailable = eventScore !== undefined && Number.isFinite(eventScore);
-    const technicalEntryCandidate = multiTimeframe.action === 'ENTER' && multiTimeframe.side === 'BUY';
+    const before = this.portfolio.snapshot(Object.fromEntries(this.markPrices), multiTimeframe.asOf);
+    const technicalEntryCandidate = !position
+      && newEntryAllowed
+      && liquidity.eligible
+      && multiTimeframe.action === 'BUY'
+      && multiTimeframe.confidence >= 0.62;
     const decision = buildExecutionDecision({
-      market: normalized,
-      now: Date.now(),
       liquidity,
       multiTimeframe,
-      eventScore,
-      currentPosition: position,
-      equity: this.portfolio.snapshot(Object.fromEntries(this.markPrices)).equity,
+      oneHour: multiTimeframe.frames.oneHour,
+      portfolio: before,
+      position,
+      marketDataAgeMs: Math.max(0, Date.now() - multiTimeframe.asOf),
+      newEntryAllowed,
+      newRiskEvidenceAllowed: externalEvidenceAvailable,
     });
-    const technical = multiTimeframe.technicalEvidence ?? null;
+    const tradeMap = buildTradeMap({
+      currentPrice: liquidity.tradePrice,
+      decision,
+      multiTimeframe,
+      oneHour: multiTimeframe.frames.oneHour,
+    });
+    const oneHour = multiTimeframe.frames.oneHour;
+    const technical = oneHour.technicalEvidence;
+    const structure = oneHour.structure;
     const entryAudit: PaperEntryAuditSnapshot = {
-      structure: multiTimeframe.structure ? { ...multiTimeframe.structure } : null,
+      timestamp: multiTimeframe.asOf,
+      eventScore: eventScore ?? null,
+      regime: oneHour.regime.regime,
+      regimeConfidence: oneHour.regime.confidence,
+      structure: structure ? {
+        bias: structure.bias,
+        confidence: structure.confidence,
+        eventType: structure.lastEvent?.type ?? null,
+        eventDirection: structure.lastEvent?.direction ?? null,
+        location: structure.location.zone,
+        percentile: structure.location.percentile,
+      } : null,
       cycle: multiTimeframe.cycle ? {
         ...multiTimeframe.cycle,
         frames: { ...multiTimeframe.cycle.frames },
@@ -573,4 +642,4 @@ export class PaperTradingSession {
   }
 }
 
-export const paperTradingSession = new PaperTradingSession(tradingRuntimeProfile.initialEquityKrw);
+export const paperTradingSession = new PaperTradingSession();
