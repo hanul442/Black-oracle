@@ -4,14 +4,16 @@ import { buildShadowCouncil } from './council';
 import type { EvidenceAggregate } from './evidence';
 
 const evidence = (overrides: Partial<EvidenceAggregate> = {}): EvidenceAggregate => ({
-  activeCount: 0,
-  bullishCount: 0,
-  bearishCount: 0,
-  neutralCount: 0,
-  contradictionCount: 0,
+  market: 'KRW-BTC',
   score: 0,
   confidence: 0,
+  activeCount: 0,
+  bullishWeight: 0,
+  bearishWeight: 0,
+  contradictionCount: 0,
+  asOf: Date.now(),
   evidenceIds: [],
+  reasons: [],
   ...overrides,
 });
 
@@ -54,7 +56,7 @@ test('Crypto Evidence member abstains when no external Evidence exists', () => {
 });
 
 test('Equity Evidence member rejects new risk when source-backed Evidence is missing', () => {
-  const council = buildShadowCouncil({ market: 'KRX-005930', decision: decision(), multiTimeframe: mtf(), evidence: evidence() });
+  const council = buildShadowCouncil({ market: 'KRX-005930', decision: decision(), multiTimeframe: mtf(), evidence: evidence({ market: 'KRX-005930' }) });
   assert.equal(council.members.find((member) => member.role === 'EVIDENCE')?.vote, 'REJECT');
 });
 
@@ -63,7 +65,7 @@ test('Risk rejection forces Shadow Council reject verdict', () => {
     market: 'KRW-BTC',
     decision: decision('ENTER', 'REJECT'),
     multiTimeframe: mtf(),
-    evidence: evidence({ activeCount: 1, bullishCount: 1, score: 35, confidence: 0.75, evidenceIds: ['e1'] }),
+    evidence: evidence({ activeCount: 1, bullishWeight: 0.8, score: 35, confidence: 0.75, evidenceIds: ['e1'] }),
   });
   assert.equal(council.verdict, 'REJECT');
 });
