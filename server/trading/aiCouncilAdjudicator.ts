@@ -56,6 +56,8 @@ export type AiCouncilReviewResult = {
   executionAuthority: false;
 };
 
+export type AiCouncilModelTier = 'FAST' | 'ESCALATION';
+
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : 0));
 
 export const shouldEscalateAiCouncil = (trace: OperationalCouncilTrace): AiCouncilEscalationDecision => {
@@ -88,6 +90,20 @@ export const shouldEscalateAiCouncil = (trace: OperationalCouncilTrace): AiCounc
     };
   }
   return { escalate: false, reason: 'No material Council conflict or trade event requires AI escalation.', priority: 0, highMateriality: false };
+};
+
+/**
+ * Expensive adjudication is reserved for actual completed Paper trade events.
+ * HOLD/NO_TRADE disagreements remain useful audit material, but they cannot alter
+ * the fail-closed execution result and are reviewed by the fast model instead.
+ */
+export const selectAiCouncilModelTier = (
+  trace: OperationalCouncilTrace,
+  escalation: AiCouncilEscalationDecision,
+  softLimited = false,
+): AiCouncilModelTier => {
+  const materialTradeEvent = trace.action === 'ENTER' || trace.action === 'EXIT';
+  return materialTradeEvent && escalation.highMateriality && !softLimited ? 'ESCALATION' : 'FAST';
 };
 
 const extractOutputText = (payload: any) => {
@@ -209,8 +225,8 @@ const callAiAdjudicator = async (
   if (budget?.enabled && budget.hardLimited) {
     return { reviewKey, market: trace.market, action: trace.action, model: null, escalated: true, skipped: true, skipReason: 'AI monthly hard cap reached.', escalationReason: escalation.reason, advisoryOnly: true, executionAuthority: false };
   }
-  const useEscalationModel = escalation.highMateriality && !budget?.softLimited;
-  const model = useEscalationModel
+  const modelTier = selectAiCouncilModelTier(trace, escalation, Boolean(budget?.softLimited));
+  const model = modelTier === 'ESCALATION'
     ? (process.env.OPENAI_COUNCIL_ADJUDICATOR_MODEL?.trim() || DEFAULT_ESCALATION_MODEL)
     : (process.env.OPENAI_FAST_MODEL?.trim() || DEFAULT_FAST_MODEL);
 
@@ -254,7 +270,13 @@ const callAiAdjudicator = async (
     responseId,
     traceId: reviewKey,
     market: trace.market,
-    metadata: { action: trace.action, escalationReason: escalation.reason, deterministicVerdict: trace.council.verdict, advisoryOnly: true },
+    metadata: {
+      action: trace.action,
+      escalationReason: escalation.reason,
+      deterministicVerdict: trace.council.verdict,
+      modelTier,
+      advisoryOnly: true,
+    },
   }).catch((error) => console.warn('Operational Council AI usage ledger write failed:', error));
   await persistReview(runtimeId, trace, escalation.reason, model, review);
   return {
