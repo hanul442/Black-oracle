@@ -1,6 +1,7 @@
 import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
 import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
+import { buildTradingSessionDeltaCanonicalEvents } from '../server/eventLedgerTradeProjection';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -97,7 +98,9 @@ export default async function handler(request: any, response: any) {
     } else {
       const restore = await restoreRuntimeCheckpoint(false);
       runtimeRestored = true;
+      const beforeSession = paperLoopController.status().session;
       const cycle = await paperLoopController.runCycle();
+      const afterSession = paperLoopController.status().session;
 
       // Trading state is persisted BEFORE any AI review or event-ledger projection.
       // Neither the AI Council nor observability can alter this cycle's execution outcome.
@@ -130,6 +133,7 @@ export default async function handler(request: any, response: any) {
         const events = [
           ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
           ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
+          ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
         ];
         eventLedger = await appendCanonicalEvents(events);
       } catch (ledgerError) {
