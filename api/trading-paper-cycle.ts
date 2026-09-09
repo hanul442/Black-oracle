@@ -1,5 +1,6 @@
 import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
+import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -126,7 +127,10 @@ export default async function handler(request: any, response: any) {
 
       let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
       try {
-        const events = buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi);
+        const events = [
+          ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
+          ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
+        ];
         eventLedger = await appendCanonicalEvents(events);
       } catch (ledgerError) {
         console.error('Canonical event ledger append failed after completed Paper cycle:', ledgerError);
