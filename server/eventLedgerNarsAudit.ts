@@ -1,6 +1,6 @@
 import type { CanonicalEventInput } from './eventLedger';
 
-type InboxRow = {
+export type InboxRow = {
   outbox_id: string;
   event_id?: string | null;
   status: string;
@@ -11,7 +11,7 @@ type InboxRow = {
   last_error?: string | null;
 };
 
-type ExternalEvidenceRow = {
+export type ExternalEvidenceRow = {
   id: string;
   packet_outbox_id?: string | null;
   event_id?: string | null;
@@ -70,33 +70,20 @@ const readRows = async <T>(table: string, select: string, timeColumn: string, fr
   return await response.json() as T[];
 };
 
-export const buildNarsCanonicalAuditEvents = async (cycle: any, runtimeId: string): Promise<CanonicalEventInput[]> => {
-  const db = dbConfig();
-  if (!db) return [];
-  const { from, to } = boundedWindow(cycle?.startedAt, cycle?.finishedAt);
-  const [inboxRows, externalRows] = await Promise.all([
-    readRows<InboxRow>(
-      'black_oracle_nars_inbox',
-      'outbox_id,event_id,status,mapped_markets,received_at,updated_at,analyzed_at,last_error',
-      'updated_at',
-      from,
-      to,
-      100,
-    ),
-    readRows<ExternalEvidenceRow>(
-      'black_oracle_external_evidence',
-      'id,packet_outbox_id,event_id,market,title,direction,materiality,impact_confidence,evidence_grade,evidence_score,eligible_for_new_risk,analysis_model,analysis_version,updated_at,execution_authority',
-      'updated_at',
-      from,
-      to,
-      100,
-    ),
-  ]);
-
+export const projectNarsRowsToCanonicalEvents = (
+  inboxRows: InboxRow[],
+  externalRows: ExternalEvidenceRow[],
+  runtimeId: string,
+  fallbackOccurredAt: number | string,
+): CanonicalEventInput[] => {
+  const fallback = typeof fallbackOccurredAt === 'number'
+    ? new Date(fallbackOccurredAt).toISOString()
+    : String(fallbackOccurredAt);
   const events: CanonicalEventInput[] = [];
+
   for (const row of inboxRows) {
     const status = String(row.status || 'UNKNOWN').toUpperCase();
-    const occurredAt = row.updated_at || row.analyzed_at || row.received_at || new Date(to).toISOString();
+    const occurredAt = row.updated_at || row.analyzed_at || row.received_at || fallback;
     const markets = Array.isArray(row.mapped_markets) ? row.mapped_markets.map(String) : [];
     events.push({
       eventKey: `nars-outbox:${row.outbox_id}:${status}:${occurredAt}`,
@@ -131,7 +118,7 @@ export const buildNarsCanonicalAuditEvents = async (cycle: any, runtimeId: strin
   }
 
   for (const row of externalRows) {
-    const occurredAt = row.updated_at || new Date(to).toISOString();
+    const occurredAt = row.updated_at || fallback;
     events.push({
       eventKey: `external-evidence:${row.id}:${occurredAt}`,
       occurredAt,
@@ -169,4 +156,29 @@ export const buildNarsCanonicalAuditEvents = async (cycle: any, runtimeId: strin
   }
 
   return events;
+};
+
+export const buildNarsCanonicalAuditEvents = async (cycle: any, runtimeId: string): Promise<CanonicalEventInput[]> => {
+  const db = dbConfig();
+  if (!db) return [];
+  const { from, to } = boundedWindow(cycle?.startedAt, cycle?.finishedAt);
+  const [inboxRows, externalRows] = await Promise.all([
+    readRows<InboxRow>(
+      'black_oracle_nars_inbox',
+      'outbox_id,event_id,status,mapped_markets,received_at,updated_at,analyzed_at,last_error',
+      'updated_at',
+      from,
+      to,
+      100,
+    ),
+    readRows<ExternalEvidenceRow>(
+      'black_oracle_external_evidence',
+      'id,packet_outbox_id,event_id,market,title,direction,materiality,impact_confidence,evidence_grade,evidence_score,eligible_for_new_risk,analysis_model,analysis_version,updated_at,execution_authority',
+      'updated_at',
+      from,
+      to,
+      100,
+    ),
+  ]);
+  return projectNarsRowsToCanonicalEvents(inboxRows, externalRows, runtimeId, to);
 };
