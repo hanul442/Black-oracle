@@ -66,7 +66,32 @@ test('qualification runtime blocks system revision changes inside one window', (
 
 test('armed timestamp cannot exist without a qualification id', () => {
   assert.throws(() => readTradingRuntimeProfile({
-    TRADING_RUNTIME_ID: VNEXT_PAPER_RUNTIME_ID,
+    TRADING_RUNTIME_ID: 'black-oracle-paper',
     PAPER_QUALIFICATION_ARMED_AT: '2026-09-09T09:00:00Z',
   }), /requires PAPER_QUALIFICATION_ID/);
+});
+
+test('vNext cannot start without a qualification id', () => {
+  assert.throws(() => readTradingRuntimeProfile({
+    TRADING_RUNTIME_ID: VNEXT_PAPER_RUNTIME_ID,
+    TRADING_INITIAL_EQUITY_KRW: '100000000',
+    PAPER_QUALIFICATION_ARMED_AT: '2026-09-09T09:00:00Z',
+    PAPER_SYSTEM_REVISION: 'git:abc123',
+  }), /requires PAPER_QUALIFICATION_ID/);
+});
+
+test('vNext cannot start without an armed timestamp', () => {
+  assert.throws(() => readTradingRuntimeProfile({
+    TRADING_RUNTIME_ID: VNEXT_PAPER_RUNTIME_ID,
+    TRADING_INITIAL_EQUITY_KRW: '100000000',
+    PAPER_QUALIFICATION_ID: 'paper-100m-20260909',
+    PAPER_SYSTEM_REVISION: 'git:abc123',
+  }), /requires PAPER_QUALIFICATION_ARMED_AT/);
+});
+
+test('vNext cannot start with capital other than 100M KRW', () => {
+  assert.throws(() => readTradingRuntimeProfile({
+    ...qualificationEnv,
+    TRADING_INITIAL_EQUITY_KRW: '1000000',
+  }), /requires TRADING_INITIAL_EQUITY_KRW=100000000/);
 });
