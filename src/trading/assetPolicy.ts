@@ -54,11 +54,21 @@ const UNKNOWN_POLICY: AssetDecisionPolicy = {
   rationale: ['Unknown asset classes default to conservative evidence-required behavior until explicitly configured.'],
 };
 
-export const getAssetDecisionPolicy = (marketOrId: string): AssetDecisionPolicy => {
+const clonePolicy = (policy: AssetDecisionPolicy): AssetDecisionPolicy => ({ ...policy, rationale: policy.rationale.slice() });
+
+export const inferAssetClassFromMarket = (marketOrId: string): AssetClass | 'UNKNOWN' => {
   const instrument = findTradingInstrument(marketOrId);
-  if (!instrument) return { ...UNKNOWN_POLICY, rationale: UNKNOWN_POLICY.rationale.slice() };
-  const policy = POLICY_BY_ASSET[instrument.assetClass];
-  return { ...policy, rationale: policy.rationale.slice() };
+  if (instrument) return instrument.assetClass;
+  const normalized = marketOrId.trim().toUpperCase();
+  if (/^KRX-\d{6}$/.test(normalized)) return 'EQUITY';
+  if (/^KRW-[A-Z0-9]+$/.test(normalized)) return 'CRYPTO_SPOT';
+  return 'UNKNOWN';
 };
 
-export const assetDecisionPolicies = () => Object.values(POLICY_BY_ASSET).map((item) => ({ ...item, rationale: item.rationale.slice() }));
+export const getAssetDecisionPolicy = (marketOrId: string): AssetDecisionPolicy => {
+  const assetClass = inferAssetClassFromMarket(marketOrId);
+  if (assetClass === 'UNKNOWN') return clonePolicy(UNKNOWN_POLICY);
+  return clonePolicy(POLICY_BY_ASSET[assetClass]);
+};
+
+export const assetDecisionPolicies = () => Object.values(POLICY_BY_ASSET).map(clonePolicy);
