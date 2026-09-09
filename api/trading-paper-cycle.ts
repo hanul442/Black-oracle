@@ -1,6 +1,7 @@
 import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
 import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
+import { buildNarsCanonicalAuditEvents } from '../server/eventLedgerNarsAudit';
 import { buildTradingSessionDeltaCanonicalEvents } from '../server/eventLedgerTradeProjection';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
@@ -130,10 +131,12 @@ export default async function handler(request: any, response: any) {
 
       let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
       try {
+        const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
         const events = [
           ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
           ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
           ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
+          ...narsAuditEvents,
         ];
         eventLedger = await appendCanonicalEvents(events);
       } catch (ledgerError) {
