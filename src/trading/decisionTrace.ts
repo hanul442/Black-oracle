@@ -1,3 +1,4 @@
+import { buildShadowCouncil, type CouncilSnapshot } from './council';
 import type { EvidenceAggregate } from './evidence';
 import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
 import type { MicrostructureSnapshot } from './microstructure';
@@ -24,6 +25,7 @@ export interface DecisionTrace {
   confidence: number;
   strategyDisposition: StrategyRouterDecision['route'];
   router: StrategyRouterDecision;
+  council: CouncilSnapshot;
   riskDisposition: RiskDisposition;
   eventScore: number | null;
   forecast: EvidenceForecast;
@@ -104,6 +106,13 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const technical = oneHour.technicalEvidence;
   const structure = oneHour.structure;
   const micro = input.microstructure;
+  const council = buildShadowCouncil({
+    market: input.market.toUpperCase(),
+    decision,
+    multiTimeframe,
+    evidence,
+    microstructure: micro,
+  });
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -115,6 +124,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     confidence: decision.confidence,
     strategyDisposition: router.route,
     router,
+    council,
     riskDisposition: decision.riskDisposition,
     eventScore: evidence.activeCount > 0 ? evidence.score : null,
     forecast,

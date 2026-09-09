@@ -1,268 +1,423 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
-  BrainCircuit,
-  CircleAlert,
+  Bot,
   Database,
-  GitBranch,
-  Radar,
+  Eye,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
+  TrendingUp,
+  WalletCards,
+  X,
 } from 'lucide-react';
 import { useAppContext } from '../store';
 
-const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+type CouncilMember = { role: string; vote: string; confidence: number; reasons: string[] };
+type Council = {
+  mode: string;
+  executionAuthority: boolean;
+  verdict: string;
+  approveCount: number;
+  cautionCount: number;
+  rejectCount: number;
+  abstainCount: number;
+  members: CouncilMember[];
+  summary: string;
+};
 
-const Panel: React.FC<React.PropsWithChildren<{ className?: string }>> = ({ children, className = '' }) => (
-  <section className={`border border-white/[0.07] bg-[#080C11]/88 ${className}`}>{children}</section>
+type Decision = {
+  timestamp: number;
+  market: string;
+  decision: string;
+  regime?: string | null;
+  regimeConfidence?: number | null;
+  oracleTradeScore?: number | null;
+  confidence?: number | null;
+  strategyDisposition?: string | null;
+  riskDisposition?: string | null;
+  evidenceActiveCount?: number;
+  evidenceIds?: string[];
+  primaryReason?: string | null;
+  reasons?: string[];
+  council?: Council | null;
+  router?: any;
+  forecast?: any;
+  technicalEvidence?: any;
+  structure?: any;
+  microstructure?: any;
+  tradeMap?: any;
+};
+
+type Position = {
+  market: string;
+  quantity: number;
+  entryPrice: number;
+  markPrice: number;
+  marketValue: number;
+  unrealizedPnl: number;
+  stopLossPrice?: number | null;
+  takeProfit1Price?: number | null;
+  takeProfit2Price?: number | null;
+  takeProfit1Taken?: boolean;
+  protectionRevision?: number;
+  openedAt: number;
+};
+
+type Trade = {
+  id: string;
+  market: string;
+  closedAt: number;
+  netPnl: number;
+  returnPct: number;
+  exitReason?: string;
+  strategyVersion?: string | null;
+};
+
+type Evidence = {
+  id: string;
+  market: string;
+  title: string;
+  direction: string;
+  source_type?: string;
+  source?: string | null;
+  evidence_grade?: string | null;
+  evidence_score?: number | null;
+  eligible_for_new_risk?: boolean;
+  observed_at: string;
+  rationale?: string;
+};
+
+type EquityDecision = {
+  timestamp: number;
+  market: string;
+  name?: string;
+  action: string;
+  price: number;
+  technicalScore?: number | null;
+  evidenceScore?: number | null;
+  waveScore?: number | null;
+  intradayAction?: string | null;
+  relativeVolume?: number | null;
+  priceVsVwapPct?: number | null;
+  volumeAbsorptionScore?: number | null;
+  volumeAbsorptionDirection?: string | null;
+  currentVsReferenceVolume?: number | null;
+  absorptionCandidate?: boolean | null;
+  reasons?: string[];
+};
+
+type StatusPayload = {
+  success?: boolean;
+  available?: boolean;
+  status?: string;
+  now?: number;
+  mode?: string;
+  strategyVersion?: string | null;
+  checkpoint?: { savedAt?: number; reason?: string; runtimeId?: string; backend?: string };
+  loop?: {
+    cycleCount?: number;
+    ageMs?: number | null;
+    stale?: boolean;
+    lastCycle?: {
+      scanned?: number;
+      entered?: number;
+      exited?: number;
+      held?: number;
+      noTrade?: number;
+      errors?: any[];
+      evidenceOps?: any;
+      equityCycle?: any;
+    } | null;
+  };
+  portfolio?: {
+    initialEquity?: number;
+    equity?: number;
+    cash?: number;
+    realizedPnl?: number;
+    feesPaid?: number;
+    dailyPnlPct?: number;
+    currentDrawdownPct?: number;
+    openPositions?: Position[];
+  };
+  ingestion?: {
+    evidenceActive?: number;
+    externalEvidenceActive?: number;
+    evidenceRequests?: number;
+    narsInboxRecent?: number;
+    lastCycleErrors?: number;
+  };
+  council?: { mode?: string; executionAuthority?: boolean; latest?: Council | null; stats?: { reviewed: number; approve: number; conditional: number; reject: number } };
+  evidenceFlow?: Evidence[];
+  decisionTape?: Decision[];
+  equityDecisions?: EquityDecision[];
+  recentTrades?: Trade[];
+};
+
+const fmtKrw = (value: number | null | undefined) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+const pct = (value: number | null | undefined, digits = 2) => `${(Number(value ?? 0) * 100).toFixed(digits)}%`;
+const ago = (timestamp?: number | null) => {
+  if (!timestamp) return '—';
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h`;
+};
+
+const tone = (value?: string | null) => {
+  const normalized = String(value || '').toUpperCase();
+  if (['OK', 'PASS', 'APPROVE', 'ENTER', 'BULLISH', 'ACTIVE', 'HOLD'].includes(normalized)) return 'text-[#77B9A5]';
+  if (['REJECT', 'ERROR', 'BEARISH', 'EXIT', 'DEGRADED'].includes(normalized)) return 'text-[#D07D7D]';
+  if (['CONDITIONAL', 'CAUTION', 'WAIT', 'NO_TRADE', 'EVIDENCE_REQUESTED'].includes(normalized)) return 'text-[#C7AA71]';
+  return 'text-[#9AA5AE]';
+};
+
+const Card = ({ children, className = '' }: React.PropsWithChildren<{ className?: string }>) => (
+  <section className={`border border-white/[0.07] bg-[#070B10] ${className}`}>{children}</section>
 );
 
-const Kicker: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <div className="font-mono text-[7px] uppercase tracking-[0.2em] text-[#5D6873]">{children}</div>
+const Kicker = ({ children }: React.PropsWithChildren) => (
+  <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#58636D]">{children}</div>
 );
 
 export const CommandCenterView: React.FC = () => {
-  const {
-    sources,
-    signals,
-    hypotheses,
-    evidence,
-    predictions,
-    reports,
-    setCurrentView,
-    activeFeeds,
-  } = useAppContext() as any;
+  const { setCurrentView } = useAppContext() as any;
+  const [payload, setPayload] = useState<StatusPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Decision | EquityDecision | null>(null);
 
-  const rankedSignals = [...(signals || [])]
-    .sort((a: any, b: any) => ((b.signalStrength || 0) + (b.urgency || 0)) - ((a.signalStrength || 0) + (a.urgency || 0)))
-    .slice(0, 4);
+  const load = async () => {
+    try {
+      const response = await fetch('/api/trading-status', { cache: 'no-store' });
+      setPayload(await response.json() as StatusPayload);
+    } catch {
+      setPayload(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const rankedHypotheses = [...(hypotheses || [])]
-    .sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0))
-    .slice(0, 3);
+  useEffect(() => {
+    void load();
+    const interval = window.setInterval(() => void load(), 30_000);
+    const onVisible = () => document.visibilityState === 'visible' && void load();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', load);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', load);
+    };
+  }, []);
 
-  const rankedPredictions = [...(predictions || [])]
-    .sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0))
-    .slice(0, 3);
+  const positions = payload?.portfolio?.openPositions ?? [];
+  const decisions = payload?.decisionTape ?? [];
+  const equityDecisions = payload?.equityDecisions ?? [];
+  const evidence = payload?.evidenceFlow ?? [];
+  const trades = payload?.recentTrades ?? [];
+  const latestCouncil = payload?.council?.latest ?? decisions.find((item) => item.council)?.council ?? null;
+  const latestDecision = decisions[0] ?? null;
+  const latestEquityDecision = equityDecisions[0] ?? null;
+  const totalUnrealized = useMemo(() => positions.reduce((sum, item) => sum + Number(item.unrealizedPnl || 0), 0), [positions]);
 
-  const supporting = (evidence || []).filter((item: any) => item.evidenceType === 'supporting').length;
-  const contradicting = (evidence || []).filter((item: any) => item.evidenceType === 'contradicting').length;
-  const evidenceTotal = Math.max(1, (evidence || []).length);
-  const supportShare = Math.round((supporting / evidenceTotal) * 100);
-  const contradictionShare = Math.round((contradicting / evidenceTotal) * 100);
-  const avgConfidence = rankedHypotheses.length
-    ? Math.round(rankedHypotheses.reduce((sum: number, item: any) => sum + Number(item.confidence || 0), 0) / rankedHypotheses.length)
-    : 0;
-
-  const topPrediction = rankedPredictions[0];
-  const topSignal = rankedSignals[0];
-  const healthScore = clamp(72 + Math.min(14, (activeFeeds || []).length * 2) - Math.min(18, contradictionShare / 2));
-  const scrutiny = contradictionShare > 25;
-  const situationJudgment = topPrediction?.statement
-    || topSignal?.summary
-    || topSignal?.title
-    || 'No active signal currently requires escalation.';
+  const statusCells = [
+    { label: 'Runtime', value: payload?.status || 'UNKNOWN', sub: payload?.checkpoint?.runtimeId || 'no checkpoint' },
+    { label: 'NARS', value: (payload?.ingestion?.narsInboxRecent ?? 0) > 0 ? 'CONNECTED' : 'WAITING', sub: `${payload?.ingestion?.narsInboxRecent ?? 0} inbox · ${payload?.ingestion?.externalEvidenceActive ?? 0} active` },
+    { label: 'Evidence', value: String(payload?.ingestion?.externalEvidenceActive ?? 0), sub: `${payload?.ingestion?.evidenceRequests ?? 0} requests` },
+    { label: 'Council', value: latestCouncil?.verdict || 'NOT OBSERVED', sub: `${payload?.council?.mode || 'SHADOW'} · authority NO` },
+    { label: 'Strategy', value: latestDecision?.strategyDisposition || payload?.strategyVersion || '—', sub: latestDecision?.market || 'no recent decision' },
+    { label: 'Risk', value: latestDecision?.riskDisposition || 'NOT EVALUATED', sub: latestDecision?.decision || '—' },
+    { label: 'Paper', value: payload?.mode || 'PAPER', sub: `${positions.length} open positions` },
+  ];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#05070A] pb-28 lg:pb-12">
-      <div className="mx-auto w-full max-w-[1560px] px-4 py-5 md:px-6 md:py-6 xl:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.24 }}
-          className="mb-4 flex flex-col justify-between gap-4 border-b border-white/[0.06] pb-4 md:flex-row md:items-end"
-        >
+    <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-24 pt-4 md:px-6 lg:pb-8 xl:px-8">
+      <div className="mx-auto max-w-[1560px]">
+        <header className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-white/[0.06] pb-4">
           <div>
-            <div className="mb-2 flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.22em] text-[#70CAD2]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#43D9E6]" />
-              Situation room
-            </div>
-            <h1 className="text-[27px] font-medium tracking-[-0.04em] text-[#F0F3F5] sm:text-[34px]">Command</h1>
-            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[#6B7680] sm:text-xs">
-              Start with the judgment. Drill into the evidence only where the state has changed.
-            </p>
+            <div className="font-mono text-[7px] uppercase tracking-[0.22em] text-[#43D9E6]">Black Oracle · unified runtime</div>
+            <h1 className="mt-1 text-2xl font-medium tracking-[-0.035em] text-[#EDF1F4]">ORACLE</h1>
+            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[#65707A]">현재 시스템이 무엇을 보고, 어떤 전략을 선택하고, 왜 거래하거나 기다리는지 실제 Paper runtime만 표시합니다.</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setCurrentView('oracle-field')} className="border border-white/[0.07] bg-white/[0.015] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.15em] text-[#7D8892] hover:text-[#D7DEE3]">
-              Raw field
-            </button>
-            <button onClick={() => setCurrentView('forecast')} className="border border-[#43D9E6]/18 bg-[#43D9E6]/[0.035] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.15em] text-[#79C7CE] hover:border-[#43D9E6]/30">
-              Forecasts
-            </button>
+            <button onClick={() => setCurrentView('strategies')} className="border border-white/[0.08] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.12em] text-[#73808A]">Strategies</button>
+            <button onClick={() => setCurrentView('log')} className="border border-white/[0.08] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.12em] text-[#73808A]">Full log</button>
+            <button onClick={() => void load()} className="flex items-center gap-2 border border-[#43D9E6]/20 px-3 py-2 font-mono text-[7px] uppercase tracking-[0.12em] text-[#78C8D0]"><RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} /> refresh</button>
           </div>
-        </motion.div>
+        </header>
 
-        <Panel className="mb-4 overflow-hidden">
-          <div className="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,.65fr)]">
-            <div className="border-b border-white/[0.06] p-4 md:p-5 lg:border-b-0 lg:border-r">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`border px-2 py-1 font-mono text-[6px] uppercase tracking-[0.16em] ${scrutiny ? 'border-[#D66565]/25 bg-[#D66565]/[0.035] text-[#C97878]' : 'border-[#72B6A0]/20 bg-[#72B6A0]/[0.03] text-[#78B39F]'}`}>
-                  {scrutiny ? 'ELEVATED SCRUTINY' : 'COHERENT'}
-                </span>
-                <span className="font-mono text-[6px] uppercase tracking-[0.15em] text-[#46515B]">{contradicting} counter-evidence · {activeFeeds?.length || 0} source feeds</span>
-              </div>
-              <Kicker>Current judgment</Kicker>
-              <div className="mt-2 max-w-4xl text-[18px] leading-snug tracking-[-0.02em] text-[#E8ECEF] md:text-[23px]">
-                {situationJudgment}
-              </div>
-              <div className="mt-4 flex items-center gap-2 text-[10px] text-[#68737D]">
-                {scrutiny ? <ArrowDownRight className="h-3.5 w-3.5 text-[#D66565]" /> : <ArrowUpRight className="h-3.5 w-3.5 text-[#72B6A0]" />}
-                <span>{scrutiny ? 'Do not escalate without Council review.' : 'No major contradiction threshold breach.'}</span>
-              </div>
+        <div className="mb-4 grid grid-cols-2 gap-px border border-white/[0.07] bg-white/[0.07] sm:grid-cols-4 xl:grid-cols-7">
+          {statusCells.map((cell) => (
+            <div key={cell.label} className="min-w-0 bg-[#070B10] p-3.5">
+              <Kicker>{cell.label}</Kicker>
+              <div className={`mt-2 truncate font-mono text-[11px] ${tone(cell.value)}`}>{cell.value}</div>
+              <div className="mt-1 truncate text-[8px] text-[#505B65]">{cell.sub}</div>
             </div>
+          ))}
+        </div>
 
-            <div className="p-4 md:p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <Kicker>Top 3 changes</Kicker>
-                <Sparkles className="h-3.5 w-3.5 text-[#5D6873]" />
-              </div>
-              <div className="space-y-1">
-                {rankedSignals.slice(0, 3).map((signal: any, index: number) => (
-                  <button key={signal.id} onClick={() => setCurrentView('oracle-field')} className="flex w-full items-start gap-3 border-t border-white/[0.045] py-2.5 text-left first:border-t-0 first:pt-0">
-                    <span className="mt-0.5 font-mono text-[7px] text-[#45505A]">0{index + 1}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block line-clamp-1 text-[10px] text-[#B5BEC6]">{signal.title}</span>
-                      <span className="mt-1 block font-mono text-[6px] uppercase tracking-[0.12em] text-[#4E5963]">strength {Math.round(signal.signalStrength || 0)} · urgency {Math.round(signal.urgency || 0)}</span>
-                    </span>
+        <div className="mb-4 grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div><Kicker>Portfolio</Kicker><div className="mt-1 text-[13px] text-[#DDE3E7]">₩100M unified Paper capital</div></div>
+              <WalletCards className="h-4 w-4 text-[#65717B]" />
+            </div>
+            <div className="grid grid-cols-2 gap-px bg-white/[0.05] sm:grid-cols-4">
+              <Metric label="Equity" value={`₩${fmtKrw(payload?.portfolio?.equity)}`} />
+              <Metric label="Cash" value={`₩${fmtKrw(payload?.portfolio?.cash)}`} />
+              <Metric label="Realized" value={`₩${fmtKrw(payload?.portfolio?.realizedPnl)}`} valueClass={Number(payload?.portfolio?.realizedPnl ?? 0) >= 0 ? 'text-[#77B9A5]' : 'text-[#D07D7D]'} />
+              <Metric label="Unrealized" value={`₩${fmtKrw(totalUnrealized)}`} valueClass={totalUnrealized >= 0 ? 'text-[#77B9A5]' : 'text-[#D07D7D]'} />
+            </div>
+            <div className="divide-y divide-white/[0.045]">
+              {positions.map((position) => {
+                const ret = position.entryPrice > 0 ? (position.markPrice - position.entryPrice) / position.entryPrice : 0;
+                return (
+                  <button key={position.market} onClick={() => setCurrentView('log')} className="grid w-full gap-2 px-4 py-3 text-left sm:grid-cols-[105px_90px_90px_1fr] sm:items-center">
+                    <div className="font-mono text-[9px] text-[#E1E6EA]">{position.market}</div>
+                    <div className={`font-mono text-[9px] ${ret >= 0 ? 'text-[#77B9A5]' : 'text-[#D07D7D]'}`}>{pct(ret)}</div>
+                    <div className="font-mono text-[8px] text-[#67727C]">₩{fmtKrw(position.markPrice)}</div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[7px] uppercase tracking-[0.08em] text-[#535E68]">
+                      <span>SL {position.stopLossPrice == null ? '—' : fmtKrw(position.stopLossPrice)}</span>
+                      <span>TP1 {position.takeProfit1Price == null ? '—' : fmtKrw(position.takeProfit1Price)}</span>
+                      <span>TP2 {position.takeProfit2Price == null ? '—' : fmtKrw(position.takeProfit2Price)}</span>
+                      <span>rev {position.protectionRevision ?? 0}</span>
+                    </div>
                   </button>
-                ))}
-                {!rankedSignals.length && <div className="py-3 text-[10px] text-[#4E5963]">No ranked change detected.</div>}
-              </div>
+                );
+              })}
+              {!positions.length && <div className="px-4 py-8 text-center text-[10px] text-[#58636D]">현재 열린 Paper 포지션이 없습니다.</div>}
             </div>
-          </div>
-        </Panel>
+          </Card>
 
-        <div className="mb-4 grid grid-cols-2 gap-px border border-white/[0.07] bg-white/[0.07] md:grid-cols-4">
-          {[
-            { label: 'System health', value: `${Math.round(healthScore)}%`, icon: ShieldCheck, sub: `${activeFeeds?.length || 0} source feeds` },
-            { label: 'Avg confidence', value: `${avgConfidence}%`, icon: BrainCircuit, sub: `${hypotheses?.length || 0} hypotheses` },
-            { label: 'Contradiction', value: `${contradictionShare}%`, icon: CircleAlert, sub: `${contradicting} evidence items` },
-            { label: 'Field volume', value: `${sources?.length || 0}`, icon: Database, sub: `${signals?.length || 0} active signals` },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="bg-[#070B10] p-4 md:p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <Kicker>{item.label}</Kicker>
-                  <Icon className="h-3.5 w-3.5 text-[#4F5A64]" />
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div><Kicker>Shadow Council</Kicker><div className="mt-1 text-[12px] text-[#D4DBE0]">실행권 없는 독립 검토 계층</div></div>
+              <Bot className="h-4 w-4 text-[#6EC9D1]" />
+            </div>
+            {latestCouncil ? (
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className={`font-mono text-lg ${tone(latestCouncil.verdict)}`}>{latestCouncil.verdict}</div>
+                  <div className="font-mono text-[7px] uppercase tracking-[0.12em] text-[#56616B]">execution authority · NO</div>
                 </div>
-                <div className="font-mono text-[23px] tracking-[-0.04em] text-[#E4E9ED] md:text-[29px]">{item.value}</div>
-                <div className="mt-1 text-[9px] text-[#535E68]">{item.sub}</div>
+                <div className="mt-3 grid grid-cols-4 gap-px bg-white/[0.05]">
+                  <Mini label="Approve" value={latestCouncil.approveCount} />
+                  <Mini label="Caution" value={latestCouncil.cautionCount} />
+                  <Mini label="Reject" value={latestCouncil.rejectCount} />
+                  <Mini label="Abstain" value={latestCouncil.abstainCount} />
+                </div>
+                <div className="mt-3 divide-y divide-white/[0.045]">
+                  {latestCouncil.members.map((member) => (
+                    <div key={member.role} className="flex items-start justify-between gap-3 py-2.5">
+                      <div><div className="font-mono text-[8px] text-[#BBC4CB]">{member.role}</div><div className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#66727C]">{member.reasons?.[0]}</div></div>
+                      <div className={`shrink-0 font-mono text-[8px] ${tone(member.vote)}`}>{member.vote}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            );
-          })}
+            ) : <div className="px-4 py-10 text-center text-[10px] text-[#58636D]">새 runtime cycle 이후 Council trace가 생성됩니다.</div>}
+          </Card>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
-          <Panel className="min-h-[350px] p-5 md:p-6">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <Kicker>Priority forecast</Kicker>
-                <h2 className="mt-2 text-[16px] font-medium text-[#E4E9ED]">Highest-conviction active judgment</h2>
-              </div>
-              <Radar className="h-4 w-4 text-[#43D9E6]" />
+        <div className="mb-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3"><div><Kicker>Latest decisions</Kicker><div className="mt-1 text-[10px] text-[#5C6771]">클릭하면 전체 Decision Trace</div></div><Eye className="h-4 w-4 text-[#59656F]" /></div>
+            <div className="divide-y divide-white/[0.045]">
+              {decisions.slice(0, 8).map((item) => (
+                <button key={`${item.market}-${item.timestamp}`} onClick={() => setSelected(item)} className="grid w-full gap-2 px-4 py-3 text-left sm:grid-cols-[100px_86px_105px_1fr] sm:items-center">
+                  <div className="font-mono text-[9px] text-[#DDE3E7]">{item.market}</div>
+                  <div className={`font-mono text-[8px] ${tone(item.decision)}`}>{item.decision}</div>
+                  <div className="font-mono text-[7px] text-[#5E6973]">{item.strategyDisposition || '—'} · {item.oracleTradeScore == null ? '—' : item.oracleTradeScore.toFixed(1)}</div>
+                  <div className="truncate text-[9px] text-[#78838C]">{item.primaryReason || item.reasons?.[0] || 'No rationale recorded.'}</div>
+                </button>
+              ))}
+              {!decisions.length && <div className="px-4 py-8 text-center text-[10px] text-[#58636D]">최근 crypto decision이 없습니다.</div>}
             </div>
+          </Card>
 
-            {topPrediction ? (
-              <div className="grid gap-6 md:grid-cols-[1fr_180px] md:items-center">
-                <div>
-                  <div className="max-w-3xl text-[19px] leading-snug tracking-[-0.025em] text-[#EBEFF2] md:text-[25px]">{topPrediction.statement}</div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    <div className="border-l border-white/[0.09] pl-3">
-                      <Kicker>Validation</Kicker>
-                      <p className="mt-1 text-[10px] leading-relaxed text-[#84909A]">{topPrediction.validationCondition || 'No explicit validation condition.'}</p>
-                    </div>
-                    <div className="border-l border-[#D66565]/20 pl-3">
-                      <Kicker>Invalidation</Kicker>
-                      <p className="mt-1 text-[10px] leading-relaxed text-[#84909A]">{topPrediction.invalidationCondition || 'No explicit invalidation condition.'}</p>
-                    </div>
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3"><div><Kicker>KRX daily → minute timing</Kicker><div className="mt-1 text-[10px] text-[#5C6771]">일봉 선정 · Evidence · 분봉/거래량 타이밍</div></div><TrendingUp className="h-4 w-4 text-[#59656F]" /></div>
+            <div className="divide-y divide-white/[0.045]">
+              {equityDecisions.slice(0, 8).map((item) => (
+                <button key={`${item.market}-${item.timestamp}`} onClick={() => setSelected(item)} className="grid w-full gap-2 px-4 py-3 text-left sm:grid-cols-[100px_90px_85px_1fr] sm:items-center">
+                  <div><div className="font-mono text-[9px] text-[#DDE3E7]">{item.market}</div><div className="mt-1 truncate text-[8px] text-[#505B64]">{item.name}</div></div>
+                  <div className={`font-mono text-[8px] ${tone(item.action)}`}>{item.action}</div>
+                  <div className="font-mono text-[7px] text-[#66717A]">{item.intradayAction || 'daily only'}</div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[7px] text-[#59656E]">
+                    <span>RVOL {item.relativeVolume == null ? '—' : `${item.relativeVolume.toFixed(2)}x`}</span>
+                    <span>VWAP {item.priceVsVwapPct == null ? '—' : pct(item.priceVsVwapPct)}</span>
+                    <span>ABS {item.volumeAbsorptionScore == null ? '—' : item.volumeAbsorptionScore.toFixed(0)}</span>
+                    {item.absorptionCandidate && <span className="text-[#77B9A5]">ABSORPTION</span>}
                   </div>
-                </div>
-                <div className="border-t border-white/[0.07] pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-                  <Kicker>Probability</Kicker>
-                  <div className="mt-1 font-mono text-[46px] tracking-[-0.07em] text-[#E6EBEE]">{Math.round(topPrediction.probability || 0)}<span className="text-[15px] text-[#5A6570]">%</span></div>
-                  <div className="mt-3 h-px w-full bg-white/[0.08]">
-                    <div className="h-px bg-[#43D9E6]" style={{ width: `${clamp(topPrediction.probability || 0)}%` }} />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.14em] text-[#56616C]">
-                    <span>confidence</span><span className="text-[#9EA8B1]">{Math.round(topPrediction.confidence || 0)}%</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex min-h-[220px] items-center justify-center border border-dashed border-white/[0.08] text-[10px] text-[#535E68]">No active prediction yet.</div>
-            )}
-          </Panel>
-
-          <Panel className="p-5 md:p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <Kicker>Evidence balance</Kicker>
-                <h2 className="mt-2 text-[15px] font-medium text-[#DFE4E8]">Support vs contradiction</h2>
-              </div>
-              <Activity className="h-4 w-4 text-[#63707B]" />
+                </button>
+              ))}
+              {!equityDecisions.length && <div className="px-4 py-8 text-center text-[10px] text-[#58636D]">KIS 미설정 또는 아직 KRX cycle이 없습니다.</div>}
             </div>
-            <div className="space-y-5">
-              <div>
-                <div className="mb-2 flex justify-between font-mono text-[8px] uppercase tracking-[0.13em]"><span className="text-[#65707A]">supporting</span><span className="text-[#78B39F]">{supportShare}%</span></div>
-                <div className="h-1 bg-white/[0.06]"><div className="h-full bg-[#72B6A0]" style={{ width: `${supportShare}%` }} /></div>
-              </div>
-              <div>
-                <div className="mb-2 flex justify-between font-mono text-[8px] uppercase tracking-[0.13em]"><span className="text-[#65707A]">contradicting</span><span className="text-[#C97878]">{contradictionShare}%</span></div>
-                <div className="h-1 bg-white/[0.06]"><div className="h-full bg-[#D66565]" style={{ width: `${contradictionShare}%` }} /></div>
-              </div>
-              <div className="border-t border-white/[0.06] pt-4 text-[10px] leading-relaxed text-[#6E7983]">
-                Contradiction is decision information, not noise. High-conflict cases move to Council before escalation.
-              </div>
-            </div>
-          </Panel>
+          </Card>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          <Panel className="p-5">
-            <div className="mb-4 flex items-center justify-between"><Kicker>Signal pulse</Kicker><Sparkles className="h-3.5 w-3.5 text-[#43D9E6]" /></div>
-            <div className="space-y-1">
-              {rankedSignals.map((signal: any, index: number) => (
-                <button key={signal.id} onClick={() => setCurrentView('oracle-field')} className="group flex w-full items-center gap-3 border-t border-white/[0.05] py-3 text-left first:border-t-0 first:pt-0">
-                  <span className="font-mono text-[8px] text-[#45505A]">0{index + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-[10px] text-[#B4BDC5] group-hover:text-[#E8ECEF]">{signal.title}</span>
-                  <span className="font-mono text-[8px] text-[#6C7882]">{Math.round(signal.signalStrength || 0)}</span>
-                </button>
+        <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3"><div><Kicker>NARS Evidence flow</Kicker><div className="mt-1 text-[10px] text-[#5C6771]">Black Oracle에 실제 전달·분석된 Evidence만 표시</div></div><Database className="h-4 w-4 text-[#59656F]" /></div>
+            <div className="divide-y divide-white/[0.045]">
+              {evidence.slice(0, 8).map((item) => (
+                <div key={item.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[100px_75px_1fr] sm:items-start">
+                  <div className="font-mono text-[8px] text-[#D6DDE2]">{item.market}</div>
+                  <div className={`font-mono text-[7px] ${tone(item.direction)}`}>{item.evidence_grade || item.direction}</div>
+                  <div><div className="text-[10px] leading-4 text-[#A8B2B9]">{item.title}</div><div className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#59656E]">{item.rationale || item.source || item.source_type}</div></div>
+                </div>
               ))}
+              {!evidence.length && <div className="px-4 py-8 text-center text-[10px] text-[#58636D]">NARS EvidencePacket consumer의 첫 전달을 기다리고 있습니다.</div>}
             </div>
-          </Panel>
+          </Card>
 
-          <Panel className="p-5">
-            <div className="mb-4 flex items-center justify-between"><Kicker>Hypothesis stack</Kicker><BrainCircuit className="h-3.5 w-3.5 text-[#777F9C]" /></div>
-            <div className="space-y-3">
-              {rankedHypotheses.map((item: any) => (
-                <button key={item.id} onClick={() => setCurrentView('cases')} className="w-full border-l border-white/[0.08] pl-3 text-left hover:border-[#43D9E6]/30">
-                  <div className="line-clamp-2 text-[10px] leading-relaxed text-[#B2BBC3]">{item.title}</div>
-                  <div className="mt-1 flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.11em] text-[#56616C]"><span>{Math.round(item.confidence || 0)}% confidence</span><span>·</span><span>{item.status || 'active'}</span></div>
+          <Card>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3"><div><Kicker>Recent trades</Kicker><div className="mt-1 text-[10px] text-[#5C6771]">종료 거래 · 결과는 Strategies 평가로 환류</div></div><Activity className="h-4 w-4 text-[#59656F]" /></div>
+            <div className="divide-y divide-white/[0.045]">
+              {trades.slice(0, 8).map((trade) => (
+                <button key={trade.id} onClick={() => setCurrentView('log')} className="grid w-full grid-cols-[90px_75px_1fr] items-center gap-2 px-4 py-3 text-left">
+                  <div className="font-mono text-[8px] text-[#D5DCE1]">{trade.market}</div>
+                  <div className={`font-mono text-[8px] ${trade.returnPct >= 0 ? 'text-[#77B9A5]' : 'text-[#D07D7D]'}`}>{pct(trade.returnPct)}</div>
+                  <div className="truncate text-[9px] text-[#66717A]">{trade.exitReason || trade.strategyVersion || 'closed trade'}</div>
                 </button>
               ))}
+              {!trades.length && <div className="px-4 py-8 text-center text-[10px] text-[#58636D]">종료 거래가 없습니다.</div>}
             </div>
-          </Panel>
+          </Card>
+        </div>
 
-          <Panel className="p-5">
-            <div className="mb-4 flex items-center justify-between"><Kicker>Decision memory</Kicker><GitBranch className="h-3.5 w-3.5 text-[#B89E69]" /></div>
-            <div className="space-y-3">
-              {(reports || []).slice(-3).reverse().map((report: any, index: number) => (
-                <button key={report.id || index} onClick={() => setCurrentView('ledger')} className="flex w-full gap-3 text-left">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#535E68]" />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[10px] text-[#B0B9C1]">{report.title}</span>
-                    <span className="mt-1 block font-mono text-[7px] uppercase tracking-[0.12em] text-[#4E5963]">{report.date || report.type || 'ledger event'}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </Panel>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border border-white/[0.06] bg-[#06090D] px-4 py-2.5 font-mono text-[7px] uppercase tracking-[0.1em] text-[#4D5862]">
+          <span>checkpoint {payload?.checkpoint?.savedAt ? `${ago(payload.checkpoint.savedAt)} ago` : '—'} · cycle {payload?.loop?.cycleCount ?? 0}</span>
+          <span className="text-[#6FBAA3]">paper only · no automatic live promotion · council shadow</span>
         </div>
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-[180] flex justify-end bg-black/60" onClick={() => setSelected(null)}>
+          <aside className="h-full w-full max-w-[560px] overflow-y-auto border-l border-white/[0.08] bg-[#070B10] p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b border-white/[0.06] pb-4">
+              <div><Kicker>Decision trace</Kicker><div className="mt-1 font-mono text-lg text-[#E7ECEF]">{(selected as any).market}</div></div>
+              <button onClick={() => setSelected(null)} className="border border-white/[0.07] p-2 text-[#68737C]"><X className="h-3.5 w-3.5" /></button>
+            </div>
+            <TraceSection title="Raw trace" value={selected} />
+          </aside>
+        </div>
+      )}
     </div>
   );
 };
+
+const Metric = ({ label, value, valueClass = 'text-[#DDE3E7]' }: { label: string; value: string; valueClass?: string }) => (
+  <div className="bg-[#070B10] p-3.5"><Kicker>{label}</Kicker><div className={`mt-2 font-mono text-[13px] ${valueClass}`}>{value}</div></div>
+);
+
+const Mini = ({ label, value }: { label: string; value: number }) => (
+  <div className="bg-[#080C11] px-2 py-2 text-center"><div className="font-mono text-[6px] uppercase text-[#505B64]">{label}</div><div className="mt-1 font-mono text-[10px] text-[#C7CFD5]">{value}</div></div>
+);
+
+const TraceSection = ({ title, value }: { title: string; value: unknown }) => (
+  <section className="mt-4 border border-white/[0.07] bg-[#05080C]">
+    <div className="border-b border-white/[0.06] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.14em] text-[#5F6A74]">{title}</div>
+    <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[9px] leading-5 text-[#87929B]">{JSON.stringify(value, null, 2)}</pre>
+  </section>
+);
