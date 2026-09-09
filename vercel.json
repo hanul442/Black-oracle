@@ -3,6 +3,9 @@
   "functions": {
     "api/trading-paper-cycle.ts": {
       "maxDuration": 60
+    },
+    "api/strategy-factory-cycle.ts": {
+      "maxDuration": 60
     }
   }
 }
