@@ -47,7 +47,7 @@ jobs:
         run: |
           find supabase/functions -name index.ts -print0 \
             | sort -z \
-            | xargs -0 -n1 deno check
+            | xargs -0 -n1 deno check --config supabase/functions/deno.json
 
       - name: Build trading runtime bundle
         run: npx esbuild server/trading/runtimeBundleEntry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/trading/runtime-bundle.mjs
