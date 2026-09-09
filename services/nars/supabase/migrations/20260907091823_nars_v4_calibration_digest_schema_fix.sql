@@ -1,0 +1,3 @@
+-- Historical production migration marker: N4-10 digest schema fix.
+-- The replay-safe 20260907091621 baseline already uses extensions.digest(...),
+-- so no additional mutation is required when rebuilding from this repository.
