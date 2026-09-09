@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'services/nars/**'
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - 'ops/production-source-manifest.json'
+      - 'scripts/verify-production-source-manifest.mjs'
       - '.github/workflows/nars-ci.yml'
   push:
     branches:
@@ -20,8 +24,13 @@ on:
       - nars-v4-primary-evidence-acquisition
       - nars-v4-primary-evidence-matching
       - nars-v4-cutover-evidence-debt
+      - codex/bo-vnext-s0-source-truth
     paths:
       - 'services/nars/**'
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - 'ops/production-source-manifest.json'
+      - 'scripts/verify-production-source-manifest.mjs'
       - '.github/workflows/nars-ci.yml'
 
 permissions:
@@ -40,6 +49,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/nars/package.json
+      - name: Verify Production source truth
+        working-directory: ${{ github.workspace }}
+        run: node scripts/verify-production-source-manifest.mjs
       - name: Install pinned dependencies
         run: npm install --ignore-scripts
       - name: Unit tests
