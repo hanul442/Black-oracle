@@ -1,13 +1,16 @@
 import type { Express, Request, Response } from 'express';
-import { SUPPORTED_UPBIT_MINUTE_UNITS, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
+import { SUPPORTED_UPBIT_MINUTE_UNITS, UNIFIED_PAPER_INITIAL_EQUITY_KRW, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
 import type { EvidenceDirection, EvidenceSourceType, TradingEvidence } from '../../src/trading/evidence';
 import { buildTradingSnapshot } from '../../src/trading/snapshot';
+import { equityPaperLoop } from './equity/equityPaperLoop';
+import { createKisDomesticStockMarketDataFromEnv } from './equity/kisMarketData';
 import { tradingEvidenceStore } from './evidenceStore';
 import { buildMarketMultiTimeframe } from './multiTimeframe';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { buildRuntimeHealth } from './runtimeHealth';
 import { runtimePersistenceStatus, saveRuntimeCheckpoint } from './runtimeState';
+import { runCryptoStrategyFactory, strategyFactoryRunnerStatus } from './strategyFactoryRunner';
 import { buildKrwLiquidityUniverse } from './universe';
 import { getMinuteCandles, listKrwMarkets } from './upbitPublic';
 
@@ -38,7 +41,7 @@ const parseOptionalEventScore = (value: unknown) => {
   return parsed;
 };
 
-const parseInitialCash = (value: unknown, fallback = 1_000_000) => {
+const parseInitialCash = (value: unknown, fallback = UNIFIED_PAPER_INITIAL_EQUITY_KRW) => {
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed) || parsed < 100_000 || parsed > 1_000_000_000) {
     throw new Error('initialCash must be between 100,000 and 1,000,000,000 KRW');
@@ -108,8 +111,15 @@ const resolvedEventScore = (market: string, manualScore?: number) => {
 
 const handleRouteError = (error: unknown, res: Response) => {
   const message = error instanceof Error ? error.message : 'Unknown trading gateway error.';
-  const isInputError = /must|allowed|unsupported|requires|limited|invalid|insufficient|cannot|already/i.test(message);
+  const isInputError = /must|allowed|unsupported|requires|limited|invalid|insufficient|cannot|already|disabled/i.test(message);
   return res.status(isInputError ? 400 : 502).json({ success: false, error: message });
+};
+
+const requireResearchControl = (req: Request) => {
+  const expected = String(process.env.TRADING_ADMIN_TOKEN ?? '').trim();
+  if (!expected) throw new Error('Research control routes are disabled until TRADING_ADMIN_TOKEN is configured.');
+  const supplied = String(req.headers['x-black-oracle-admin-token'] ?? '').trim();
+  if (!supplied || supplied !== expected) throw new Error('Research control requires a valid Black Oracle admin token.');
 };
 
 export const registerTradingRoutes = (app: Express) => {
@@ -246,7 +256,7 @@ export const registerTradingRoutes = (app: Express) => {
   app.post('/api/trading/paper/reset', async (req: Request, res: Response) => {
     try {
       paperLoopController.stop();
-      const initialCash = parseInitialCash(req.body?.initialCash, 1_000_000);
+      const initialCash = parseInitialCash(req.body?.initialCash);
       const state = paperTradingSession.reset(initialCash);
       await saveRuntimeCheckpoint('paper-reset');
       return res.json({ success: true, ...state });
@@ -300,6 +310,58 @@ export const registerTradingRoutes = (app: Express) => {
       const cycle = await paperLoopController.runCycle();
       await saveRuntimeCheckpoint('paper-loop-cycle');
       return res.json({ success: true, cycle, performance: paperTradingSession.performance() });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.get('/api/trading/equity/universe', async (req: Request, res: Response) => {
+    try {
+      const limit = parseLimit(req.query.limit, 12);
+      const marketData = createKisDomesticStockMarketDataFromEnv();
+      const universe = await marketData.volumeRank(limit);
+      return res.json({ success: true, universe, count: universe.length, evidencePolicy: 'REQUIRED_FOR_NEW_RISK' });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.get('/api/trading/equity/paper/status', (_req: Request, res: Response) => {
+    return res.json({
+      success: true,
+      configured: Boolean(String(process.env.KIS_APP_KEY ?? '').trim() && String(process.env.KIS_APP_SECRET ?? '').trim()),
+      ...equityPaperLoop.status(),
+      sharedPortfolio: paperTradingSession.state().portfolio,
+    });
+  });
+
+  app.post('/api/trading/equity/paper/cycle', async (req: Request, res: Response) => {
+    try {
+      requireResearchControl(req);
+      const cycle = await equityPaperLoop.runCycle(Number(req.body?.limit ?? 6));
+      await saveRuntimeCheckpoint('equity-paper-cycle');
+      return res.json({ success: true, cycle, portfolio: paperTradingSession.state().portfolio });
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  });
+
+  app.get('/api/trading/strategy-factory/status', (_req: Request, res: Response) => {
+    return res.json({ success: true, ...strategyFactoryRunnerStatus() });
+  });
+
+  app.post('/api/trading/strategy-factory/run', async (req: Request, res: Response) => {
+    try {
+      requireResearchControl(req);
+      const run = await runCryptoStrategyFactory({
+        market: req.body?.market,
+        unit: req.body?.unit == null ? undefined : Number(req.body.unit) as 15 | 60 | 240,
+        bars: req.body?.bars == null ? undefined : Number(req.body.bars),
+        candidates: req.body?.candidates == null ? undefined : Number(req.body.candidates),
+        seed: req.body?.seed == null ? undefined : Number(req.body.seed),
+        topN: req.body?.topN == null ? undefined : Number(req.body.topN),
+      });
+      return res.json({ success: true, run });
     } catch (error) {
       return handleRouteError(error, res);
     }
