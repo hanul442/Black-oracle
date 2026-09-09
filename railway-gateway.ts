@@ -6,6 +6,7 @@ import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
 import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
 import activityBriefHandler from './api/activity-brief';
+import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
 import aiCostStatusHandler from './api/ai-cost-status';
 import { tradingCheckpointStore } from './server/trading/persistence';
@@ -247,7 +248,11 @@ app.get('/api/trading-status', (req, res) => {
   void tradingStatusHandler(req, res);
 });
 
-app.post('/api/activity-brief', express.json({ limit: '1mb' }), (req, res) => {
+app.get('/api/events', (req, res) => {
+  void eventsHandler(req, res);
+});
+
+app.post('/api/activity-brief', express.json({ limit: '16kb' }), (req, res) => {
   void activityBriefHandler(req, res);
 });
 
