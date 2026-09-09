@@ -6,6 +6,8 @@ import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
 import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
 import activityBriefHandler from './api/activity-brief';
+import councilDebateHandler from './api/council-debate';
+import aiCostStatusHandler from './api/ai-cost-status';
 import { tradingCheckpointStore } from './server/trading/persistence';
 
 const gatewayPort = Number(process.env.PORT || 3000);
@@ -176,8 +178,6 @@ for (const publicPath of ['/manifest.webmanifest', '/sw.js']) {
 }
 app.get('/icons/*path', proxyToInternal);
 
-// Scheduler-only Paper cycle: Bearer auth is checked both here and again by the handler.
-// This narrowly bypasses the operator cookie gate without exposing the rest of /api/*.
 app.get('/api/trading-paper-cycle', (req, res) => {
   if (!schedulerBearerAuthorized(req.headers.authorization)) {
     return res.status(401).json({ success: false, error: 'Unauthorized scheduled invocation.' });
@@ -185,8 +185,6 @@ app.get('/api/trading-paper-cycle', (req, res) => {
   void tradingPaperCycleHandler(req, res);
 });
 
-// Scheduler-only Strategy Factory research. It is isolated from the Paper cycle and remains
-// research-only even when invoked successfully; the handler enforces the same Bearer contract.
 app.post('/api/strategy-factory-cycle', express.json({ limit: '64kb' }), (req, res) => {
   if (!schedulerBearerAuthorized(req.headers.authorization)) {
     return res.status(401).json({ success: false, error: 'Unauthorized Strategy Factory scheduler invocation.' });
@@ -194,8 +192,6 @@ app.post('/api/strategy-factory-cycle', express.json({ limit: '64kb' }), (req, r
   void strategyFactoryCycleHandler(req, res);
 });
 
-// Supabase scheduler status probes may use the same service-role bearer. Interactive
-// browser requests still fall through to the normal session-cookie gate below.
 app.get('/api/trading-status', (req, res, next) => {
   if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
   void tradingStatusHandler(req, res);
@@ -253,6 +249,17 @@ app.get('/api/trading-status', (req, res) => {
 
 app.post('/api/activity-brief', express.json({ limit: '1mb' }), (req, res) => {
   void activityBriefHandler(req, res);
+});
+
+app.post('/api/council-debate', express.json({ limit: '1mb' }), (req, res) => {
+  const internalSecret = String(process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!internalSecret) return res.status(503).json({ success: false, error: 'Council internal authorization is unavailable.' });
+  req.headers.authorization = `Bearer ${internalSecret}`;
+  void councilDebateHandler(req, res);
+});
+
+app.get('/api/ai-cost-status', (req, res) => {
+  void aiCostStatusHandler(req, res);
 });
 
 app.use(proxyToInternal);

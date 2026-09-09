@@ -1,5 +1,8 @@
+import { allowNonCriticalAiCall, getAiBudgetStatus, recordOpenAIUsage } from '../server/aiUsageLedger';
+
 const OPENAI_URL = 'https://api.openai.com/v1/responses';
-const DEFAULT_MODEL = 'gpt-5.4-mini';
+const DEFAULT_FAST_MODEL = 'gpt-5.6-luna';
+const DEFAULT_ESCALATION_MODEL = 'gpt-5.6-terra';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -52,6 +55,7 @@ const callStructured = async (
   schemaName: string,
   schema: Record<string, unknown>,
   maxOutputTokens: number,
+  usage: { operation: string; market?: string; metadata?: Record<string, unknown> },
 ) => {
   const response = await fetch(OPENAI_URL, {
     method: 'POST',
@@ -85,9 +89,19 @@ const callStructured = async (
     throw new Error(`${code}: ${message}`);
   }
 
+  const responseId = typeof payload?.id === 'string' ? payload.id : null;
+  await recordOpenAIUsage(payload?.usage, {
+    feature: 'council',
+    operation: usage.operation,
+    model,
+    responseId,
+    market: usage.market ?? null,
+    metadata: usage.metadata ?? {},
+  }).catch((error) => console.warn('Council AI usage ledger write failed:', error));
+
   return {
     data: JSON.parse(extractOutputText(payload)),
-    responseId: typeof payload?.id === 'string' ? payload.id : null,
+    responseId,
     usage: payload?.usage ?? null,
   };
 };
@@ -195,6 +209,18 @@ const lenses = [
   { id: 'risk', role: 'Risk', focus: 'Tail risk, invalidation, drawdown, asymmetry, hidden correlation and reasons to NO_TRADE.' },
 ];
 
+const shouldEscalate = (independent: any[], body: any) => {
+  if (body?.forceEscalation === true || String(body?.riskLevel || '').toUpperCase() === 'HIGH') return true;
+  const votes = independent.map((item) => item?.actionImplication).filter(Boolean);
+  const uniqueVotes = new Set(votes);
+  const enter = votes.filter((vote) => vote === 'ENTER').length;
+  const exit = votes.filter((vote) => vote === 'EXIT').length;
+  const noTrade = votes.filter((vote) => vote === 'NO_TRADE').length;
+  const materialDisagreement = uniqueVotes.size >= 3 || (enter > 0 && noTrade > 0) || (enter > 0 && exit > 0);
+  const actionableCandidate = enter >= 2 || exit >= 2;
+  return materialDisagreement || actionableCandidate;
+};
+
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
@@ -206,6 +232,15 @@ export default async function handler(request: any, response: any) {
 
   const apiKey = resolveOpenAIKey();
   if (!apiKey) return json(response, 503, { success: false, error: 'OpenAI API key is not configured.' });
+  if (!(await allowNonCriticalAiCall())) {
+    return json(response, 200, {
+      success: true,
+      skipped: true,
+      budgetLimited: true,
+      mode: 'ADVISORY_ONLY',
+      reason: 'AI hard cap reached. Council skipped; deterministic trading/risk logic remains authoritative.',
+    });
+  }
 
   const body = request.body && typeof request.body === 'object' ? request.body : {};
   const context = {
@@ -220,14 +255,15 @@ export default async function handler(request: any, response: any) {
     return json(response, 413, { success: false, error: 'Council context is too large.' });
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const fastModel = process.env.OPENAI_FAST_MODEL?.trim() || DEFAULT_FAST_MODEL;
+  const escalationModel = process.env.OPENAI_COUNCIL_ESCALATION_MODEL?.trim() || DEFAULT_ESCALATION_MODEL;
   const startedAt = Date.now();
 
   try {
     const independent = await Promise.all(lenses.map(async (lens) => {
       const result = await callStructured(
         apiKey,
-        model,
+        fastModel,
         [
           `You are the ${lens.role} analytical lens inside Black Oracle.`,
           `Focus: ${lens.focus}`,
@@ -240,13 +276,18 @@ export default async function handler(request: any, response: any) {
         `black_oracle_${lens.id}`,
         lensSchema,
         1_100,
+        { operation: `lens:${lens.id}`, market: context.market, metadata: { role: lens.role } },
       );
       return { ...result.data, lensId: lens.id, responseId: result.responseId, usage: result.usage };
     }));
 
+    const budget = await getAiBudgetStatus().catch(() => null);
+    const escalationRequested = shouldEscalate(independent, body);
+    const escalated = escalationRequested && !budget?.softLimited;
+    const adjudicatorModel = escalated ? escalationModel : fastModel;
     const adjudicator = await callStructured(
       apiKey,
-      model,
+      adjudicatorModel,
       [
         'You are Black Oracle Meta-Adjudicator.',
         'Run structured cross-examination over the independent positions, then rebuttal adjustments and final positions.',
@@ -260,12 +301,21 @@ export default async function handler(request: any, response: any) {
       'black_oracle_council_debate',
       debateSchema,
       3_200,
+      {
+        operation: escalated ? 'meta_adjudicator_escalated' : 'meta_adjudicator_fast',
+        market: context.market,
+        metadata: { escalationRequested, escalated, softLimited: Boolean(budget?.softLimited) },
+      },
     );
 
     return json(response, 200, {
       success: true,
       mode: 'ADVISORY_ONLY',
-      model,
+      fastModel,
+      adjudicatorModel,
+      escalationRequested,
+      escalated,
+      budget,
       startedAt,
       finishedAt: Date.now(),
       independent,

@@ -1,3 +1,5 @@
+import { allowNonCriticalAiCall, recordOpenAIUsage } from '../server/aiUsageLedger';
+
 type LogEvent = {
   timestamp?: number;
   type?: string;
@@ -22,7 +24,7 @@ const fallbackBrief = (events: LogEvent[]) => {
   return [
     `최근 ${recent.length}개 이벤트를 확인했습니다. 거래 ${tradeCount}건, 판단 ${decisionCount}건, Evidence ${evidenceCount}건이 포함되어 있습니다.`,
     first ? `가장 최근 활동은 ${first.type || 'EVENT'}: ${first.title || '기록'}입니다.` : '',
-    'AI 모델 연결이 없거나 실패해 원본 로그 기반의 최소 요약만 제공했습니다.',
+    'AI 모델 연결이 없거나 비용 한도에 도달했거나 호출이 실패해 원본 로그 기반의 최소 요약만 제공했습니다.',
   ].filter(Boolean).join('\n');
 };
 
@@ -87,8 +89,8 @@ export default async function handler(request: any, response: any) {
   }
 
   const apiKey = resolveOpenAIKey();
-  if (!apiKey) {
-    return response.status(200).json({ success: true, brief: fallbackBrief(events), model: 'fallback', structured: null });
+  if (!apiKey || !(await allowNonCriticalAiCall())) {
+    return response.status(200).json({ success: true, brief: fallbackBrief(events), model: 'fallback', structured: null, budgetLimited: Boolean(apiKey) });
   }
 
   const model = process.env.OPENAI_ACTIVITY_MODEL?.trim() || DEFAULT_MODEL;
@@ -134,6 +136,14 @@ export default async function handler(request: any, response: any) {
       const message = typeof payload?.error?.message === 'string' ? payload.error.message : 'OpenAI request failed.';
       throw new Error(`${code}: ${message}`);
     }
+
+    await recordOpenAIUsage(payload?.usage, {
+      feature: 'activity_brief',
+      operation: 'recent_activity_explanation',
+      model,
+      responseId: typeof payload?.id === 'string' ? payload.id : null,
+      metadata: { eventCount: events.length },
+    }).catch((error) => console.warn('Activity Brief AI usage ledger write failed:', error));
 
     const structured = JSON.parse(extractOutputText(payload));
     const brief = renderBrief(structured) || fallbackBrief(events);
