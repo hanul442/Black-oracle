@@ -1,6 +1,7 @@
 import { TRADING_INSTRUMENTS, type TradingInstrument } from '../../src/trading/assets';
+import { inferAssetClassFromMarket } from '../../src/trading/assetPolicy';
 import { LegacyOpenAIAdapter } from '../openaiCompat';
-import { evidenceCoverageRequestStore } from './evidenceCoverageQueue';
+import { evidenceCoverageRequestStore, type StoredEvidenceCoverageRequest } from './evidenceCoverageQueue';
 
 const ANALYSIS_VERSION = 'BO-NARS-IMPACT-v1';
 
@@ -34,7 +35,7 @@ const packetText = (payload: any) => [
 const aliasMatches = (text: string, alias: string) => {
   const normalized = alias.normalize('NFKC').toLowerCase().trim();
   if (!normalized) return false;
-  if (/^[a-z0-9]{2,5}$/.test(normalized)) {
+  if (/^[a-z0-9]{2,6}$/.test(normalized)) {
     return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalized)}([^a-z0-9]|$)`, 'i').test(text);
   }
   return text.includes(normalized);
@@ -47,6 +48,55 @@ export const mapNarsPacketToInstruments = (payload: any): TradingInstrument[] =>
     || aliasMatches(text, instrument.market)
     || aliasMatches(text, instrument.symbol),
   );
+};
+
+const activeCoverageRequest = (request: StoredEvidenceCoverageRequest) =>
+  request.status === 'PENDING' || request.status === 'ACQUIRING' || request.status === 'FAILED';
+
+const coverageRequestToInstrument = (request: StoredEvidenceCoverageRequest): TradingInstrument | null => {
+  const assetClass = request.assetClass === 'UNKNOWN' ? inferAssetClassFromMarket(request.market) : request.assetClass;
+  if (assetClass === 'UNKNOWN') return null;
+  const symbol = request.market.replace(/^KRW-/, '').replace(/^KRX-/, '');
+  const displayName = request.aliases.find((alias) => {
+    const normalized = alias.trim().toUpperCase();
+    return normalized !== request.market.toUpperCase() && normalized !== symbol.toUpperCase();
+  }) ?? request.market;
+  return {
+    id: `${assetClass}:${request.market}`,
+    assetClass,
+    market: request.market,
+    symbol,
+    displayName,
+    aliases: Array.from(new Set([request.market, symbol, ...request.aliases])),
+    exchange: assetClass === 'EQUITY' ? 'KRX' : 'UPBIT',
+    quoteCurrency: 'KRW',
+    runtimeMode: 'RESEARCH',
+    executionEnabled: false,
+    shortEnabled: false,
+  };
+};
+
+const mapNarsPacketToCoverageRequests = (
+  payload: any,
+  requests: StoredEvidenceCoverageRequest[],
+): TradingInstrument[] => {
+  const text = packetText(payload);
+  return requests
+    .filter(activeCoverageRequest)
+    .filter((request) =>
+      aliasMatches(text, request.market)
+      || request.aliases.some((alias) => aliasMatches(text, alias)),
+    )
+    .map(coverageRequestToInstrument)
+    .filter((item): item is TradingInstrument => Boolean(item));
+};
+
+const mergeInstruments = (...groups: TradingInstrument[][]) => {
+  const merged = new Map<string, TradingInstrument>();
+  for (const group of groups) {
+    for (const instrument of group) merged.set(instrument.market, instrument);
+  }
+  return [...merged.values()];
 };
 
 const parseImpact = (text: string): Impact => {
@@ -202,9 +252,11 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
   if (!response.ok) throw new Error(`NARS outbox read failed (${response.status}): ${(await response.text()).slice(0, 240)}`);
   const rows = await response.json() as OutboxRow[];
   const results: any[] = [];
+  const coverageRequests = await evidenceCoverageRequestStore.list(500).catch(() => [] as StoredEvidenceCoverageRequest[]);
 
   for (const row of rows) {
     const payload = row.payload ?? {};
+    let instruments: TradingInstrument[] = [];
     try {
       if (payload?.producer !== 'NARS' || payload?.authority !== 'evidence_only' || payload?.execution_authority !== false) {
         await upsertInbox(row, [], 'REJECTED', 'Packet failed NARS evidence-only authority contract.');
@@ -213,7 +265,10 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
         continue;
       }
 
-      const instruments = mapNarsPacketToInstruments(payload);
+      instruments = mergeInstruments(
+        mapNarsPacketToInstruments(payload),
+        mapNarsPacketToCoverageRequests(payload, coverageRequests),
+      );
       const markets = instruments.map((item) => item.market);
       if (!instruments.length) {
         await upsertInbox(row, [], 'UNMAPPED');
@@ -228,8 +283,8 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
         const analysis = await analyzeImpact(payload, instrument);
         const external = await upsertExternalEvidence(row, instrument, analysis);
         evidenceIds.push(external.id);
-        const pendingRequests = (await evidenceCoverageRequestStore.list(100)).filter((request) =>
-          request.market === instrument.market && (request.status === 'PENDING' || request.status === 'ACQUIRING' || request.status === 'FAILED'),
+        const pendingRequests = coverageRequests.filter((request) =>
+          request.market === instrument.market && activeCoverageRequest(request),
         );
         for (const request of pendingRequests) {
           await evidenceCoverageRequestStore.updateStatus(request.requestKey, 'FULFILLED', {
@@ -243,7 +298,7 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
       results.push({ outboxId: row.id, status: 'ANALYZED', markets, evidenceIds });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown NARS consumer error.';
-      await upsertInbox(row, mapNarsPacketToInstruments(payload).map((item) => item.market), 'ERROR', message).catch(() => undefined);
+      await upsertInbox(row, instruments.map((item) => item.market), 'ERROR', message).catch(() => undefined);
       await patchOutbox(row, {
         attempts: Number(row.attempts ?? 0) + 1,
         last_attempt_at: new Date().toISOString(),
