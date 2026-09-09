@@ -252,6 +252,9 @@ app.post('/api/activity-brief', express.json({ limit: '1mb' }), (req, res) => {
 });
 
 app.post('/api/council-debate', express.json({ limit: '1mb' }), (req, res) => {
+  const internalSecret = String(process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!internalSecret) return res.status(503).json({ success: false, error: 'Council internal authorization is unavailable.' });
+  req.headers.authorization = `Bearer ${internalSecret}`;
   void councilDebateHandler(req, res);
 });
 
