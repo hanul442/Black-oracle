@@ -23,6 +23,12 @@ const decimal = (value: unknown, fallback: number, min: number, max: number) => 
   return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
 };
 
+const normalizeFactoryRunForLedger = (run: any) => ({
+  ...run,
+  topResults: Array.isArray(run?.top) ? run.top : Array.isArray(run?.topResults) ? run.topResults : [],
+  statusCounts: run?.candidateStatusCounts ?? run?.statusCounts ?? null,
+});
+
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
@@ -87,7 +93,7 @@ export default async function handler(request: any, response: any) {
 
     let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
     try {
-      eventLedger = await appendCanonicalEvents(buildStrategyFactoryCanonicalEvents(run, {
+      eventLedger = await appendCanonicalEvents(buildStrategyFactoryCanonicalEvents(normalizeFactoryRunForLedger(run), {
         market,
         unit: normalizedUnit,
         seed,
