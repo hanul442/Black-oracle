@@ -268,15 +268,16 @@ export default async function handler(request: any, response: any) {
       ? checkpoint.session.closedTrades[checkpoint.session.closedTrades.length - 1]
       : null;
 
-    const latestAiReview = operationalAiCouncil.latest;
-    const reviewedDecision = latestAiReview
-      ? decisionTape.find((item) => reviewMatchesDecision(latestAiReview, item)) ?? null
+    const historicalLatestAiReview = operationalAiCouncil.latest;
+    const reviewedDecision = historicalLatestAiReview
+      ? decisionTape.find((item) => reviewMatchesDecision(historicalLatestAiReview, item)) ?? null
       : null;
+    const currentAiReview = reviewedDecision ? historicalLatestAiReview : null;
     const deterministicLatestCouncil = reviewedDecision?.council
       ?? decisionTape.find((item) => item.council)?.council
       ?? null;
 
-    const latestCouncil = deterministicLatestCouncil && latestAiReview
+    const latestCouncil = deterministicLatestCouncil && currentAiReview
       ? {
           ...deterministicLatestCouncil,
           mode: 'SHADOW+AI_ESCALATION',
@@ -284,19 +285,19 @@ export default async function handler(request: any, response: any) {
             ...(Array.isArray(deterministicLatestCouncil.members) ? deterministicLatestCouncil.members : []),
             {
               role: 'AI_SHADOW_ADJUDICATOR',
-              vote: displayVoteForStance(latestAiReview.stance),
-              confidence: latestAiReview.confidence,
+              vote: displayVoteForStance(currentAiReview.stance),
+              confidence: currentAiReview.confidence,
               reasons: [
-                `${latestAiReview.stance} · ${latestAiReview.model} · ${latestAiReview.market} · ${latestAiReview.escalationReason} · Council AI month $${operationalAiCouncil.budget.monthCouncilCostUsd.toFixed(6)}.`,
-                latestAiReview.rationale,
+                `${currentAiReview.stance} · ${currentAiReview.model} · ${currentAiReview.market} · ${currentAiReview.escalationReason} · Council AI month $${operationalAiCouncil.budget.monthCouncilCostUsd.toFixed(6)}.`,
+                currentAiReview.rationale,
               ],
               advisoryOnly: true,
               executionAuthority: false,
             },
           ],
-          aiReview: latestAiReview,
+          aiReview: currentAiReview,
           aiAdjudicatorCountedInDeterministicVotes: false,
-          summary: `${deterministicLatestCouncil.summary} AI Shadow Adjudicator ${latestAiReview.stance}; advisory only, no execution authority.`,
+          summary: `${deterministicLatestCouncil.summary} AI Shadow Adjudicator ${currentAiReview.stance}; advisory only, no execution authority.`,
         }
       : deterministicLatestCouncil;
 
@@ -356,12 +357,16 @@ export default async function handler(request: any, response: any) {
       performance,
       validation,
       council: {
-        mode: latestAiReview ? 'SHADOW+AI_ESCALATION' : 'SHADOW',
+        mode: currentAiReview ? 'SHADOW+AI_ESCALATION' : 'SHADOW',
         executionAuthority: false,
         latest: latestCouncil,
         deterministicLatest: deterministicLatestCouncil,
         stats: councilStats,
-        ai: operationalAiCouncil,
+        ai: {
+          ...operationalAiCouncil,
+          current: currentAiReview,
+          historicalLatest: historicalLatestAiReview,
+        },
       },
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
