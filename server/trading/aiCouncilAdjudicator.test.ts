@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldEscalateAiCouncil, type OperationalCouncilTrace } from './aiCouncilAdjudicator';
+import {
+  selectAiCouncilModelTier,
+  shouldEscalateAiCouncil,
+  type OperationalCouncilTrace,
+} from './aiCouncilAdjudicator';
 
 const trace = (overrides: Partial<OperationalCouncilTrace> = {}): OperationalCouncilTrace => ({
   timestamp: 1_788_920_000_000,
@@ -76,4 +80,30 @@ test('high-score Council rejection is reviewed even when execution remains NO_TR
   }));
   assert.equal(result.escalate, true);
   assert.equal(result.priority, 65);
+});
+
+test('Terra-tier escalation is reserved for actual ENTER/EXIT events', () => {
+  const mixedNoTrade = trace({
+    action: 'NO_TRADE',
+    council: {
+      verdict: 'CONDITIONAL', approveCount: 2, cautionCount: 1, rejectCount: 1, abstainCount: 1, members: [],
+    },
+  });
+  const mixedEscalation = shouldEscalateAiCouncil(mixedNoTrade);
+  assert.equal(mixedEscalation.highMateriality, true);
+  assert.equal(selectAiCouncilModelTier(mixedNoTrade, mixedEscalation), 'FAST');
+
+  const enter = trace({ action: 'ENTER' });
+  const enterEscalation = shouldEscalateAiCouncil(enter);
+  assert.equal(selectAiCouncilModelTier(enter, enterEscalation), 'ESCALATION');
+
+  const exit = trace({ action: 'EXIT' });
+  const exitEscalation = shouldEscalateAiCouncil(exit);
+  assert.equal(selectAiCouncilModelTier(exit, exitEscalation), 'ESCALATION');
+});
+
+test('soft AI budget limit downgrades even trade-event adjudication to fast tier', () => {
+  const enter = trace({ action: 'ENTER' });
+  const escalation = shouldEscalateAiCouncil(enter);
+  assert.equal(selectAiCouncilModelTier(enter, escalation, true), 'FAST');
 });
