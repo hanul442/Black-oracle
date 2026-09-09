@@ -27,8 +27,8 @@ export interface ShadowArbiterSnapshot {
  * ExecutionDecision or grant execution authority.
  */
 export const buildShadowArbiterRecommendation = (input: ShadowArbiterInput): ShadowArbiterSnapshot => {
-  const cycleTiming = input.cycle?.entryTiming ?? 'UNAVAILABLE';
-  const challengerAlignment = input.challenger?.alignment ?? 'UNAVAILABLE';
+  const cycleTiming: ShadowArbiterSnapshot['cycleTiming'] = input.cycle?.entryTiming ?? 'UNAVAILABLE';
+  const challengerAlignment: ShadowArbiterSnapshot['challengerAlignment'] = input.challenger?.alignment ?? 'UNAVAILABLE';
   const base = {
     mode: 'SHADOW' as const,
     executionAuthority: false as const,
