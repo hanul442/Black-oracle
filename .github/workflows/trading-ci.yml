@@ -3,6 +3,7 @@ name: Black Oracle Trading CI
 on:
   push:
     branches:
+      - main
       - feat/trading-core-v0.1
       - integration/black-oracle-v0.2
   pull_request:
@@ -39,8 +40,11 @@ jobs:
       - name: Build trading runtime bundle
         run: npx esbuild server/trading/runtimeBundleEntry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/trading/runtime-bundle.mjs
 
-      - name: Serverless bundle smoke
+      - name: Paper scheduler bundle smoke
         run: npx esbuild api/trading-paper-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-trading-paper-cycle.mjs
+
+      - name: Strategy Factory scheduler bundle smoke
+        run: npx esbuild api/strategy-factory-cycle.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/black-oracle-strategy-factory-cycle.mjs
 
       - name: Production build
         run: npm run build

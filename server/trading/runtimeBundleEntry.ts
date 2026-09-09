@@ -7,3 +7,7 @@ export {
   restoreRuntimeCheckpoint,
   saveRuntimeCheckpoint,
 } from './runtimeState';
+export {
+  runCryptoStrategyFactory,
+  strategyFactoryRunnerStatus,
+} from './strategyFactoryRunner';
