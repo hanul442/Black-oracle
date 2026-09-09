@@ -1,5 +1,6 @@
 import type { EvidenceAggregate } from './evidence';
 import { evidenceAliasesFor, findTradingInstrument, type AssetClass } from './assets';
+import { inferAssetClassFromMarket } from './assetPolicy';
 
 export type EvidenceCoverageStatus = 'COVERED' | 'MISSING' | 'REQUESTED' | 'STALE' | 'FAILED';
 export type EvidenceRequestStatus = 'PENDING' | 'ACQUIRING' | 'FULFILLED' | 'FAILED' | 'CANCELLED';
@@ -30,6 +31,14 @@ export interface EvidenceCoverageRequest {
   executionAuthority: false;
 }
 
+export interface EvidenceCoverageRequestOptions extends Partial<Pick<
+  EvidenceCoverageRequest,
+  'trigger' | 'decisionId' | 'strategyId' | 'minimumActiveEvidence' | 'reason'
+>> {
+  aliases?: string[];
+  assetClass?: AssetClass | 'UNKNOWN';
+}
+
 const stableHash = (value: string) => {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -39,15 +48,20 @@ const stableHash = (value: string) => {
   return (hash >>> 0).toString(36);
 };
 
+const normalizedAliases = (market: string, aliases: string[]) => Array.from(new Set([
+  market,
+  ...aliases.map((item) => item.normalize('NFKC').trim()).filter(Boolean),
+]));
+
 export const assessEvidenceCoverage = (
   market: string,
   evidence: EvidenceAggregate,
 ): EvidenceCoverageAssessment => {
-  const instrument = findTradingInstrument(market);
+  const assetClass = inferAssetClassFromMarket(market);
   if (evidence.activeCount > 0) {
     return {
       market: market.toUpperCase(),
-      assetClass: instrument?.assetClass ?? 'UNKNOWN',
+      assetClass,
       status: 'COVERED',
       activeCount: evidence.activeCount,
       evidenceIds: evidence.evidenceIds.slice(),
@@ -58,12 +72,12 @@ export const assessEvidenceCoverage = (
 
   return {
     market: market.toUpperCase(),
-    assetClass: instrument?.assetClass ?? 'UNKNOWN',
+    assetClass,
     status: 'MISSING',
     activeCount: 0,
     evidenceIds: [],
     confidence: 0,
-    reason: 'No active source-backed evidence is attached to this market. New risk must wait for acquisition and re-analysis.',
+    reason: 'No active source-backed evidence is attached to this market. Evidence-required new risk must wait for acquisition and re-analysis.',
   };
 };
 
@@ -86,16 +100,21 @@ export const evidenceSupportsNewLongRisk = (evidence: EvidenceAggregate) => ({
 export const buildEvidenceCoverageRequest = (
   market: string,
   now = Date.now(),
-  options: Partial<Pick<EvidenceCoverageRequest, 'trigger' | 'decisionId' | 'strategyId' | 'minimumActiveEvidence' | 'reason'>> = {},
+  options: EvidenceCoverageRequestOptions = {},
 ): EvidenceCoverageRequest => {
   const normalized = market.toUpperCase();
   const instrument = findTradingInstrument(normalized);
-  const aliases = evidenceAliasesFor(normalized);
+  const inferredAssetClass = inferAssetClassFromMarket(normalized);
+  const aliases = normalizedAliases(
+    normalized,
+    options.aliases?.length ? options.aliases : evidenceAliasesFor(normalized),
+  );
+  const assetClass = options.assetClass ?? instrument?.assetClass ?? inferredAssetClass;
   const requestKey = `coverage:${stableHash(`${normalized}|${Math.floor(now / (15 * 60_000))}`)}`;
   return {
     requestKey,
     market: normalized,
-    assetClass: instrument?.assetClass ?? 'UNKNOWN',
+    assetClass,
     aliases,
     status: 'PENDING',
     trigger: options.trigger ?? 'ENTRY_CANDIDATE',
