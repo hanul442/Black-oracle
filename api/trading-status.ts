@@ -1,3 +1,39 @@
+const supabaseOperationalRead = async (path: string, params: Record<string, string>) => {
+  const base = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+  if (!base || !key) return [] as any[];
+  const url = new URL(`${base}/rest/v1/${path}`);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+  const result = await fetch(url, {
+    headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  if (!result.ok) return [] as any[];
+  return result.json() as Promise<any[]>;
+};
+
+const loadOperationalEvidence = async (now: number) => {
+  const [flow, requests, inbox] = await Promise.all([
+    supabaseOperationalRead('black_oracle_external_evidence', {
+      select: 'id,packet_outbox_id,event_id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,rationale,materiality,impact_confidence,evidence_grade,evidence_score,citations,eligible_for_new_risk,analysis_model,analysis_version',
+      expires_at: `gt.${new Date(now).toISOString()}`,
+      order: 'observed_at.desc',
+      limit: '30',
+    }),
+    supabaseOperationalRead('black_oracle_evidence_requests', {
+      select: 'request_key,market,asset_class,aliases,status,trigger,reason,requested_at,required_by,last_attempt_at,fulfilled_at,evidence_ids,strategy_id',
+      order: 'requested_at.desc',
+      limit: '30',
+    }),
+    supabaseOperationalRead('black_oracle_nars_inbox', {
+      select: 'outbox_id,event_id,packet_type,producer,authority,execution_authority,mapped_markets,status,received_at,analyzed_at,last_error',
+      order: 'received_at.desc',
+      limit: '30',
+    }),
+  ]);
+  return { flow, requests, inbox };
+};
+
 export default async function handler(request: any, response: any) {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
@@ -34,6 +70,7 @@ export default async function handler(request: any, response: any) {
     }
 
     const now = Date.now();
+    const operationalEvidence = await loadOperationalEvidence(now).catch(() => ({ flow: [], requests: [], inbox: [] }));
     const portfolio = checkpoint.session.portfolio;
     const lastCurvePoint = portfolio.equityCurve.length
       ? portfolio.equityCurve[portfolio.equityCurve.length - 1]
@@ -93,13 +130,21 @@ export default async function handler(request: any, response: any) {
       riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons : [],
     }));
 
-    const recentTrades = checkpoint.session.closedTrades.slice(-20).reverse().map((trade) => ({
+    const equityDecisions = ((lastCycle as any)?.equityCycle?.decisions ?? []).map((item: any) => ({
+      ...item,
+      timestamp: (lastCycle as any)?.equityCycle?.finishedAt ?? checkpoint.savedAt,
+      assetClass: 'EQUITY',
+    }));
+
+    const recentTrades = checkpoint.session.closedTrades.slice(-40).reverse().map((trade) => ({
       id: trade.id,
       market: trade.market,
       openedAt: trade.openedAt,
       closedAt: trade.closedAt,
       entryPrice: trade.entryPrice,
       exitPrice: trade.exitPrice,
+      quantity: trade.quantity,
+      grossPnl: trade.grossPnl,
       netPnl: trade.netPnl,
       returnPct: trade.returnPct,
       fees: trade.fees,
@@ -141,6 +186,8 @@ export default async function handler(request: any, response: any) {
           held: lastCycle.held,
           noTrade: lastCycle.noTrade ?? 0,
           errors: lastCycle.errors,
+          evidenceOps: (lastCycle as any).evidenceOps ?? null,
+          equityCycle: (lastCycle as any).equityCycle ?? null,
         } : null,
         ageMs: cycleAgeMs,
         stale,
@@ -162,11 +209,18 @@ export default async function handler(request: any, response: any) {
         evidenceTotal: checkpoint.evidence.length,
         evidenceActive: activeEvidence.length,
         evidenceExpired: expiredEvidence,
+        externalEvidenceActive: operationalEvidence.flow.length,
+        evidenceRequests: operationalEvidence.requests.length,
+        narsInboxRecent: operationalEvidence.inbox.length,
         scannedMarketsLastCycle: lastCycle?.scanned ?? 0,
         lastCycleErrors: cycleErrors,
       },
+      evidenceFlow: operationalEvidence.flow,
+      evidenceRequests: operationalEvidence.requests,
+      narsInbox: operationalEvidence.inbox,
       equityCurve: portfolio.equityCurve.slice(-120),
       decisionTape,
+      equityDecisions,
       recentTrades,
     });
   } catch (error) {
