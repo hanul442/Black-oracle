@@ -2,6 +2,7 @@ import { getAssetDecisionPolicy } from '../../src/trading/assetPolicy';
 import { buildDecisionTrace, type DecisionTrace } from '../../src/trading/decisionTrace';
 import { buildEvidenceCoverageRequest } from '../../src/trading/evidenceCoverage';
 import type { LiquiditySnapshot } from '../../src/trading/types';
+import { equityPaperLoop, type EquityPaperCycleResult } from './equity/equityPaperLoop';
 import { evidenceCoverageRequestStore } from './evidenceCoverageQueue';
 import { tradingEvidenceStore } from './evidenceStore';
 import { syncAnalyzedNarsEvidence } from './externalEvidenceSource';
@@ -34,6 +35,7 @@ export interface PaperLoopCycleResult {
   held: number;
   noTrade: number;
   evidenceOps: PaperLoopEvidenceOps;
+  equityCycle: EquityPaperCycleResult | null;
   errors: Array<{ market: string; error: string }>;
   markets: Array<DecisionTrace & { decision: DecisionTrace['action'] }>;
 }
@@ -52,7 +54,9 @@ const DEFAULT_CONFIG: PaperLoopConfig = {
   maxOpenPositions: 4,
 };
 
+const EQUITY_CADENCE_MS = 30 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const kisConfigured = () => Boolean(String(process.env.KIS_APP_KEY ?? '').trim() && String(process.env.KIS_APP_SECRET ?? '').trim());
 
 const emptyEvidenceOps = (): PaperLoopEvidenceOps => ({
   importedBeforeConsume: 0,
@@ -105,6 +109,7 @@ export class PaperLoopController {
   private config: PaperLoopConfig = { ...DEFAULT_CONFIG };
   private lastCycle: PaperLoopCycleResult | null = null;
   private cycleCount = 0;
+  private lastEquityCycleAt = 0;
 
   checkpoint(): PaperLoopCheckpoint {
     return {
@@ -115,6 +120,10 @@ export class PaperLoopController {
       lastCycle: this.lastCycle ? {
         ...this.lastCycle,
         evidenceOps: cloneEvidenceOps(this.lastCycle.evidenceOps),
+        equityCycle: this.lastCycle.equityCycle ? {
+          ...this.lastCycle.equityCycle,
+          decisions: this.lastCycle.equityCycle.decisions.map((item) => ({ ...item, evidenceIds: item.evidenceIds.slice(), reasons: item.reasons.slice() })),
+        } : null,
         errors: this.lastCycle.errors.map((item) => ({ ...item })),
         markets: this.lastCycle.markets.map((item) => cloneTrace(item)),
       } : null,
@@ -131,6 +140,7 @@ export class PaperLoopController {
       ...checkpoint.lastCycle,
       noTrade: Number.isInteger(checkpoint.lastCycle.noTrade) ? checkpoint.lastCycle.noTrade : 0,
       evidenceOps: cloneEvidenceOps((checkpoint.lastCycle as any).evidenceOps),
+      equityCycle: (checkpoint.lastCycle as any).equityCycle ?? null,
       errors: checkpoint.lastCycle.errors.map((item) => ({ ...item })),
       markets: checkpoint.lastCycle.markets.map((item) => ({
         ...cloneTrace({
@@ -147,6 +157,7 @@ export class PaperLoopController {
         riskReasons: Array.isArray(item.riskReasons) ? item.riskReasons.slice() : [],
       })),
     } : null;
+    this.lastEquityCycleAt = this.lastCycle?.equityCycle?.finishedAt ?? 0;
     if (checkpoint.running && resume) this.start(this.config);
     return this.status();
   }
@@ -160,7 +171,13 @@ export class PaperLoopController {
       lastCycle: this.lastCycle,
       evidence: {
         activeCount: tradingEvidenceStore.list().length,
-        requests: evidenceCoverageRequestStore.list(20),
+        lastOperations: this.lastCycle?.evidenceOps ?? null,
+      },
+      equity: {
+        configured: kisConfigured(),
+        cadenceMs: EQUITY_CADENCE_MS,
+        lastCycleAt: this.lastEquityCycleAt || null,
+        status: equityPaperLoop.status(),
       },
       session: paperTradingSession.state(),
     };
@@ -219,6 +236,14 @@ export class PaperLoopController {
     }
   }
 
+  private async maybeRunEquityCycle(startedAt: number) {
+    if (!kisConfigured()) return null;
+    if (startedAt - this.lastEquityCycleAt < EQUITY_CADENCE_MS) return null;
+    const cycle = await equityPaperLoop.runCycle(6);
+    this.lastEquityCycleAt = cycle.finishedAt;
+    return cycle;
+  }
+
   async runCycle(): Promise<PaperLoopCycleResult> {
     if (this.cycleInProgress) throw new Error('A Paper loop cycle is already in progress.');
     this.cycleInProgress = true;
@@ -232,19 +257,22 @@ export class PaperLoopController {
       held: 0,
       noTrade: 0,
       evidenceOps: emptyEvidenceOps(),
+      equityCycle: null,
       errors: [],
       markets: [],
     };
 
     try {
       // Evidence operations are best-effort and never grant execution authority by themselves.
-      // Crypto can continue technical-first if NARS is unavailable; evidence-required assets fail closed at their own entry gate.
+      // Crypto can continue technical-first if NARS is unavailable; evidence-required equities fail closed at their own entry gate.
       await this.runEvidenceOps(result.evidenceOps);
 
       const universe = await buildKrwLiquidityUniverse(Math.max(this.config.maxMarkets, 8), 30);
       const liquidityByMarket = new Map(universe.map((item) => [item.market, item]));
       const state = paperTradingSession.state();
-      const openMarkets = state.portfolio.positions.map((position) => position.market);
+      const openMarkets = state.portfolio.positions
+        .filter((position) => position.market.startsWith('KRW-'))
+        .map((position) => position.market);
       const eligibleCandidates = universe.filter((item) => item.eligible).slice(0, this.config.maxMarkets).map((item) => item.market);
       const orderedMarkets = [...new Set([...openMarkets, ...eligibleCandidates])];
 
@@ -310,6 +338,12 @@ export class PaperLoopController {
           result.errors.push({ market, error: error instanceof Error ? error.message : 'Unknown Paper loop error.' });
         }
         await sleep(350);
+      }
+
+      try {
+        result.equityCycle = await this.maybeRunEquityCycle(startedAt);
+      } catch (error) {
+        result.errors.push({ market: 'KRX', error: `Equity Paper cycle: ${error instanceof Error ? error.message : 'unknown error'}` });
       }
 
       result.finishedAt = Date.now();
