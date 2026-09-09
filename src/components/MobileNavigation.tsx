@@ -9,7 +9,7 @@ const items = [
   { id: 'cases', label: 'CASES', icon: BookOpen },
   { id: 'forecast', label: 'FCST', icon: Orbit },
   { id: 'council', label: 'CNCL', icon: BrainCircuit },
-  { id: 'ledger', label: 'LEDGER', icon: GitBranch },
+  { id: 'ledger', label: 'LOG', icon: GitBranch },
 ];
 
 export const MobileNavigation: React.FC = () => {

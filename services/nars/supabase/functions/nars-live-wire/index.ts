@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const VERSION = "4.11.0-cutover-debt";
+const VERSION = "4.12.0-log-ui";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -103,6 +103,34 @@ Deno.serve(async (req: Request) => {
       generatedAt: new Date().toISOString(),
       count: result.rows.length,
       filters: { limit, gate, kind },
+      items: result.rows,
+      automaticRetirement: false,
+    });
+  }
+
+  if (view === "errors") {
+    const component = input.searchParams.get("component")?.trim() || null;
+    const retryable = asBoolean(input.searchParams.get("retryable"));
+    const sinceRaw = input.searchParams.get("since")?.trim() || null;
+    const since = validDate(sinceRaw);
+    if (sinceRaw && !since) return reply(400, { ok: false, error: "invalid_since" });
+    const params = new URLSearchParams();
+    params.set("select", "id,occurred_at,component,error_code,message,retryable,source_id,job_run_id,context");
+    params.set("order", "occurred_at.desc");
+    params.set("limit", String(limit));
+    if (component) params.set("component", "eq." + component);
+    if (retryable !== null) params.set("retryable", "eq." + String(retryable));
+    if (since) params.set("occurred_at", "gte." + since);
+    const result = await restJson(supabaseUrl, headers, "nars_errors?" + params.toString());
+    if (!result.ok) return dbError("errors_query_failed", result);
+    return reply(200, {
+      ok: true,
+      service: "nars-live-wire",
+      version: VERSION,
+      view,
+      generatedAt: new Date().toISOString(),
+      count: result.rows.length,
+      filters: { limit, component, retryable, since },
       items: result.rows,
       automaticRetirement: false,
     });
