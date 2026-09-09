@@ -104,7 +104,7 @@ export default async function handler(request: any, response: any) {
     const activeEvidence = checkpoint.evidence.filter((item) => item.expiresAt > now);
     const expiredEvidence = checkpoint.evidence.length - activeEvidence.length;
 
-    const decisionTape = (lastCycle?.markets ?? []).map((item) => ({
+    const decisionTape = (lastCycle?.markets ?? []).map((item: any) => ({
       timestamp: item.timestamp ?? lastCycle?.finishedAt ?? checkpoint.savedAt,
       market: item.market,
       decision: item.decision,
@@ -113,6 +113,8 @@ export default async function handler(request: any, response: any) {
       oracleTradeScore: item.oracleTradeScore,
       confidence: item.confidence ?? null,
       strategyDisposition: item.strategyDisposition ?? null,
+      router: item.router ?? null,
+      council: item.council ?? null,
       riskDisposition: item.riskDisposition ?? 'NOT_EVALUATED',
       eventScore: item.eventScore ?? null,
       forecast: item.forecast ?? null,
@@ -157,6 +159,16 @@ export default async function handler(request: any, response: any) {
     const lastClosedTrade = checkpoint.session.closedTrades.length
       ? checkpoint.session.closedTrades[checkpoint.session.closedTrades.length - 1]
       : null;
+
+    const latestCouncil = decisionTape.find((item) => item.council)?.council ?? null;
+    const councilStats = decisionTape.reduce((acc, item) => {
+      if (!item.council) return acc;
+      acc.reviewed += 1;
+      if (item.council.verdict === 'APPROVE') acc.approve += 1;
+      if (item.council.verdict === 'CONDITIONAL') acc.conditional += 1;
+      if (item.council.verdict === 'REJECT') acc.reject += 1;
+      return acc;
+    }, { reviewed: 0, approve: 0, conditional: 0, reject: 0 });
 
     return response.status(200).json({
       success: true,
@@ -204,6 +216,12 @@ export default async function handler(request: any, response: any) {
       },
       performance,
       validation,
+      council: {
+        mode: 'SHADOW',
+        executionAuthority: false,
+        latest: latestCouncil,
+        stats: councilStats,
+      },
       ingestion: {
         markedMarkets: checkpoint.session.markPrices.length,
         evidenceTotal: checkpoint.evidence.length,
