@@ -1,3 +1,5 @@
+import { dailyDeterministicStrategySeed, runAiStrategyHypothesisResearch } from '../server/trading/strategyHypothesisResearcher';
+
 const json = (response: any, status: number, body: Record<string, unknown>) => response.status(status).json(body);
 
 const authorized = (authorization: string | undefined) => {
@@ -33,8 +35,6 @@ export default async function handler(request: any, response: any) {
   }
 
   try {
-    // The generated bundle is rebuilt before deployment. Runtime shape is checked explicitly below,
-    // instead of trusting the stale checked-in bundle's static TypeScript shape.
     const runtime: any = await import('../server/trading/runtime-bundle.mjs');
     if (typeof runtime.runCryptoStrategyFactory !== 'function') {
       throw new Error('Runtime bundle does not export runCryptoStrategyFactory.');
@@ -43,6 +43,21 @@ export default async function handler(request: any, response: any) {
     const market = String(body.market ?? 'KRW-BTC').trim().toUpperCase();
     const unit = integer(body.unit, 60, 15, 240);
     const normalizedUnit = [15, 60, 240].includes(unit) ? unit : 60;
+
+    const explicitSeed = body.seed == null
+      ? null
+      : integer(body.seed, 4_420_623, 1, 2_147_483_647);
+    let aiResearch: Awaited<ReturnType<typeof runAiStrategyHypothesisResearch>> | null = null;
+    if (explicitSeed == null && body.aiResearch !== false) {
+      try {
+        aiResearch = await runAiStrategyHypothesisResearch(market);
+      } catch (error) {
+        console.warn('Strategy AI researcher failed; deterministic daily seed will be used:', error);
+      }
+    }
+    const seed = explicitSeed
+      ?? aiResearch?.guidedSeed
+      ?? dailyDeterministicStrategySeed(market);
 
     // Scheduler defaults are deliberately bounded. Research can be autonomous without being allowed
     // to consume unbounded compute or touch execution authority.
@@ -55,13 +70,15 @@ export default async function handler(request: any, response: any) {
       parentPoolSize: integer(body.parentPoolSize, 8, 4, 32),
       blindFraction: decimal(body.blindFraction, 0.20, 0.20, 0.35),
       walkForwardFolds: integer(body.walkForwardFolds, 4, 2, 6),
-      seed: integer(body.seed, 4_420_623, -2_147_483_648, 2_147_483_647),
+      seed,
       topN: integer(body.topN, 20, 1, 30),
     });
 
     return json(response, 200, {
       success: true,
       researchOnly: true,
+      aiResearch,
+      seedSource: explicitSeed != null ? 'EXPLICIT' : aiResearch && !aiResearch.skipped ? 'AI_GUIDED' : 'DAILY_DETERMINISTIC',
       automaticChampionPromotion: false,
       automaticLiveDeployment: false,
       run,
