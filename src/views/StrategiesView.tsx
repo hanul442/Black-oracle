@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, FlaskConical, RefreshCw, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Activity, FlaskConical, RefreshCw, ShieldCheck, Trophy } from 'lucide-react';
 
 type ClosedTrade = {
   id: string;
@@ -12,48 +12,17 @@ type ClosedTrade = {
   entryOracleTradeScore?: number | null;
 };
 
-type Decision = {
-  timestamp: number;
-  market: string;
-  decision: string;
-  regime?: string | null;
-  oracleTradeScore?: number | null;
-  strategyDisposition?: string | null;
-  primaryReason?: string | null;
-  evidenceActiveCount?: number | null;
-  evidenceIds?: string[];
-};
-
 type StatusPayload = {
   success?: boolean;
-  available?: boolean;
-  status?: string;
-  strategyVersion?: string | null;
   recentTrades?: ClosedTrade[];
-  decisionTape?: Decision[];
-  equityDecisions?: Array<{
-    timestamp: number;
-    market: string;
-    action: string;
-    name?: string;
-    technicalScore?: number | null;
-    evidenceCount?: number;
-    oracleTradeScore?: number | null;
-    reasons?: string[];
-  }>;
+  strategyVersion?: string | null;
 };
 
+type Lifecycle = 'REJECT' | 'INCUBATOR' | 'CHALLENGER' | 'CHAMPION_CANDIDATE';
+
 type FactoryTop = {
-  genome: {
-    id: string;
-    indicators: string[];
-    indicatorWeights: Record<string, number>;
-    entryThreshold: number;
-    exitThreshold: number;
-    stopAtrMultiple: number;
-    takeProfitR: number;
-    correlationPenalty: number;
-  };
+  genome: { id: string; generation?: number; indicators: string[]; indicatorWeights?: Record<string, number> };
+  hypothesis?: { thesis?: string; parentIds?: string[]; origin?: string };
   metrics: {
     totalSamples: number;
     oosSamples: number;
@@ -65,9 +34,24 @@ type FactoryTop = {
     regimeStability: number;
     parameterRobustness: number;
   };
-  evaluation: { score: number; status: string; hardGatePassed: boolean; hardGateReasons: string[] };
-  tradeCount: number;
-  oosTradeCount: number;
+  evaluation: {
+    score: number;
+    status?: string;
+    lifecycle?: Lifecycle;
+    hardGatePassed: boolean;
+    hardGateReasons: string[];
+    fatalReasons?: string[];
+    requiresHumanApproval?: true;
+  };
+  validation?: {
+    blind?: { samples: number; expectancy: number; sharpe: number; maxDrawdownPct: number; winRate: number };
+    walkForward?: { eligibleFolds: number; positiveFoldRate: number; worstExpectancy: number };
+    costStress?: { survivalRate: number; worstExpectancy: number };
+    regimeStress?: { eligibleRegimes: number; positiveRegimeRate: number; worstExpectancy: number };
+    monteCarloSurvivalRate?: number;
+    parameterRobustness?: number;
+  };
+  blindTradeCount?: number;
 };
 
 type FactoryRun = {
@@ -79,13 +63,23 @@ type FactoryRun = {
   seed: number;
   started_at: string;
   finished_at: string;
-  status_counts: Record<string, number>;
+  factory_version?: string | null;
+  generation_count?: number | null;
+  blind_fraction?: number | null;
+  status_counts?: Record<string, number>;
+  lifecycle_counts?: Partial<Record<Lifecycle, number>>;
   top_results: FactoryTop[];
+  human_approval_required?: boolean;
   execution_authority: false;
   promotion_authority: false;
 };
 
-type FactoryPayload = { success?: boolean; available?: boolean; latestRun?: FactoryRun | null };
+type FactoryPayload = {
+  success?: boolean;
+  available?: boolean;
+  latestRun?: FactoryRun | null;
+  governance?: { automaticChampionPromotion?: boolean; automaticLiveDeployment?: boolean; humanApprovalRequired?: boolean };
+};
 
 type StrategyRow = {
   version: string;
@@ -96,27 +90,43 @@ type StrategyRow = {
   totalReturnPct: number;
   totalPnl: number;
   avgEntryScore: number | null;
-  lastUsedAt: number;
 };
 
-const pct = (value: number) => `${(value * 100).toFixed(2)}%`;
-const number = (value: number) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 }).format(value);
+const pct = (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : '—';
+const krw = (value: number) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 }).format(value);
+
+const lifecycleStyle = (lifecycle?: Lifecycle) => {
+  if (lifecycle === 'CHAMPION_CANDIDATE') return 'border-[#D2B36A]/30 bg-[#D2B36A]/[0.05] text-[#D5BA78]';
+  if (lifecycle === 'CHALLENGER') return 'border-[#43D9E6]/25 bg-[#43D9E6]/[0.04] text-[#7CCDD4]';
+  if (lifecycle === 'INCUBATOR') return 'border-white/[0.10] bg-white/[0.02] text-[#929DA6]';
+  return 'border-[#B86D6D]/25 bg-[#B86D6D]/[0.04] text-[#C78080]';
+};
+
+const Stat = ({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) => (
+  <div className="border border-white/[0.07] bg-[#070B10] p-4">
+    <div className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.16em] text-[#56616B]">
+      <span>{label}</span>{icon}
+    </div>
+    <div className="mt-3 font-mono text-[22px] tracking-[-0.04em] text-[#E2E8EC]">{value}</div>
+  </div>
+);
 
 export const StrategiesView: React.FC = () => {
-  const [payload, setPayload] = useState<StatusPayload | null>(null);
+  const [trading, setTrading] = useState<StatusPayload | null>(null);
   const [factory, setFactory] = useState<FactoryPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
+    setLoading(true);
     try {
       const [tradingResponse, factoryResponse] = await Promise.all([
         fetch('/api/trading-status', { cache: 'no-store' }),
         fetch('/api/strategy-factory-status', { cache: 'no-store' }).catch(() => null),
       ]);
-      setPayload(await tradingResponse.json() as StatusPayload);
+      setTrading(await tradingResponse.json() as StatusPayload);
       setFactory(factoryResponse ? await factoryResponse.json() as FactoryPayload : null);
     } catch {
-      setPayload(null);
+      setTrading(null);
       setFactory(null);
     } finally {
       setLoading(false);
@@ -126,30 +136,18 @@ export const StrategiesView: React.FC = () => {
   useEffect(() => {
     void load();
     const interval = window.setInterval(() => void load(), 30_000);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', load);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', load);
-    };
+    return () => window.clearInterval(interval);
   }, []);
 
-  const rows = useMemo<StrategyRow[]>(() => {
+  const observed = useMemo<StrategyRow[]>(() => {
     const grouped = new Map<string, ClosedTrade[]>();
-    for (const trade of payload?.recentTrades ?? []) {
-      const key = trade.strategyVersion || 'UNVERSIONED';
-      grouped.set(key, [...(grouped.get(key) ?? []), trade]);
+    for (const trade of trading?.recentTrades ?? []) {
+      const version = trade.strategyVersion || 'UNVERSIONED';
+      grouped.set(version, [...(grouped.get(version) ?? []), trade]);
     }
-
     return [...grouped.entries()].map(([version, trades]) => {
       const wins = trades.filter((trade) => trade.netPnl > 0).length;
-      const entryScores = trades
-        .map((trade) => trade.entryOracleTradeScore)
-        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      const scores = trades.map((trade) => trade.entryOracleTradeScore).filter((value): value is number => typeof value === 'number');
       return {
         version,
         trades: trades.length,
@@ -158,160 +156,133 @@ export const StrategiesView: React.FC = () => {
         avgReturnPct: trades.length ? trades.reduce((sum, trade) => sum + trade.returnPct, 0) / trades.length : 0,
         totalReturnPct: trades.reduce((sum, trade) => sum + trade.returnPct, 0),
         totalPnl: trades.reduce((sum, trade) => sum + trade.netPnl, 0),
-        avgEntryScore: entryScores.length ? entryScores.reduce((a, b) => a + b, 0) / entryScores.length : null,
-        lastUsedAt: Math.max(...trades.map((trade) => trade.closedAt)),
+        avgEntryScore: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
       };
-    }).sort((a, b) => b.trades - a.trades || b.avgReturnPct - a.avgReturnPct);
-  }, [payload?.recentTrades]);
+    }).sort((a, b) => b.trades - a.trades);
+  }, [trading?.recentTrades]);
 
-  const latestDecisions = [
-    ...(payload?.decisionTape ?? []),
-    ...(payload?.equityDecisions ?? []).map((item) => ({
-      timestamp: item.timestamp,
-      market: item.market,
-      decision: item.action,
-      regime: 'EQUITY',
-      oracleTradeScore: item.oracleTradeScore,
-      primaryReason: item.reasons?.[0] || `${item.name || item.market} equity decision`,
-      evidenceActiveCount: item.evidenceCount,
-    })),
-  ].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
-  const factoryRun = factory?.latestRun ?? null;
-  const factoryTop = factoryRun?.top_results ?? [];
+  const run = factory?.latestRun ?? null;
+  const top = run?.top_results ?? [];
+  const lifecycle = run?.lifecycle_counts ?? {};
+  const championCandidates = lifecycle.CHAMPION_CANDIDATE ?? top.filter((item) => item.evaluation.lifecycle === 'CHAMPION_CANDIDATE').length;
+  const challengers = lifecycle.CHALLENGER ?? top.filter((item) => item.evaluation.lifecycle === 'CHALLENGER').length;
+  const incubators = lifecycle.INCUBATOR ?? run?.status_counts?.QUALIFYING ?? 0;
+  const rejected = lifecycle.REJECT ?? run?.status_counts?.BLOCKED ?? 0;
 
   return (
     <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-24 pt-4 md:px-6 lg:pb-8 xl:px-8">
-      <div className="mx-auto max-w-[1500px]">
-        <div className="mb-4 flex items-center justify-between border-b border-white/[0.06] pb-4">
+      <div className="mx-auto max-w-[1580px]">
+        <header className="mb-4 flex flex-col justify-between gap-3 border-b border-white/[0.06] pb-4 md:flex-row md:items-end">
           <div>
-            <div className="font-mono text-[7px] uppercase tracking-[0.22em] text-[#43D9E6]">Strategy competition & oversight</div>
-            <h1 className="mt-1 text-xl font-medium text-[#E8EDF1]">STRATEGIES</h1>
-            <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-[#66717B]">
-              운영 거래의 실제 성과와 Strategy Factory의 OOS 연구 경쟁을 분리해 봅니다. Factory 결과는 Challenger 후보일 뿐 자동 승격·주문 권한이 없습니다.
+            <div className="font-mono text-[7px] uppercase tracking-[0.22em] text-[#43D9E6]">Autonomous research · human authority</div>
+            <h1 className="mt-1 text-xl font-medium text-[#E8EDF1]">STRATEGY FACTORY</h1>
+            <p className="mt-1 max-w-4xl text-[11px] leading-relaxed text-[#67727C]">
+              가설 생성 → 세대별 변형/도태 → Backtest/OOS → 잠금 Blind → Walk-forward → Monte Carlo → 비용·슬리피지·레짐 스트레스. 연구 분류는 자동이지만 Champion 승격과 실거래는 인간 승인 없이는 불가능합니다.
             </p>
           </div>
-          <button onClick={() => void load()} className="flex items-center gap-2 border border-white/[0.08] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.14em] text-[#7B8791] hover:text-[#D9E0E5]">
-            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          <button onClick={() => void load()} className="flex items-center gap-2 self-start border border-white/[0.08] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.14em] text-[#7D8892] hover:text-[#DCE2E6]">
+            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} /> refresh
           </button>
-        </div>
+        </header>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <Stat label="Observed versions" value={String(rows.length)} icon={<Activity className="h-3.5 w-3.5" />} />
-          <Stat label="Closed sample" value={String(payload?.recentTrades?.length ?? 0)} icon={<ShieldCheck className="h-3.5 w-3.5" />} />
-          <Stat label="Factory candidates" value={factoryRun ? String(factoryRun.candidate_count) : '—'} icon={<FlaskConical className="h-3.5 w-3.5" />} />
-          <Stat label="Current version" value={payload?.strategyVersion || '—'} icon={<TrendingUp className="h-3.5 w-3.5" />} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Stat label="Champion candidate" value={String(championCandidates)} icon={<Trophy className="h-3.5 w-3.5" />} />
+          <Stat label="Challenger" value={String(challengers)} icon={<Activity className="h-3.5 w-3.5" />} />
+          <Stat label="Incubator" value={String(incubators)} icon={<FlaskConical className="h-3.5 w-3.5" />} />
+          <Stat label="Reject" value={String(rejected)} icon={<ShieldCheck className="h-3.5 w-3.5" />} />
+          <Stat label="Observed Paper" value={String(trading?.recentTrades?.length ?? 0)} icon={<Activity className="h-3.5 w-3.5" />} />
         </div>
 
         <section className="mt-4 border border-[#43D9E6]/15 bg-[#071015]">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
             <div>
-              <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#78CAD2]">Strategy Factory · Research Arena</div>
-              <div className="mt-1 text-[10px] text-[#5F6B74]">Seeded indicator combinations → historical next-bar execution → OOS → cost stress → Monte Carlo → robustness score.</div>
+              <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#76C8D0]">Research tournament</div>
+              <div className="mt-1 text-[10px] text-[#65717A]">
+                Blind는 세대 선택이 끝날 때까지 잠금 · 동일 seed 재현 가능 · 모든 후보는 Experiment Ledger 기록
+              </div>
             </div>
-            {factoryRun && <div className="font-mono text-[7px] uppercase tracking-[0.1em] text-[#64717B]">{factoryRun.market} · {factoryRun.timeframe_minutes}m · {factoryRun.bars} bars · seed {factoryRun.seed}</div>}
+            <div className="text-right font-mono text-[7px] uppercase leading-relaxed tracking-[0.1em] text-[#59656F]">
+              {run ? <>{run.factory_version || 'LEGACY FACTORY'} · {run.market} · {run.timeframe_minutes}m<br />{run.generation_count ?? 1} generations · {run.candidate_count} experiments · blind {pct(run.blind_fraction ?? null)}</> : 'NO PERSISTED RUN'}
+            </div>
           </div>
-          {factoryRun ? (
-            <>
-              <div className="grid gap-px border-b border-white/[0.05] bg-white/[0.04] sm:grid-cols-3">
-                <FactoryStat label="Candidate" value={factoryRun.status_counts?.CANDIDATE ?? 0} />
-                <FactoryStat label="Qualifying" value={factoryRun.status_counts?.QUALIFYING ?? 0} />
-                <FactoryStat label="Blocked" value={factoryRun.status_counts?.BLOCKED ?? 0} />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] text-left">
-                  <thead className="border-b border-white/[0.05] font-mono text-[7px] uppercase tracking-[0.12em] text-[#46515B]">
-                    <tr><th className="px-4 py-3">Rank</th><th>Genome</th><th>Indicators</th><th>Score</th><th>Status</th><th>Trades/OOS</th><th>OOS EV</th><th>Sharpe</th><th>MDD</th><th>MC survive</th></tr>
-                  </thead>
-                  <tbody>
-                    {factoryTop.slice(0, 12).map((item, index) => (
-                      <tr key={item.genome.id} className="border-b border-white/[0.045] text-[10px] text-[#AAB4BC] last:border-0">
-                        <td className="px-4 py-3 font-mono text-[#6CC7CF]">#{index + 1}</td>
-                        <td className="max-w-[210px] truncate font-mono text-[8px] text-[#D3D9DE]" title={item.genome.id}>{item.genome.id}</td>
-                        <td className="max-w-[300px] text-[9px] text-[#79858E]">{item.genome.indicators.join(' · ')}</td>
-                        <td className="font-mono text-[#DCE4E8]">{Number(item.evaluation.score).toFixed(1)}</td>
-                        <td><span className={`border px-2 py-1 font-mono text-[7px] ${item.evaluation.hardGatePassed ? 'border-[#6AB7A0]/20 text-[#76B8A5]' : 'border-[#B16B6B]/20 text-[#BE7B7B]'}`}>{item.evaluation.status}</span></td>
-                        <td>{item.tradeCount}/{item.oosTradeCount}</td>
-                        <td className={item.metrics.oosExpectancy >= 0 ? 'text-[#78BCA7]' : 'text-[#D47A7A]'}>{pct(item.metrics.oosExpectancy)}</td>
-                        <td>{Number(item.metrics.sharpe).toFixed(2)}</td>
-                        <td>{pct(-Math.abs(item.metrics.maxDrawdownPct))}</td>
-                        <td>{pct(item.metrics.monteCarloSurvivalRate)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!factoryTop.length && <div className="px-4 py-8 text-center text-[11px] text-[#59646E]">최근 Factory run에 저장된 상위 후보가 없습니다.</div>}
-            </>
-          ) : (
-            <div className="px-4 py-10 text-center">
-              <div className="text-[11px] text-[#65717A]">아직 persisted Strategy Factory run이 없습니다.</div>
-              <div className="mt-1 text-[9px] text-[#48525B]">후보를 임의로 우수하다고 표시하지 않습니다. 실제 OOS 연구 run이 저장되면 여기에 나타납니다.</div>
-            </div>
-          )}
-        </section>
 
-        <section className="mt-4 border border-white/[0.07] bg-[#070B10]">
-          <div className="border-b border-white/[0.06] px-4 py-3 font-mono text-[7px] uppercase tracking-[0.18em] text-[#77838D]">Observed live/Paper strategy versions</div>
-          {rows.length ? (
+          <div className="border-b border-[#D2B36A]/15 bg-[#D2B36A]/[0.025] px-4 py-2.5 font-mono text-[7px] uppercase tracking-[0.12em] text-[#A99466]">
+            AUTHORITY GATE · auto Champion promotion = NO · auto LIVE deployment = NO · human approval required = YES
+          </div>
+
+          {run ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
-                <thead className="border-b border-white/[0.05] font-mono text-[7px] uppercase tracking-[0.12em] text-[#46515B]">
-                  <tr><th className="px-4 py-3">Strategy</th><th>Sample</th><th>Win rate</th><th>Avg return</th><th>Total return</th><th>PnL</th><th>Entry score</th><th>Status</th></tr>
+              <table className="w-full min-w-[1380px] text-left">
+                <thead className="border-b border-white/[0.05] font-mono text-[7px] uppercase tracking-[0.11em] text-[#46515B]">
+                  <tr>
+                    <th className="px-4 py-3">Rank</th><th>Hypothesis / Genome</th><th>Gen</th><th>Lifecycle</th><th>Score</th>
+                    <th>Dev OOS EV</th><th>Blind</th><th>Blind EV</th><th>WF +</th><th>Cost survive</th><th>Regime +</th><th>MC survive</th><th>MDD</th><th>Robust</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.version} className="border-b border-white/[0.045] text-[11px] text-[#B8C1C8] last:border-0">
-                      <td className="px-4 py-3 font-mono text-[10px] text-[#E1E6EA]">{row.version}</td>
-                      <td>{row.trades}</td>
-                      <td>{pct(row.winRate)}</td>
-                      <td className={row.avgReturnPct >= 0 ? 'text-[#78BCA7]' : 'text-[#D47A7A]'}>{pct(row.avgReturnPct)}</td>
-                      <td className={row.totalReturnPct >= 0 ? 'text-[#78BCA7]' : 'text-[#D47A7A]'}>{pct(row.totalReturnPct)}</td>
-                      <td>{number(row.totalPnl)}</td>
-                      <td>{row.avgEntryScore == null ? '—' : row.avgEntryScore.toFixed(1)}</td>
-                      <td><span className="border border-white/[0.08] px-2 py-1 font-mono text-[7px] uppercase tracking-[0.1em] text-[#7A858E]">{row.trades < 5 ? 'LOW SAMPLE' : 'OBSERVED'}</span></td>
-                    </tr>
-                  ))}
+                  {top.slice(0, 20).map((item, index) => {
+                    const validation = item.validation;
+                    const lifecycleName = item.evaluation.lifecycle ?? (item.evaluation.hardGatePassed ? 'CHALLENGER' : 'REJECT');
+                    return (
+                      <tr key={item.genome.id} className="border-b border-white/[0.045] align-top text-[9px] text-[#9CA7AF] last:border-0">
+                        <td className="px-4 py-3 font-mono text-[#6CC7CF]">#{index + 1}</td>
+                        <td className="max-w-[360px] py-3 pr-4">
+                          <div className="text-[10px] leading-relaxed text-[#D0D7DC]">{item.hypothesis?.thesis || item.genome.indicators.join(' + ')}</div>
+                          <div className="mt-1 truncate font-mono text-[7px] text-[#505B65]" title={item.genome.id}>{item.genome.id}</div>
+                        </td>
+                        <td className="py-3">G{item.genome.generation ?? 1}</td>
+                        <td className="py-3"><span className={`border px-2 py-1 font-mono text-[7px] ${lifecycleStyle(lifecycleName)}`}>{lifecycleName}</span></td>
+                        <td className="py-3 font-mono text-[#E3E8EB]">{Number(item.evaluation.score).toFixed(1)}</td>
+                        <td className={item.metrics.oosExpectancy >= 0 ? 'py-3 text-[#76B8A5]' : 'py-3 text-[#C97878]'}>{pct(item.metrics.oosExpectancy)}</td>
+                        <td className="py-3">{validation?.blind?.samples ?? item.blindTradeCount ?? '—'}</td>
+                        <td className={(validation?.blind?.expectancy ?? 0) >= 0 ? 'py-3 text-[#76B8A5]' : 'py-3 text-[#C97878]'}>{pct(validation?.blind?.expectancy)}</td>
+                        <td className="py-3">{pct(validation?.walkForward?.positiveFoldRate)}</td>
+                        <td className="py-3">{pct(validation?.costStress?.survivalRate)}</td>
+                        <td className="py-3">{pct(validation?.regimeStress?.positiveRegimeRate)}</td>
+                        <td className="py-3">{pct(validation?.monteCarloSurvivalRate ?? item.metrics.monteCarloSurvivalRate)}</td>
+                        <td className="py-3">{pct(-Math.abs(validation?.blind?.maxDrawdownPct ?? item.metrics.maxDrawdownPct))}</td>
+                        <td className="py-3">{pct(validation?.parameterRobustness ?? item.metrics.parameterRobustness)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              {!top.length && <div className="px-4 py-10 text-center text-[11px] text-[#5D6872]">Run은 있으나 저장된 상위 Experiment가 없습니다.</div>}
             </div>
           ) : (
-            <div className="px-4 py-10 text-center text-[11px] text-[#59646E]">아직 strategyVersion이 기록된 종료 거래가 없습니다.</div>
+            <div className="px-4 py-12 text-center">
+              <div className="text-[11px] text-[#68747D]">아직 Autonomous Strategy Factory 결과가 없습니다.</div>
+              <div className="mt-1 text-[9px] text-[#49545D]">실제 검증 run이 기록되기 전에는 전략을 임의로 우수하다고 표시하지 않습니다.</div>
+            </div>
           )}
         </section>
 
         <section className="mt-4 border border-white/[0.07] bg-[#070B10]">
           <div className="border-b border-white/[0.06] px-4 py-3">
-            <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#77838D]">Latest decisions</div>
-            <div className="mt-1 text-[10px] text-[#56616B]">코인 technical-first와 주식 evidence-first 판단을 같은 감시 화면에서 봅니다.</div>
+            <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-[#77838D]">Observed Paper strategies</div>
+            <div className="mt-1 text-[9px] text-[#515C65]">Research lifecycle와 실제 Paper 성과를 섞지 않습니다. Champion 후보도 이 표본과 별도 인간 검토를 거쳐야 합니다.</div>
           </div>
-          <div className="divide-y divide-white/[0.045]">
-            {latestDecisions.map((item) => (
-              <div key={`${item.market}-${item.timestamp}`} className="grid gap-2 px-4 py-3 md:grid-cols-[110px_90px_100px_90px_1fr] md:items-center">
-                <div className="font-mono text-[9px] text-[#DCE2E7]">{item.market}</div>
-                <div className="font-mono text-[8px] text-[#71CDD5]">{item.decision}</div>
-                <div className="font-mono text-[8px] text-[#69747D]">{item.oracleTradeScore == null ? 'score —' : `score ${Number(item.oracleTradeScore).toFixed(1)}`}</div>
-                <div className="font-mono text-[7px] text-[#56616B]">EV {item.evidenceActiveCount ?? 0}</div>
-                <div className="text-[10px] leading-relaxed text-[#7A858F]">{item.primaryReason || item.strategyDisposition || item.regime || 'No rationale recorded.'}</div>
-              </div>
-            ))}
-            {!latestDecisions.length && <div className="px-4 py-8 text-center text-[11px] text-[#59646E]">최근 decision이 없습니다.</div>}
-          </div>
+          {observed.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[780px] text-left">
+                <thead className="border-b border-white/[0.05] font-mono text-[7px] uppercase tracking-[0.11em] text-[#46515B]">
+                  <tr><th className="px-4 py-3">Strategy</th><th>Sample</th><th>Win rate</th><th>Avg return</th><th>Total return</th><th>PnL</th><th>Entry score</th></tr>
+                </thead>
+                <tbody>
+                  {observed.map((row) => (
+                    <tr key={row.version} className="border-b border-white/[0.045] text-[10px] text-[#AAB4BC] last:border-0">
+                      <td className="px-4 py-3 font-mono text-[#E0E5E9]">{row.version}</td>
+                      <td>{row.trades}</td><td>{pct(row.winRate)}</td>
+                      <td className={row.avgReturnPct >= 0 ? 'text-[#76B8A5]' : 'text-[#C97878]'}>{pct(row.avgReturnPct)}</td>
+                      <td>{pct(row.totalReturnPct)}</td><td>{krw(row.totalPnl)}</td><td>{row.avgEntryScore == null ? '—' : row.avgEntryScore.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="px-4 py-10 text-center text-[11px] text-[#59646E]">아직 strategyVersion이 기록된 종료 거래가 없습니다.</div>}
         </section>
       </div>
     </div>
   );
 };
-
-const Stat = ({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) => (
-  <div className="border border-white/[0.07] bg-[#070B10] p-4">
-    <div className="flex items-center gap-2 font-mono text-[7px] uppercase tracking-[0.15em] text-[#53606A]">{icon}{label}</div>
-    <div className="mt-2 truncate font-mono text-lg text-[#DCE3E8]">{value}</div>
-  </div>
-);
-
-const FactoryStat = ({ label, value }: { label: string; value: number }) => (
-  <div className="bg-[#070B10] px-4 py-3">
-    <div className="font-mono text-[7px] uppercase tracking-[0.12em] text-[#4C5962]">{label}</div>
-    <div className="mt-1 font-mono text-base text-[#C9D2D8]">{value}</div>
-  </div>
-);
