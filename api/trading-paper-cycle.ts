@@ -81,6 +81,7 @@ export default async function handler(request: any, response: any) {
   const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeLoaded = false;
+  let qualificationBootstrapInProgress = false;
   let responseStatus = 500;
   let responseBody: Record<string, unknown> = {
     success: false,
@@ -104,7 +105,9 @@ export default async function handler(request: any, response: any) {
       runtimeLoaded = true;
 
       if (!restore.restored && restore.profile?.qualificationId) {
+        qualificationBootstrapInProgress = true;
         const initialized = await initializeFreshQualificationRuntime();
+        qualificationBootstrapInProgress = false;
         responseStatus = 200;
         responseBody = {
           success: true,
@@ -191,12 +194,9 @@ export default async function handler(request: any, response: any) {
       }
     }
   } catch (error) {
-    if (runtimeLoaded) {
+    if (runtimeLoaded && !qualificationBootstrapInProgress) {
       try {
-        const runtimeIsQualificationBootstrapFailure = responseBody.initializedOnly === true;
-        if (!runtimeIsQualificationBootstrapFailure) {
-          await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
-        }
+        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
       }
@@ -208,7 +208,7 @@ export default async function handler(request: any, response: any) {
     responseBody = {
       success: false,
       runtimeId,
-      phase: runtimeLoaded ? 'cycle' : 'startup',
+      phase: qualificationBootstrapInProgress ? 'qualification-bootstrap' : runtimeLoaded ? 'cycle' : 'startup',
       error: message,
     };
   }
