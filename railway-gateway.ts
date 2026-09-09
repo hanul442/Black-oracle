@@ -3,6 +3,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import tradingStatusHandler from './api/trading-status';
+import tradingPaperCycleHandler from './api/trading-paper-cycle';
 import activityBriefHandler from './api/activity-brief';
 import { tradingCheckpointStore } from './server/trading/persistence';
 
@@ -68,6 +69,15 @@ const readCookie = (header: string | undefined, name: string) => {
     if (key === name) return decodeURIComponent(pair.slice(separator + 1).trim());
   }
   return undefined;
+};
+
+const schedulerBearerAuthorized = (authorization?: string) => {
+  if (!authorization?.startsWith('Bearer ')) return false;
+  const presented = authorization.slice('Bearer '.length);
+  const accepted = [process.env.CRON_SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  return accepted.some((secret) => safeEqual(secret, presented));
 };
 
 const clientKey = (req: express.Request) => {
@@ -164,6 +174,22 @@ for (const publicPath of ['/manifest.webmanifest', '/sw.js']) {
   app.get(publicPath, proxyToInternal);
 }
 app.get('/icons/*path', proxyToInternal);
+
+// Scheduler-only Paper cycle: Bearer auth is checked both here and again by the handler.
+// This narrowly bypasses the operator cookie gate without exposing the rest of /api/*.
+app.get('/api/trading-paper-cycle', (req, res) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized scheduled invocation.' });
+  }
+  void tradingPaperCycleHandler(req, res);
+});
+
+// Supabase scheduler status probes may use the same service-role bearer. Interactive
+// browser requests still fall through to the normal session-cookie gate below.
+app.get('/api/trading-status', (req, res, next) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
+  void tradingStatusHandler(req, res);
+});
 
 app.post('/login', express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
