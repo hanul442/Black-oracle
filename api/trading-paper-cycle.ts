@@ -1,4 +1,5 @@
 import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
+import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -97,9 +98,8 @@ export default async function handler(request: any, response: any) {
       runtimeRestored = true;
       const cycle = await paperLoopController.runCycle();
 
-      // Trading state is persisted BEFORE any AI review. The AI Council is deliberately
-      // outside the execution path: its failure, timeout, stance, or dissent cannot alter
-      // this cycle's orders, portfolio, risk result, strategy selection, or checkpoint.
+      // Trading state is persisted BEFORE any AI review or event-ledger projection.
+      // Neither the AI Council nor observability can alter this cycle's execution outcome.
       const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
 
       let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
@@ -124,6 +124,19 @@ export default async function handler(request: any, response: any) {
         };
       }
 
+      let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
+      try {
+        const events = buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi);
+        eventLedger = await appendCanonicalEvents(events);
+      } catch (ledgerError) {
+        console.error('Canonical event ledger append failed after completed Paper cycle:', ledgerError);
+        eventLedger = {
+          persisted: false,
+          attempted: 0,
+          error: errorMessage(ledgerError),
+        };
+      }
+
       responseStatus = 200;
       responseBody = {
         success: true,
@@ -136,6 +149,7 @@ export default async function handler(request: any, response: any) {
         cycle,
         persistence: saved.persistence,
         councilAi,
+        eventLedger,
       };
     }
   } catch (error) {
