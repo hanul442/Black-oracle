@@ -75,7 +75,7 @@ export const loadDynamicInstrumentAliases = async (limit = 2_500): Promise<Tradi
   const response = await fetch(query, { headers: db.headers, cache: 'no-store' });
   if (!response.ok) return [];
   const rows = await response.json() as any[];
-  return rows.map((row) => ({
+  return rows.map((row): TradingInstrument => ({
     id: `${String(row.asset_class)}:${String(row.market)}`,
     assetClass: String(row.asset_class) as TradingInstrument['assetClass'],
     market: String(row.market),
