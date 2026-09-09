@@ -33,9 +33,9 @@ export default async function handler(request: any, response: any) {
   }
 
   try {
-    // The bundle is built by the normal production build and avoids extensionless TS imports in serverless Node.
-    // @ts-ignore generated during build
-    const runtime = await import('../server/trading/runtime-bundle.mjs');
+    // The generated bundle is rebuilt before deployment. Runtime shape is checked explicitly below,
+    // instead of trusting the stale checked-in bundle's static TypeScript shape.
+    const runtime: any = await import('../server/trading/runtime-bundle.mjs');
     if (typeof runtime.runCryptoStrategyFactory !== 'function') {
       throw new Error('Runtime bundle does not export runCryptoStrategyFactory.');
     }
