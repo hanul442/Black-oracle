@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
+import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
 import activityBriefHandler from './api/activity-brief';
 import { tradingCheckpointStore } from './server/trading/persistence';
 
@@ -73,7 +74,7 @@ const readCookie = (header: string | undefined, name: string) => {
 
 const schedulerBearerAuthorized = (authorization?: string) => {
   if (!authorization?.startsWith('Bearer ')) return false;
-  const presented = authorization.slice('Bearer '.length);
+  const presented = authorization.slice('Bearer '.length).trim();
   const accepted = [process.env.CRON_SECRET, process.env.SUPABASE_SERVICE_ROLE_KEY]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
@@ -182,6 +183,15 @@ app.get('/api/trading-paper-cycle', (req, res) => {
     return res.status(401).json({ success: false, error: 'Unauthorized scheduled invocation.' });
   }
   void tradingPaperCycleHandler(req, res);
+});
+
+// Scheduler-only Strategy Factory research. It is isolated from the Paper cycle and remains
+// research-only even when invoked successfully; the handler enforces the same Bearer contract.
+app.post('/api/strategy-factory-cycle', express.json({ limit: '64kb' }), (req, res) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized Strategy Factory scheduler invocation.' });
+  }
+  void strategyFactoryCycleHandler(req, res);
 });
 
 // Supabase scheduler status probes may use the same service-role bearer. Interactive
