@@ -38,6 +38,37 @@ let running = false;
 
 const clampInt = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Math.trunc(value)));
 
+const persistRun = async (run: StrategyFactoryRunSummary) => {
+  const base = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+  if (!base || !key) return false;
+  const response = await fetch(`${base}/rest/v1/black_oracle_strategy_factory_runs?on_conflict=id`, {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify({
+      id: run.id,
+      market: run.market,
+      timeframe_minutes: run.unit,
+      bars: run.bars,
+      candidate_count: run.candidateCount,
+      seed: run.seed,
+      started_at: new Date(run.startedAt).toISOString(),
+      finished_at: new Date(run.finishedAt).toISOString(),
+      status_counts: run.candidateStatusCounts,
+      top_results: run.top,
+      execution_authority: false,
+      promotion_authority: false,
+    }),
+  });
+  if (!response.ok) throw new Error(`Strategy Factory persistence failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  return true;
+};
+
 export const strategyFactoryRunnerStatus = () => ({
   running,
   latestRun,
@@ -101,6 +132,7 @@ export const runCryptoStrategyFactory = async (config: StrategyFactoryRunConfig 
       executionAuthority: false,
       promotionAuthority: false,
     };
+    await persistRun(latestRun);
     return latestRun;
   } finally {
     running = false;
