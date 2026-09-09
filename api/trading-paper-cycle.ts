@@ -1,3 +1,5 @@
+import { runConditionalAiCouncilForCycle } from '../server/trading/aiCouncilAdjudicator';
+
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
 
@@ -39,7 +41,7 @@ export default async function handler(request: any, response: any) {
   let saveRuntimeCheckpoint: any;
 
   try {
-    // The full Paper runtime is bundled during the build step so Vercel's Node ESM
+    // The full Paper runtime is bundled during the build step so Railway's Node ESM
     // loader never has to resolve the runtime's extensionless TypeScript imports.
     // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
     const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
@@ -94,7 +96,33 @@ export default async function handler(request: any, response: any) {
       const restore = await restoreRuntimeCheckpoint(false);
       runtimeRestored = true;
       const cycle = await paperLoopController.runCycle();
+
+      // Trading state is persisted BEFORE any AI review. The AI Council is deliberately
+      // outside the execution path: its failure, timeout, stance, or dissent cannot alter
+      // this cycle's orders, portfolio, risk result, strategy selection, or checkpoint.
       const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+
+      let councilAi: Awaited<ReturnType<typeof runConditionalAiCouncilForCycle>> = {
+        advisoryOnly: true,
+        executionAuthority: false,
+        eligibleCount: 0,
+        reviewedCount: 0,
+        skippedCount: 0,
+        reviews: [],
+      };
+      try {
+        councilAi = await runConditionalAiCouncilForCycle(cycle, runtimeId, 2);
+      } catch (councilError) {
+        console.error('Operational AI Council review failed after Paper checkpoint:', councilError);
+        councilAi = {
+          advisoryOnly: true,
+          executionAuthority: false,
+          eligibleCount: 0,
+          reviewedCount: 0,
+          skippedCount: 1,
+          reviews: [],
+        };
+      }
 
       responseStatus = 200;
       responseBody = {
@@ -107,6 +135,7 @@ export default async function handler(request: any, response: any) {
         },
         cycle,
         persistence: saved.persistence,
+        councilAi,
       };
     }
   } catch (error) {
