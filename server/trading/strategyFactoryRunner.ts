@@ -4,7 +4,12 @@ import {
   type AutonomousStrategyExperiment,
   type StrategyLifecycle,
 } from '../../src/trading/autonomousStrategyFactory';
-import type { StrategyEvaluationMetrics } from '../../src/trading/strategyFactory';
+import {
+  clearStrategyFactoryGuidedSeeds,
+  setStrategyFactoryGuidedSeeds,
+  type StrategyEvaluationMetrics,
+  type StrategyFactoryGuidedSeed,
+} from '../../src/trading/strategyFactory';
 import { persistStrategyExperiments } from './strategyExperimentLedger';
 import { getMinuteCandleHistory } from './upbitPublic';
 
@@ -21,6 +26,7 @@ export interface StrategyFactoryRunConfig {
   walkForwardFolds?: number;
   seed?: number;
   topN?: number;
+  guidedSeeds?: StrategyFactoryGuidedSeed[];
 }
 
 type LegacyCandidateStatus = 'BLOCKED' | 'QUALIFYING' | 'CANDIDATE';
@@ -32,6 +38,7 @@ export interface StrategyFactoryRunSummary {
   bars: number;
   candidateCount: number;
   seed: number;
+  guidedSeedCount: number;
   startedAt: number;
   finishedAt: number;
   factoryVersion: 'BO-SF-AUTO-v1';
@@ -133,7 +140,7 @@ const persistRun = async (run: StrategyFactoryRunSummary) => {
 
 const buildRunSummary = (
   research: AutonomousFactoryResearchResult,
-  context: { id: string; market: string; unit: 15 | 60 | 240; bars: number; startedAt: number; topN: number },
+  context: { id: string; market: string; unit: 15 | 60 | 240; bars: number; startedAt: number; topN: number; guidedSeedCount: number },
 ): StrategyFactoryRunSummary => {
   const candidateStatusCounts: Record<LegacyCandidateStatus, number> = { BLOCKED: 0, QUALIFYING: 0, CANDIDATE: 0 };
   for (const experiment of research.experiments) {
@@ -147,6 +154,7 @@ const buildRunSummary = (
     bars: context.bars,
     candidateCount: research.candidateCount,
     seed: research.seed,
+    guidedSeedCount: context.guidedSeedCount,
     startedAt: context.startedAt,
     finishedAt: Date.now(),
     factoryVersion: research.version,
@@ -204,6 +212,8 @@ export const runCryptoStrategyFactory = async (config: StrategyFactoryRunConfig 
   if (running) throw new Error('A Strategy Factory research run is already in progress.');
   running = true;
   const startedAt = Date.now();
+  const guidedSeeds = (config.guidedSeeds ?? []).slice(0, 16);
+  setStrategyFactoryGuidedSeeds(guidedSeeds);
   try {
     const market = String(config.market ?? 'KRW-BTC').trim().toUpperCase();
     if (!/^KRW-[A-Z0-9]+$/.test(market)) throw new Error('Strategy Factory crypto runner requires a normalized KRW market.');
@@ -239,13 +249,14 @@ export const runCryptoStrategyFactory = async (config: StrategyFactoryRunConfig 
       bars: candles.length,
       startedAt,
       topN,
+      guidedSeedCount: guidedSeeds.length,
     });
 
-    // Parent run must exist before candidate-level FK rows are inserted.
     await persistRun(latestRun);
     await persistStrategyExperiments({ runId, market, timeframeMinutes: unit }, research);
     return latestRun;
   } finally {
+    clearStrategyFactoryGuidedSeeds();
     running = false;
   }
 };
