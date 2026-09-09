@@ -45,3 +45,25 @@ on conflict (id) do nothing;
 alter table public.black_oracle_ai_budget enable row level security;
 revoke all on table public.black_oracle_ai_budget from anon, authenticated;
 grant select, insert, update, delete on table public.black_oracle_ai_budget to service_role;
+
+create table if not exists public.black_oracle_strategy_research_hypotheses (
+  id text primary key,
+  research_date date not null,
+  market text not null,
+  model text not null,
+  response_id text,
+  guided_seed integer not null,
+  hypotheses jsonb not null default '[]'::jsonb,
+  input_scope jsonb not null default '{}'::jsonb,
+  blind_metrics_exposed boolean not null default false check (blind_metrics_exposed = false),
+  execution_authority boolean not null default false check (execution_authority = false),
+  promotion_authority boolean not null default false check (promotion_authority = false),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_black_oracle_strategy_research_date
+  on public.black_oracle_strategy_research_hypotheses (research_date desc, market);
+
+alter table public.black_oracle_strategy_research_hypotheses enable row level security;
+revoke all on table public.black_oracle_strategy_research_hypotheses from anon, authenticated;
+grant select, insert, update, delete on table public.black_oracle_strategy_research_hypotheses to service_role;
