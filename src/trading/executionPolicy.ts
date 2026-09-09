@@ -32,6 +32,20 @@ const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDispositio
   riskReasons: [],
 });
 
+const resolveMarketDataAgeMs = (input: ExecutionPolicyInput) => {
+  const liveTimestamp = input.liquidity.marketDataTimestamp;
+  if (Number.isFinite(liveTimestamp) && Number(liveTimestamp) > 0) {
+    const now = Date.now();
+    // Small exchange/local clock skew is tolerated, but a materially future timestamp
+    // must never turn into an artificial age of zero. Fall back to the caller's
+    // candle-derived age so the deterministic risk gate remains fail-closed.
+    if (Number(liveTimestamp) <= now + 5_000) {
+      return Math.max(0, now - Number(liveTimestamp));
+    }
+  }
+  return input.marketDataAgeMs ?? 0;
+};
+
 export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDecision => {
   const { liquidity, multiTimeframe, oneHour, portfolio, position } = input;
   const currentPrice = liquidity.tradePrice;
@@ -146,7 +160,7 @@ export const buildExecutionDecision = (input: ExecutionPolicyInput): ExecutionDe
     dailyPnlPct: portfolio.dailyPnlPct,
     totalDrawdownPct: portfolio.drawdownPct,
     estimatedSlippageBps,
-    marketDataAgeMs: input.marketDataAgeMs ?? 0,
+    marketDataAgeMs: resolveMarketDataAgeMs(input),
     feedConnected: input.feedConnected ?? true,
     ledgerInSync: input.ledgerInSync ?? true,
     duplicateOrderDetected: input.duplicateOrderDetected ?? false,
