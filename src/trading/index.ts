@@ -26,6 +26,7 @@ export * from './risk';
 export * from './signalFusion';
 export * from './snapshot';
 export * from './strategyFactory';
+export * from './strategyFactoryBacktest';
 export * from './technicalEvidence';
 export * from './tradeMap';
 export * from './trendMomentum';
