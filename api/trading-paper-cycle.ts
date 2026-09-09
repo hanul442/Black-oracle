@@ -1,4 +1,4 @@
-import { runConditionalAiCouncilForCycle } from '../server/trading/aiCouncilAdjudicator';
+import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
 
 const json = (response: any, status: number, body: Record<string, unknown>) =>
   response.status(status).json(body);
@@ -102,7 +102,7 @@ export default async function handler(request: any, response: any) {
       // this cycle's orders, portfolio, risk result, strategy selection, or checkpoint.
       const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
 
-      let councilAi: Awaited<ReturnType<typeof runConditionalAiCouncilForCycle>> = {
+      let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
         advisoryOnly: true,
         executionAuthority: false,
         eligibleCount: 0,
@@ -111,7 +111,7 @@ export default async function handler(request: any, response: any) {
         reviews: [],
       };
       try {
-        councilAi = await runConditionalAiCouncilForCycle(cycle, runtimeId, 2);
+        councilAi = await runCostGatedAiCouncilForCycle(cycle, runtimeId, 2);
       } catch (councilError) {
         console.error('Operational AI Council review failed after Paper checkpoint:', councilError);
         councilAi = {
