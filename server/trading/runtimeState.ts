@@ -98,6 +98,56 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   };
 };
 
+export const initializeFreshQualificationRuntime = async () => {
+  if (!tradingRuntimeProfile.qualificationMode || !tradingRuntimeProfile.qualificationId) {
+    throw new Error('Fresh runtime initialization is restricted to an explicitly armed qualification profile.');
+  }
+
+  const existing = await tradingCheckpointStore.load();
+  if (existing) {
+    const compatibility = assessRuntimeCheckpointCompatibility(
+      tradingRuntimeProfile,
+      existing.runtime,
+      existing.session.portfolio.initialEquity,
+    );
+    if (!compatibility.compatible) {
+      throw new Error(`Existing qualification checkpoint is incompatible: ${compatibility.reasons.join(' ')}`);
+    }
+    runtimeCompatibility = compatibility;
+    return {
+      initialized: false,
+      existing: true,
+      checkpoint: existing,
+      persistence: tradingCheckpointStore.status(),
+      compatibility,
+    };
+  }
+
+  const session = paperTradingSession.state();
+  const loop = paperLoopController.checkpoint();
+  const evidence = tradingEvidenceStore.list(undefined, true);
+  const pristine = session.portfolio.initialEquity === tradingRuntimeProfile.initialEquityKrw
+    && session.portfolio.cash === tradingRuntimeProfile.initialEquityKrw
+    && session.portfolio.positions.length === 0
+    && session.closedTrades.length === 0
+    && session.ledger.length === 0
+    && loop.cycleCount === 0
+    && loop.lastCycle === null
+    && loop.running === false
+    && evidence.length === 0;
+
+  if (!pristine) {
+    throw new Error('Qualification runtime bootstrap refused because the in-memory Paper state is not pristine.');
+  }
+
+  const saved = await saveRuntimeCheckpoint('qualification-runtime-initialized');
+  return {
+    initialized: true,
+    existing: false,
+    ...saved,
+  };
+};
+
 export const runtimeRestoreSummary = () => ({ ...restoreSummary });
 
 export const runtimeProfileStatus = () => ({
