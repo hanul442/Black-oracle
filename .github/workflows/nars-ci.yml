@@ -18,6 +18,8 @@ on:
       - nars-v4-official-feeds
       - nars-v4-calibration-cutover
       - nars-v4-primary-evidence-acquisition
+      - nars-v4-primary-evidence-matching
+      - nars-v4-cutover-evidence-debt
     paths:
       - 'services/nars/**'
       - '.github/workflows/nars-ci.yml'

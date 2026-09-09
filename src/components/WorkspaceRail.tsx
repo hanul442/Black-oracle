@@ -20,7 +20,7 @@ const primary = [
   { id: 'cases', label: 'Cases', icon: BookOpen },
   { id: 'forecast', label: 'Forecasts', icon: GitBranch },
   { id: 'council', label: 'Council', icon: BrainCircuit },
-  { id: 'ledger', label: 'Ledger', icon: ScrollText },
+  { id: 'ledger', label: 'Log', icon: ScrollText },
 ];
 
 export const WorkspaceRail: React.FC = () => {

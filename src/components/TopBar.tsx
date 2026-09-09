@@ -12,7 +12,7 @@ const viewLabel: Record<string, string> = {
   forecast: 'Forecasts',
   council: 'Council',
   'hypothesis-summary': 'Council',
-  ledger: 'Ledger',
+  ledger: 'Activity Log',
   'oracle-field': 'Raw Field',
   'oracle-feed': 'Raw Field',
   settings: 'Settings',

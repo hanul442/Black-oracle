@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp, setDoc, doc, getDocs } from 'firebase/firestore';
 import fs from 'fs';
+import narsLogHandler from './api/nars-log.js';
 
 import { deleteDoc } from 'firebase/firestore';
 const getDocRef = (req: any, col: string, id: string) => { const uid = req?.body?.userId || req?.query?.userId || 'anonymous'; return doc(db!, 'users', uid, col, id); };
@@ -79,6 +80,8 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  app.get('/api/nars-log', narsLogHandler);
 
   
   app.post('/api/clear-db', async (req, res) => {

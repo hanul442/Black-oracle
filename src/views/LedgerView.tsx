@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../store';
+import { NarsActivityLog } from '../components/NarsActivityLog';
 
 const filters = ['all', 'supporting', 'contradicting', 'neutral', 'pending'] as const;
 
@@ -29,6 +30,7 @@ const formatStamp = (value?: string) => {
 
 export const LedgerView: React.FC = () => {
   const { evidence, sources, hypotheses, scenarios, setSelectedEntity, setCurrentView } = useAppContext() as any;
+  const [logMode, setLogMode] = useState<'evidence' | 'nars'>('evidence');
   const [filter, setFilter] = useState<(typeof filters)[number]>('all');
   const [query, setQuery] = useState('');
 
@@ -79,16 +81,28 @@ export const LedgerView: React.FC = () => {
     setCurrentView('watchlist');
   };
 
+  if (logMode === 'nars') {
+    return <NarsActivityLog onShowEvidence={() => setLogMode('evidence')} />;
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-[#05070A] px-4 pb-40 pt-6 text-[#E9EDF1] md:px-8 md:pb-28 md:pt-8">
       <div className="mx-auto max-w-[1380px]">
         <header className="mb-5 flex flex-col gap-5 border-b border-white/[0.06] pb-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
+            <div className="mb-3 flex items-center gap-1 border border-white/[0.06] bg-[#070A0E] p-1">
+              <button className="border border-[#C7A96B]/25 bg-[#C7A96B]/[0.04] px-3 py-2 font-mono text-[7px] uppercase tracking-[0.16em] text-[#D8C797]">
+                EVIDENCE
+              </button>
+              <button onClick={() => setLogMode('nars')} className="px-3 py-2 font-mono text-[7px] uppercase tracking-[0.16em] text-[#56616C] transition hover:text-[#AEB7C0]">
+                NARS LIVE
+              </button>
+            </div>
             <div className="mb-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.24em] text-[#C7A96B]">
               <GitCommitHorizontal className="h-3.5 w-3.5" />
               Decision audit layer
             </div>
-            <h1 className="text-2xl font-medium tracking-[-0.04em] md:text-3xl">Ledger</h1>
+            <h1 className="text-2xl font-medium tracking-[-0.04em] md:text-3xl">Evidence Log</h1>
             <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#77818C]">
               Trace each evidence item from source to analytical role to model impact. The ledger exists to explain why the forecast changed — not simply to store citations.
             </p>
