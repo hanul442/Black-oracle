@@ -10,6 +10,7 @@ import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
 import aiCostStatusHandler from './api/ai-cost-status';
 import { tradingCheckpointStore } from './server/trading/persistence';
+import { assessRuntimeCheckpointCompatibility, tradingRuntimeProfile } from './server/trading/runtimeProfile';
 
 const gatewayPort = Number(process.env.PORT || 3000);
 const internalPort = Number(process.env.INTERNAL_PORT || 3001);
@@ -163,14 +164,38 @@ const proxyToInternal = (req: express.Request, res: express.Response) => {
 app.get('/health', async (_req, res) => {
   try {
     const checkpoint = await tradingCheckpointStore.load();
-    res.status(authConfigured && checkpoint ? 200 : 503).json({
-      ok: authConfigured && Boolean(checkpoint),
+    const compatibility = checkpoint
+      ? assessRuntimeCheckpointCompatibility(
+          tradingRuntimeProfile,
+          checkpoint.runtime,
+          checkpoint.session.portfolio.initialEquity,
+        )
+      : null;
+    const awaitingInitialCheckpoint = !checkpoint && tradingRuntimeProfile.qualificationMode;
+    const runtimeHealthy = awaitingInitialCheckpoint || Boolean(compatibility?.compatible);
+    const ok = authConfigured && runtimeHealthy;
+    res.status(ok ? 200 : 503).json({
+      ok,
       authConfigured,
       tradingRuntimeAvailable: Boolean(checkpoint),
+      state: awaitingInitialCheckpoint
+        ? 'AWAITING_INITIAL_CHECKPOINT'
+        : compatibility?.status ?? (checkpoint ? 'UNKNOWN' : 'NO_CHECKPOINT'),
+      runtimeId: tradingRuntimeProfile.runtimeId,
+      qualificationMode: tradingRuntimeProfile.qualificationMode,
+      initialEquityKrw: tradingRuntimeProfile.initialEquityKrw,
+      compatibility,
     });
   } catch (error) {
     console.error('Railway trading healthcheck failed:', error);
-    res.status(503).json({ ok: false, authConfigured, tradingRuntimeAvailable: false });
+    res.status(503).json({
+      ok: false,
+      authConfigured,
+      tradingRuntimeAvailable: false,
+      state: 'ERROR',
+      runtimeId: tradingRuntimeProfile.runtimeId,
+      qualificationMode: tradingRuntimeProfile.qualificationMode,
+    });
   }
 });
 
@@ -272,6 +297,7 @@ app.use(proxyToInternal);
 const server = app.listen(gatewayPort, '0.0.0.0', () => {
   console.log(`Black Oracle Railway gateway listening on 0.0.0.0:${gatewayPort}; internal app on ${internalHost}:${internalPort}.`);
   console.log(`Black Oracle auth gate: ${authConfigured ? 'configured' : 'NOT CONFIGURED'}.`);
+  console.log(`Black Oracle runtime profile: ${tradingRuntimeProfile.runtimeId} · ${tradingRuntimeProfile.initialEquityKrw} KRW · qualification=${tradingRuntimeProfile.qualificationMode}.`);
 });
 
 const shutdown = () => {

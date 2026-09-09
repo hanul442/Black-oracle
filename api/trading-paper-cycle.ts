@@ -41,18 +41,22 @@ export default async function handler(request: any, response: any) {
   let paperLoopController: any;
   let claimTradingCycleLease: any;
   let releaseTradingCycleLease: any;
+  let initializeFreshQualificationRuntime: any;
   let restoreRuntimeCheckpoint: any;
   let saveRuntimeCheckpoint: any;
 
   try {
     // The full Paper runtime is bundled during the build step so Railway's Node ESM
     // loader never has to resolve the runtime's extensionless TypeScript imports.
+    // Keep this import as an explicit `any` boundary because the generated bundle on
+    // disk may lag the source entrypoint during pre-build TypeScript validation.
     // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
-    const runtimeModule = await import('../server/trading/runtime-bundle.mjs');
+    const runtimeModule: any = await import('../server/trading/runtime-bundle.mjs');
 
     paperLoopController = runtimeModule.paperLoopController;
     claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
     releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
+    initializeFreshQualificationRuntime = runtimeModule.initializeFreshQualificationRuntime;
     restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
     saveRuntimeCheckpoint = runtimeModule.saveRuntimeCheckpoint;
 
@@ -60,6 +64,7 @@ export default async function handler(request: any, response: any) {
       !paperLoopController ||
       typeof claimTradingCycleLease !== 'function' ||
       typeof releaseTradingCycleLease !== 'function' ||
+      typeof initializeFreshQualificationRuntime !== 'function' ||
       typeof restoreRuntimeCheckpoint !== 'function' ||
       typeof saveRuntimeCheckpoint !== 'function'
     ) {
@@ -77,7 +82,8 @@ export default async function handler(request: any, response: any) {
   const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
   const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
-  let runtimeRestored = false;
+  let runtimeLoaded = false;
+  let qualificationBootstrapInProgress = false;
   let responseStatus = 500;
   let responseBody: Record<string, unknown> = {
     success: false,
@@ -98,73 +104,99 @@ export default async function handler(request: any, response: any) {
       };
     } else {
       const restore = await restoreRuntimeCheckpoint(false);
-      runtimeRestored = true;
-      const beforeSession = paperLoopController.status().session;
-      const cycle = await paperLoopController.runCycle();
-      const afterSession = paperLoopController.status().session;
+      runtimeLoaded = true;
 
-      // Trading state is persisted BEFORE any AI review or event-ledger projection.
-      // Neither the AI Council nor observability can alter this cycle's execution outcome.
-      const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+      if (!restore.restored && restore.profile?.qualificationId) {
+        qualificationBootstrapInProgress = true;
+        const initialized = await initializeFreshQualificationRuntime();
+        qualificationBootstrapInProgress = false;
+        responseStatus = 200;
+        responseBody = {
+          success: true,
+          runtimeId,
+          initializedOnly: true,
+          reason: 'Fresh qualification checkpoint initialized; no trading cycle executed.',
+          profile: restore.profile,
+          checkpoint: {
+            savedAt: initialized.checkpoint?.savedAt ?? null,
+            reason: initialized.checkpoint?.reason ?? null,
+            initialEquityKrw: initialized.checkpoint?.session?.portfolio?.initialEquity ?? null,
+            positions: initialized.checkpoint?.session?.portfolio?.positions?.length ?? null,
+            closedTrades: initialized.checkpoint?.session?.closedTrades?.length ?? null,
+            cycleCount: initialized.checkpoint?.loop?.cycleCount ?? null,
+          },
+          compatibility: initialized.compatibility ?? null,
+          persistence: initialized.persistence ?? null,
+        };
+      } else {
+        const beforeSession = paperLoopController.status().session;
+        const cycle = await paperLoopController.runCycle();
+        const afterSession = paperLoopController.status().session;
 
-      let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
-        advisoryOnly: true,
-        executionAuthority: false,
-        eligibleCount: 0,
-        reviewedCount: 0,
-        skippedCount: 0,
-        reviews: [],
-      };
-      try {
-        councilAi = await runCostGatedAiCouncilForCycle(cycle, runtimeId, 2);
-      } catch (councilError) {
-        console.error('Operational AI Council review failed after Paper checkpoint:', councilError);
-        councilAi = {
+        // Trading state is persisted BEFORE any AI review or event-ledger projection.
+        // Neither the AI Council nor observability can alter this cycle's execution outcome.
+        const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+
+        let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
           advisoryOnly: true,
           executionAuthority: false,
           eligibleCount: 0,
           reviewedCount: 0,
-          skippedCount: 1,
+          skippedCount: 0,
           reviews: [],
         };
-      }
+        try {
+          councilAi = await runCostGatedAiCouncilForCycle(cycle, runtimeId, 2);
+        } catch (councilError) {
+          console.error('Operational AI Council review failed after Paper checkpoint:', councilError);
+          councilAi = {
+            advisoryOnly: true,
+            executionAuthority: false,
+            eligibleCount: 0,
+            reviewedCount: 0,
+            skippedCount: 1,
+            reviews: [],
+          };
+        }
 
-      let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
-      try {
-        const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
-        const events = [
-          ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
-          ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
-          ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
-          ...narsAuditEvents,
-        ];
-        eventLedger = await appendCanonicalEvents(events);
-      } catch (ledgerError) {
-        console.error('Canonical event ledger append failed after completed Paper cycle:', ledgerError);
-        eventLedger = {
-          persisted: false,
-          attempted: 0,
-          error: errorMessage(ledgerError),
+        let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
+        try {
+          const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
+          const events = [
+            ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
+            ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
+            ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
+            ...narsAuditEvents,
+          ];
+          eventLedger = await appendCanonicalEvents(events);
+        } catch (ledgerError) {
+          console.error('Canonical event ledger append failed after completed Paper cycle:', ledgerError);
+          eventLedger = {
+            persisted: false,
+            attempted: 0,
+            error: errorMessage(ledgerError),
+          };
+        }
+
+        responseStatus = 200;
+        responseBody = {
+          success: true,
+          runtimeId,
+          restore: {
+            restored: restore.restored,
+            savedAt: restore.savedAt,
+            reason: restore.reason,
+            compatibility: restore.compatibility ?? null,
+          },
+          cycle,
+          persistence: saved.persistence,
+          councilAi,
+          eventLedger,
         };
       }
-
-      responseStatus = 200;
-      responseBody = {
-        success: true,
-        runtimeId,
-        restore: {
-          restored: restore.restored,
-          savedAt: restore.savedAt,
-          reason: restore.reason,
-        },
-        cycle,
-        persistence: saved.persistence,
-        councilAi,
-        eventLedger,
-      };
     }
   } catch (error) {
-    if (runtimeRestored) {
+    if (runtimeLoaded && !qualificationBootstrapInProgress) {
       try {
         await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
@@ -178,7 +210,7 @@ export default async function handler(request: any, response: any) {
     responseBody = {
       success: false,
       runtimeId,
-      phase: runtimeRestored ? 'cycle' : 'startup',
+      phase: qualificationBootstrapInProgress ? 'qualification-bootstrap' : runtimeLoaded ? 'cycle' : 'startup',
       error: message,
     };
   }
@@ -199,7 +231,8 @@ export default async function handler(request: any, response: any) {
           success: false,
           runtimeId,
           phase: 'cleanup',
-          cycleCompleted: true,
+          cycleCompleted: responseBody.initializedOnly !== true,
+          initializedOnly: responseBody.initializedOnly === true,
           error: cleanupError,
         };
       } else {

@@ -4,7 +4,9 @@ export {
   releaseTradingCycleLease,
 } from './runtimeLease';
 export {
+  initializeFreshQualificationRuntime,
   restoreRuntimeCheckpoint,
+  runtimeProfileStatus,
   saveRuntimeCheckpoint,
 } from './runtimeState';
 export {

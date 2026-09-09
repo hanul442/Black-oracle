@@ -3,11 +3,13 @@ import path from 'node:path';
 import type { TradingEvidence } from '../../src/trading/evidence';
 import type { PaperLoopCheckpoint } from './paperLoop';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
+import { tradingRuntimeProfile, type TradingCheckpointIdentity } from './runtimeProfile';
 
 export interface TradingRuntimeCheckpoint {
   schemaVersion: 1;
   savedAt: number;
   reason: string;
+  runtime?: TradingCheckpointIdentity;
   session: PaperTradingSessionCheckpoint;
   evidence: TradingEvidence[];
   loop: PaperLoopCheckpoint;
@@ -38,12 +40,27 @@ const defaultStatePath = () => process.env.TRADING_STATE_FILE
   ? path.resolve(process.env.TRADING_STATE_FILE)
   : path.resolve(process.cwd(), '.data', 'black-oracle-trading-state.json');
 
+const validRuntimeIdentity = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false;
+  const identity = value as Partial<TradingCheckpointIdentity>;
+  return typeof identity.runtimeId === 'string'
+    && Number.isFinite(identity.initialEquityKrw)
+    && typeof identity.systemRevision === 'string'
+    && typeof identity.strategyVersion === 'string'
+    && typeof identity.riskConfigHash === 'string'
+    && (identity.qualificationId == null || typeof identity.qualificationId === 'string')
+    && (identity.qualificationArmedAt == null || typeof identity.qualificationArmedAt === 'string');
+};
+
 export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => {
   if (!value || typeof value !== 'object') throw new Error('Trading checkpoint must be an object.');
   const checkpoint = value as Partial<TradingRuntimeCheckpoint>;
   if (checkpoint.schemaVersion !== 1) throw new Error('Unsupported trading checkpoint schema.');
   if (!Number.isFinite(checkpoint.savedAt)) throw new Error('Trading checkpoint savedAt is invalid.');
   if (typeof checkpoint.reason !== 'string') throw new Error('Trading checkpoint reason is invalid.');
+  if (checkpoint.runtime != null && !validRuntimeIdentity(checkpoint.runtime)) {
+    throw new Error('Trading checkpoint runtime identity is invalid.');
+  }
   if (!checkpoint.session || !checkpoint.loop || !Array.isArray(checkpoint.evidence)) {
     throw new Error('Trading checkpoint payload is incomplete.');
   }
@@ -256,7 +273,7 @@ export const createTradingCheckpointStoreFromEnv = (): TradingCheckpointStore =>
   return new SupabaseTradingCheckpointStore({
     url: process.env.SUPABASE_URL ?? '',
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-    runtimeId: process.env.TRADING_RUNTIME_ID,
+    runtimeId: tradingRuntimeProfile.runtimeId,
   });
 };
 

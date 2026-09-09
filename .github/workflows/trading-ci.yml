@@ -6,6 +6,7 @@ on:
       - main
       - feat/trading-core-v0.1
       - integration/black-oracle-v0.2
+      - codex/bo-vnext-s1-qualification-runtime
   pull_request:
     branches:
       - feat/oracle-field-v2
@@ -36,6 +37,17 @@ jobs:
 
       - name: Trading core tests
         run: npm run test:trading
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Supabase trading function typecheck
+        run: |
+          find supabase/functions -name index.ts -print0 \
+            | sort -z \
+            | xargs -0 -n1 deno check --config supabase/functions/deno.json
 
       - name: Build trading runtime bundle
         run: npx esbuild server/trading/runtimeBundleEntry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/trading/runtime-bundle.mjs
