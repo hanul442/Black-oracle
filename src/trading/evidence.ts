@@ -29,6 +29,7 @@ export interface EvidenceAggregate {
   reasons: string[];
 }
 
+const VALID_MARKET = /^(KRW-[A-Z0-9]+|KRX-\d{6})$/;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const directionSign = (direction: EvidenceDirection) => {
@@ -39,7 +40,7 @@ const directionSign = (direction: EvidenceDirection) => {
 
 export const validateTradingEvidence = (evidence: TradingEvidence) => {
   if (!evidence.id.trim()) throw new Error('Evidence id is required.');
-  if (!/^KRW-[A-Z0-9]+$/.test(evidence.market)) throw new Error('Evidence market must be a normalized KRW market.');
+  if (!VALID_MARKET.test(evidence.market)) throw new Error('Evidence market must be a normalized KRW crypto or KRX equity market.');
   if (!evidence.title.trim()) throw new Error('Evidence title is required.');
   if (!Number.isFinite(evidence.strength) || evidence.strength < 0 || evidence.strength > 100) {
     throw new Error('Evidence strength must be between 0 and 100.');
@@ -73,7 +74,7 @@ export const aggregateTradingEvidence = (
       contradictionCount: 0,
       asOf,
       evidenceIds: [],
-      reasons: ['No active structured trading evidence is available; technical weights should be redistributed.'],
+      reasons: ['No active structured trading evidence is available; technical weights should be redistributed where policy permits.'],
     };
   }
 
@@ -152,7 +153,7 @@ export class TradingEvidenceStore {
     this.items.clear();
   }
 
-  list(market?: string, includeExpired = false, asOf = Date.now()) {
+  list(market?: string, includeExpired = false, asOf = Date.now()): TradingEvidence[] {
     const normalized = market?.toUpperCase();
     return Array.from(this.items.values())
       .filter((item) => (!normalized || item.market === normalized) && (includeExpired || item.expiresAt > asOf))

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useAppContext } from './store';
 import { TopBar } from './components/TopBar';
 import { WorkspaceRail } from './components/WorkspaceRail';
@@ -27,17 +27,11 @@ import { AlertTriangle, CheckCircle, Info, Search, XCircle } from 'lucide-react'
 const AppContent: React.FC = () => {
   const {
     currentView,
-    addNotification,
     notifications,
-    coreInterests,
     workflowQuery,
     setWorkflowQuery,
     isWorkflowMinimized,
     setIsWorkflowMinimized,
-    scenarios,
-    hypotheses,
-    signals,
-    user,
   } = useAppContext() as any;
 
   const [localQuery, setLocalQuery] = useState('');
@@ -48,34 +42,8 @@ const AppContent: React.FC = () => {
     localStorage.setItem('oracle_tutorial_seen', 'true');
   };
 
-  useEffect(() => {
-    if (currentView === 'login') return;
-
-    const intervalMs = 60 * 60 * 1000;
-    const fetchAuto = async () => {
-      localStorage.setItem('lastAutonomousRun', Date.now().toString());
-      try {
-        const response = await fetch('/api/fetch-rss', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ interests: coreInterests, userId: user?.uid }),
-        });
-        const data = await response.json();
-        if (data.success && (data.count > 0 || data.mergedCount > 0)) {
-          addNotification(`Oracle Field updated: ${data.count || 0} new evidence items, ${data.mergedCount || 0} merged nodes.`, 'success');
-        }
-      } catch {
-        // Autonomous collection remains silent when the network is unavailable.
-      }
-    };
-
-    const lastRun = localStorage.getItem('lastAutonomousRun');
-    if (!lastRun || Date.now() - Number(lastRun) > intervalMs) fetchAuto();
-
-    const interval = window.setInterval(fetchAuto, intervalMs);
-    return () => window.clearInterval(interval);
-  }, [currentView, addNotification, coreInterests, user?.uid]);
-
+  // Legacy browser-autonomous /api/fetch-rss collection has deliberately been removed.
+  // Canonical intelligence acquisition belongs to NARS and source-backed evidence flows.
   const isFieldView = currentView === 'oracle-field' || currentView === 'oracle-feed';
   const isOperationsView = currentView === 'operations';
   const isCoreOversightView = currentView === 'strategies' || currentView === 'log';
@@ -237,7 +205,7 @@ const AppContent: React.FC = () => {
                   type="text"
                   value={localQuery}
                   onChange={(event) => setLocalQuery(event.target.value)}
-                  placeholder="Trace a signal, test a scenario, open a question…"
+                  placeholder="Trace a decision, inspect evidence, test a research question…"
                   className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[12px] text-[#E9EDF1] outline-none placeholder:text-[#4F5963] sm:text-[13px]"
                 />
                 <button
@@ -252,8 +220,8 @@ const AppContent: React.FC = () => {
         </main>
 
         <footer className="hidden h-5 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#05070A] px-3 font-mono text-[7px] uppercase tracking-[0.12em] text-[#46515B] lg:flex">
-          <span>{signals?.length || 0} signals · {hypotheses?.length || 0} hypotheses · {scenarios?.length || 0} scenarios</span>
-          <span className="text-[#6CB3A0]">● field monitor active</span>
+          <span>BLACK ORACLE UNIFIED CORE · evidence-governed paper runtime</span>
+          <span className="text-[#6CB3A0]">● legacy autonomous RSS disabled</span>
         </footer>
       </div>
 

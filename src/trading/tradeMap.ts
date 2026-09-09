@@ -25,6 +25,8 @@ export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
       stopLossPrice: null,
       takeProfit1Price: null,
       takeProfit2Price: null,
+      takeProfit1Fraction: null,
+      takeProfit2Fraction: null,
       riskReward1: null,
       riskReward2: null,
       expectedRiskPct: null,
@@ -35,7 +37,7 @@ export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
     };
   }
 
-  const fallbackStopDistancePct = clamp(oneHour.indicators.atrPct * 1.8, 0.012, 0.04);
+  const fallbackStopDistancePct = clamp(oneHour.indicators.atrPct * 1.6, 0.0075, 0.05);
   const fallbackStop = currentPrice * (1 - fallbackStopDistancePct);
   const stopLossPrice = decision.stopLossPrice && decision.stopLossPrice < currentPrice
     ? decision.stopLossPrice
@@ -45,23 +47,30 @@ export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
     ? structuralSwingLow
     : stopLossPrice;
   const risk = Math.max(Number.EPSILON, currentPrice - stopLossPrice);
-  const takeProfit1Price = currentPrice + risk;
-  const takeProfit2Price = decision.takeProfitPrice && decision.takeProfitPrice > currentPrice
-    ? decision.takeProfitPrice
-    : currentPrice + risk * 2;
+  const takeProfit1Price = decision.takeProfit1Price && decision.takeProfit1Price > currentPrice
+    ? decision.takeProfit1Price
+    : currentPrice + risk;
+  const takeProfit2Price = decision.takeProfit2Price && decision.takeProfit2Price > takeProfit1Price
+    ? decision.takeProfit2Price
+    : decision.takeProfitPrice && decision.takeProfitPrice > takeProfit1Price
+      ? decision.takeProfitPrice
+      : currentPrice + risk * 2;
+  const takeProfit1Fraction = decision.takeProfit1Fraction ?? 0.4;
+  const takeProfit2Fraction = 1 - takeProfit1Fraction;
   const riskReward1 = (takeProfit1Price - currentPrice) / risk;
   const riskReward2 = (takeProfit2Price - currentPrice) / risk;
   const expectedRiskPct = risk / currentPrice;
 
   const reasons = [
     active
-      ? 'Execution gates passed; this map mirrors the active Paper entry and its protective levels.'
+      ? 'Execution gates passed; this map mirrors the active Paper entry and its dynamic protection levels.'
       : 'Bullish structure exists, but execution has not authorized an entry; the map is candidate-only.',
     oneHour.structure?.lastEvent
       ? `${oneHour.structure.lastEvent.type} ${oneHour.structure.lastEvent.direction} is the latest 1H confirmed structure event.`
       : 'No 1H structural break is confirmed; ATR protection remains the fallback.',
-    `Protective risk is ${(expectedRiskPct * 100).toFixed(2)}% from reference entry with TP1 at 1R and TP2 at ${riskReward2.toFixed(2)}R.`,
+    `Protective risk is ${(expectedRiskPct * 100).toFixed(2)}%; TP1 is ${riskReward1.toFixed(2)}R on ${(takeProfit1Fraction * 100).toFixed(0)}% and TP2 is ${riskReward2.toFixed(2)}R on the remainder.`,
   ];
+  if (decision.positionSizingMode) reasons.push(`Position sizing mode: ${decision.positionSizingMode}; confidence does not directly scale notional.`);
   if (multiTimeframe.cycle?.entryTiming) reasons.push(`Multi-cycle timing state is ${multiTimeframe.cycle.entryTiming}.`);
 
   return {
@@ -72,6 +81,8 @@ export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
     stopLossPrice,
     takeProfit1Price,
     takeProfit2Price,
+    takeProfit1Fraction,
+    takeProfit2Fraction,
     riskReward1,
     riskReward2,
     expectedRiskPct,

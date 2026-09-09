@@ -239,10 +239,10 @@ test('aligned bullish timeframes produce a buy consensus', () => {
   assert.ok(consensus.confidence > 0.75);
 });
 
-test('risk gate rejects a position above 2 percent of equity', () => {
+test('risk gate rejects a position above the 15 percent portfolio hard cap', () => {
   const decision = evaluateRisk({
     equity: 1_000_000,
-    requestedNotional: 21_000,
+    requestedNotional: 151_000,
     dailyPnlPct: 0,
     totalDrawdownPct: 0,
     estimatedSlippageBps: 5,
@@ -254,7 +254,7 @@ test('risk gate rejects a position above 2 percent of equity', () => {
 
   assert.equal(decision.status, 'REJECT');
   assert.equal(decision.approvedNotional, 0);
-  assert.equal(decision.maxAllowedNotional, 20_000);
+  assert.equal(decision.maxAllowedNotional, 150_000);
 });
 
 test('risk gate rejects after the daily loss circuit breaker is reached', () => {
@@ -328,7 +328,7 @@ test('paper portfolio marks positions and realizes P&L on quantity exit', () => 
   assert.ok(closed.realizedPnl > 0);
 });
 
-test('execution policy sizes a valid entry below the 2 percent hard cap', () => {
+test('execution policy uses the 10 percent equal-notional qualification baseline', () => {
   const portfolio = new PaperPortfolio(1_000_000);
   const liquidity = evaluateLiquidity({
     market: 'KRW-BTC',
@@ -356,9 +356,11 @@ test('execution policy sizes a valid entry below the 2 percent hard cap', () => 
 
   assert.equal(decision.action, 'ENTER');
   assert.equal(decision.side, 'BUY');
-  assert.ok(decision.notional > 0 && decision.notional <= 20_000);
+  assert.equal(decision.notional, 100_000);
+  assert.equal(decision.positionSizingMode, 'EQUAL_NOTIONAL_RISK_CAPPED');
   assert.ok((decision.stopLossPrice ?? 0) < liquidity.tradePrice);
-  assert.ok((decision.takeProfitPrice ?? 0) > liquidity.tradePrice);
+  assert.ok((decision.takeProfit1Price ?? 0) > liquidity.tradePrice);
+  assert.ok((decision.takeProfit2Price ?? 0) > (decision.takeProfit1Price ?? 0));
 });
 
 test('execution policy exits immediately when protective stop is breached', () => {

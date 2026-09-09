@@ -9,17 +9,18 @@ import type {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+/** Crypto spot is technical-first. Event/news evidence is supplementary, never dominant. */
 const baseWeightsForRegime = (regime: RegimeSnapshot['regime']): StrategyWeightSet => {
   switch (regime) {
     case 'STRONG_UPTREND':
     case 'STRONG_DOWNTREND':
-      return { trend: 0.45, momentum: 0.35, meanReversion: 0.1, event: 0.1 };
+      return { trend: 0.50, momentum: 0.35, meanReversion: 0.10, event: 0.05 };
     case 'UPTREND':
     case 'DOWNTREND':
-      return { trend: 0.4, momentum: 0.3, meanReversion: 0.15, event: 0.15 };
+      return { trend: 0.45, momentum: 0.32, meanReversion: 0.15, event: 0.08 };
     case 'RANGE':
     default:
-      return { trend: 0.15, momentum: 0.2, meanReversion: 0.45, event: 0.2 };
+      return { trend: 0.18, momentum: 0.22, meanReversion: 0.52, event: 0.08 };
   }
 };
 
@@ -80,13 +81,15 @@ export const buildSignalFusion = (
     0.95,
   );
 
+  // This multiplier is diagnostic only for Unified sizing; actual notional is set
+  // by equal-notional + stop-risk caps rather than confidence scaling.
   const positionRiskMultiplier = regime.highVolatility ? 0.5 : hasConflict ? 0.75 : 1;
   const reasons = [
-    `Regime ${regime.regime} sets trend/momentum/mean-reversion/event weights to ${Math.round(weights.trend * 100)}/${Math.round(weights.momentum * 100)}/${Math.round(weights.meanReversion * 100)}/${Math.round(weights.event * 100)}.`,
-    hasEventScore ? 'Structured event evidence participates in the score.' : 'Event weight is redistributed across technical engines until structured event evidence is available.',
+    `Crypto technical-first weights are ${Math.round(weights.trend * 100)}/${Math.round(weights.momentum * 100)}/${Math.round(weights.meanReversion * 100)}/${Math.round(weights.event * 100)} for trend/momentum/mean-reversion/event.`,
+    hasEventScore ? 'External evidence is supplementary context and carries only a small crypto weight.' : 'No external evidence is required; its small weight is redistributed across technical engines.',
   ];
-  if (hasConflict) reasons.push('Directional disagreement across engines reduces confidence and risk budget.');
-  if (regime.highVolatility) reasons.push('High volatility halves the downstream position-risk multiplier.');
+  if (hasConflict) reasons.push('Directional disagreement across technical engines reduces confidence but no longer directly shrinks notional.');
+  if (regime.highVolatility) reasons.push('High volatility is recorded for risk diagnostics; stop-distance risk limits control actual capital size.');
 
   return {
     action,

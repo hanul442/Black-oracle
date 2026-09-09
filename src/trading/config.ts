@@ -1,9 +1,12 @@
 import type { RiskLimits } from './types';
 
-export const TRADING_STRATEGY_VERSION = 'BO-CRYPTO-v0.1.8';
+export const TRADING_STRATEGY_VERSION = 'BO-UNIFIED-v0.2.0';
+export const UNIFIED_PAPER_INITIAL_EQUITY_KRW = 100_000_000;
 
 export const DEFAULT_RISK_LIMITS: RiskLimits = {
-  maxPositionPct: 0.02,
+  // Position sizing now targets 10% equal notional with a 15% hard cap;
+  // stop-distance risk is capped separately in positionSizing.ts.
+  maxPositionPct: 0.15,
   maxDailyLossPct: 0.01,
   maxTotalDrawdownPct: 0.05,
   maxEstimatedSlippageBps: 30,
