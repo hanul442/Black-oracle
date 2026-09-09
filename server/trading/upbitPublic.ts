@@ -62,7 +62,7 @@ const getJson = async <T>(url: URL): Promise<T> => {
   const response = await fetch(url, {
     headers: {
       Accept: 'application/json',
-      'User-Agent': 'Black-Oracle-Trading/0.1',
+      'User-Agent': 'Black-Oracle-Trading/0.2',
     },
   });
 
@@ -75,8 +75,22 @@ const getJson = async <T>(url: URL): Promise<T> => {
 };
 
 const assertKrwMarket = (market: string) => {
-  if (!/^KRW-[A-Z0-9]+$/.test(market)) throw new Error('Only normalized KRW Upbit markets are allowed in v0.1.');
+  if (!/^KRW-[A-Z0-9]+$/.test(market)) throw new Error('Only normalized KRW Upbit markets are allowed in v0.2.');
 };
+
+const mapMinuteCandles = (raw: UpbitMinuteCandleResponse[]): Candle[] => raw
+  .map((candle) => ({
+    market: candle.market,
+    timeframeMinutes: candle.unit,
+    timestamp: Date.parse(`${candle.candle_date_time_utc}Z`),
+    open: candle.opening_price,
+    high: candle.high_price,
+    low: candle.low_price,
+    close: candle.trade_price,
+    volume: candle.candle_acc_trade_volume,
+    quoteVolume: candle.candle_acc_trade_price,
+  }))
+  .sort((a, b) => a.timestamp - b.timestamp);
 
 export const listKrwMarkets = async () => {
   const url = new URL('/v1/market/all', UPBIT_API_BASE);
@@ -133,7 +147,7 @@ export const getRecentTrades = async (market: string, count = 500): Promise<Trad
 export const getOrderbooks = async (markets: string[]) => {
   const normalized = [...new Set(markets.map((market) => market.toUpperCase()))];
   if (normalized.length === 0) return [];
-  if (normalized.length > 30) throw new Error('Orderbook batch is limited to 30 markets in Black Oracle v0.1.');
+  if (normalized.length > 30) throw new Error('Orderbook batch is limited to 30 markets in Black Oracle v0.2.');
   normalized.forEach(assertKrwMarket);
 
   const url = new URL('/v1/orderbook', UPBIT_API_BASE);
@@ -160,26 +174,51 @@ export const getMinuteCandles = async (
   unit: SupportedUpbitMinuteUnit,
   count = 200,
 ): Promise<Candle[]> => {
-  assertKrwMarket(market);
+  const normalized = market.toUpperCase();
+  assertKrwMarket(normalized);
   if (!SUPPORTED_UPBIT_MINUTE_UNITS.includes(unit)) throw new Error(`Unsupported Upbit minute unit: ${unit}`);
   if (!Number.isInteger(count) || count < 1 || count > 200) throw new Error('Candle count must be an integer between 1 and 200.');
 
   const url = new URL(`/v1/candles/minutes/${unit}`, UPBIT_API_BASE);
-  url.searchParams.set('market', market);
+  url.searchParams.set('market', normalized);
   url.searchParams.set('count', String(count));
 
   const raw = await getJson<UpbitMinuteCandleResponse[]>(url);
-  return raw
-    .map((candle) => ({
-      market: candle.market,
-      timeframeMinutes: candle.unit,
-      timestamp: Date.parse(`${candle.candle_date_time_utc}Z`),
-      open: candle.opening_price,
-      high: candle.high_price,
-      low: candle.low_price,
-      close: candle.trade_price,
-      volume: candle.candle_acc_trade_volume,
-      quoteVolume: candle.candle_acc_trade_price,
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
+  return mapMinuteCandles(raw);
+};
+
+/**
+ * Research-only paginated candle loader. Each request uses only historical data
+ * available before the `to` cursor so Strategy Factory tests can exceed Upbit's
+ * 200-candle single-request limit without forward-data injection.
+ */
+export const getMinuteCandleHistory = async (
+  market: string,
+  unit: SupportedUpbitMinuteUnit,
+  targetBars = 1_200,
+): Promise<Candle[]> => {
+  const normalized = market.toUpperCase();
+  assertKrwMarket(normalized);
+  if (!SUPPORTED_UPBIT_MINUTE_UNITS.includes(unit)) throw new Error(`Unsupported Upbit minute unit: ${unit}`);
+  const target = Math.max(200, Math.min(5_000, Math.trunc(targetBars)));
+  const byTimestamp = new Map<number, Candle>();
+  let to: string | null = null;
+
+  for (let page = 0; page < Math.ceil(target / 200) + 2 && byTimestamp.size < target; page += 1) {
+    const url = new URL(`/v1/candles/minutes/${unit}`, UPBIT_API_BASE);
+    url.searchParams.set('market', normalized);
+    url.searchParams.set('count', String(Math.min(200, target - byTimestamp.size)));
+    if (to) url.searchParams.set('to', to);
+    const raw = await getJson<UpbitMinuteCandleResponse[]>(url);
+    if (!raw.length) break;
+    const mapped = mapMinuteCandles(raw);
+    for (const candle of mapped) byTimestamp.set(candle.timestamp, candle);
+    const oldest = mapped[0];
+    if (!oldest) break;
+    to = new Date(oldest.timestamp - 1).toISOString();
+    if (raw.length < 2) break;
+    await new Promise((resolve) => setTimeout(resolve, 130));
+  }
+
+  return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-target);
 };
