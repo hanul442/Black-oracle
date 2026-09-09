@@ -9,6 +9,7 @@ export interface StrategyGenome {
   seed: number;
   assetClass: AssetClass;
   indicators: string[];
+  /** Signed normalized weights. Negative oscillator/location weights represent mean-reversion interpretations. */
   indicatorWeights: Record<string, number>;
   entryThreshold: number;
   exitThreshold: number;
@@ -83,10 +84,16 @@ const pickWithoutReplacement = <T>(values: T[], count: number, random: () => num
   return result;
 };
 
+const REVERSIBLE_INDICATORS = new Set(['RSI14', 'STOCH_RSI', 'BOLLINGER_PERCENT_B']);
+
 const normalizeWeights = (items: IndicatorDefinition[], random: () => number) => {
-  const raw = items.map(() => 0.35 + random() * 0.65);
-  const sum = raw.reduce((total, value) => total + value, 0);
-  return Object.fromEntries(items.map((item, index) => [item.id, round(raw[index] / sum, 6)]));
+  const raw = items.map((item) => {
+    const magnitude = 0.35 + random() * 0.65;
+    const polarity = REVERSIBLE_INDICATORS.has(item.id) && random() < 0.45 ? -1 : 1;
+    return magnitude * polarity;
+  });
+  const sumAbs = raw.reduce((total, value) => total + Math.abs(value), 0);
+  return Object.fromEntries(items.map((item, index) => [item.id, round(raw[index] / sumAbs, 6)]));
 };
 
 const calculateCorrelationPenalty = (selected: IndicatorDefinition[]) => {
@@ -104,7 +111,7 @@ const stableGenomeId = (generation: number, seed: number, indicators: string[], 
 
 /**
  * Generates many reproducible strategy candidates. Randomness is seeded and is
- * used only for research/experimentation. It never changes live execution logic.
+ * used only for research/experimentation. It never changes Paper/live execution logic.
  */
 export const generateStrategyFactoryCandidates = (config: StrategyFactoryConfig = {}): StrategyGenome[] => {
   const seed = Math.trunc(config.seed ?? 4420623);
@@ -167,10 +174,7 @@ const dimensionScore = (metrics: StrategyEvaluationMetrics, correlationPenalty: 
   correlationPenalty: clamp01(correlationPenalty),
 });
 
-/**
- * Preliminary experiment score. Final Black Oracle credit grade remains a
- * separate mapping step after sample sufficiency and hard-gate review.
- */
+/** Preliminary experiment score. Final Black Oracle credit grade is a separate mapping step. */
 export const scoreStrategyExperiment = (
   genome: StrategyGenome,
   metrics: StrategyEvaluationMetrics,
