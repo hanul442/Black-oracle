@@ -99,3 +99,50 @@ test('Decision Replay preserves explicit evidence links and leaves non-market sy
   assert.equal(projected[1]?.trace, undefined);
   assert.equal(projected[1]?.links, undefined);
 });
+
+test('Decision Replay attaches one trace to equity research decisions and their source-backed Evidence', () => {
+  const equityTimestamp = decisionTimestamp + 5_000;
+  const equityCycle = {
+    markets: [],
+    equityCycle: {
+      finishedAt: equityTimestamp,
+      decisions: [{
+        market: 'KRX-039490',
+        evidenceIds: ['nars:packet:KRX-039490'],
+      }],
+    },
+  };
+  const events: CanonicalEventInput[] = [
+    {
+      eventKey: 'equity-decision',
+      occurredAt: equityTimestamp,
+      runtimeId,
+      eventType: 'DECISION',
+      eventName: 'EQUITY_RESEARCH_DECISION',
+      market: 'KRX-039490',
+      summary: 'Equity research decision.',
+      source: 'equity_paper_research',
+    },
+    {
+      eventKey: 'equity-evidence',
+      occurredAt: equityTimestamp,
+      runtimeId,
+      eventType: 'EVIDENCE',
+      eventName: 'EQUITY_EVIDENCE_LINKED',
+      market: 'KRX-039490',
+      summary: 'Equity Evidence linked.',
+      source: 'equity_paper_research',
+      links: { evidenceIds: ['nars:packet:KRX-039490'] },
+    },
+  ];
+
+  const projected = attachDecisionReplayLineage(events, equityCycle, runtimeId);
+  const expectedTraceId = buildCanonicalDecisionTraceId(runtimeId, 'KRX-039490', equityTimestamp);
+  const expectedDecisionId = `${expectedTraceId}:decision`;
+
+  for (const event of projected) {
+    assert.equal(event.trace?.traceId, expectedTraceId);
+    assert.equal(event.links?.decisionId, expectedDecisionId);
+    assert.deepEqual(event.links?.evidenceIds, ['nars:packet:KRX-039490']);
+  }
+});

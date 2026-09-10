@@ -17,11 +17,28 @@ export const attachDecisionReplayLineage = (
   runtimeId: string,
 ): CanonicalEventInput[] => {
   const cycleMarkets = Array.isArray(cycle?.markets) ? cycle.markets : [];
+  const equityDecisions = Array.isArray(cycle?.equityCycle?.decisions) ? cycle.equityCycle.decisions : [];
+  const equityCycleTimestamp = validTimestamp(cycle?.equityCycle?.finishedAt);
   const lineageByMarket = new Map<string, { traceId: string; decisionId: string; evidenceIds: string[] }>();
 
   for (const item of cycleMarkets) {
     const market = normalizeMarket(item?.market);
     const timestamp = validTimestamp(item?.timestamp);
+    if (!market || timestamp == null) continue;
+    const traceId = buildCanonicalDecisionTraceId(runtimeId, market, timestamp);
+    lineageByMarket.set(market, {
+      traceId,
+      decisionId: buildCanonicalDecisionId(traceId),
+      evidenceIds: Array.isArray(item?.evidenceIds) ? item.evidenceIds.map(String) : [],
+    });
+  }
+
+  // Equity research decisions are emitted outside cycle.markets, but they belong to
+  // the same canonical replay model. Use the equity cycle completion timestamp—the
+  // same timestamp used by the equity decision/evidence projection—as the trace root.
+  for (const item of equityDecisions) {
+    const market = normalizeMarket(item?.market);
+    const timestamp = validTimestamp(item?.timestamp) ?? equityCycleTimestamp;
     if (!market || timestamp == null) continue;
     const traceId = buildCanonicalDecisionTraceId(runtimeId, market, timestamp);
     lineageByMarket.set(market, {
