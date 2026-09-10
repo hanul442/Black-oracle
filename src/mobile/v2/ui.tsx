@@ -20,6 +20,7 @@ import {
   TradeMap,
 } from './types';
 import { formatKrw } from './financial';
+import { PortfolioEquityChart } from './PortfolioEquityChart';
 
 export const Screen = ({ children, padded = true }: { children: React.ReactNode; padded?: boolean }) => (
   <div className={cn('h-full overflow-y-auto pb-[calc(88px+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),18px)]', padded && 'px-4')}>{children}</div>
@@ -69,19 +70,9 @@ export const Metric = ({ label, value, accent }: { label: string; value: string;
   </div>
 );
 
-export const Sparkline = ({ values, positive = true, className = '' }: { values: number[]; positive?: boolean; className?: string }) => {
-  const cleaned = values.filter((value) => Number.isFinite(value));
-  const data = cleaned.length >= 2 ? cleaned : [0.35, 0.48, 0.44, 0.61, 0.58, 0.72];
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const span = Math.max(max - min, 0.0001);
-  const points = data.map((value, index) => `${(index / (data.length - 1)) * 100},${36 - ((value - min) / span) * 30}`).join(' ');
-  return (
-    <svg viewBox="0 0 100 40" preserveAspectRatio="none" className={cn('h-12 w-full overflow-visible', className)} aria-hidden="true">
-      <polyline points={points} fill="none" stroke={positive ? '#21b58a' : '#ef5b66'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-};
+export const Sparkline = ({ values, positive = true, className = '' }: { values: number[]; positive?: boolean; className?: string }) => (
+  <PortfolioEquityChart values={values} positive={positive} className={className} />
+);
 
 export const ScoreGauge = ({ label, value, max = 100, compact = false }: { label: string; value: number | null | undefined; max?: 100 | 1; compact?: boolean }) => {
   const normalized = value == null || !Number.isFinite(value) ? 0 : Math.max(0, Math.min(100, max === 1 ? value * 100 : value));
