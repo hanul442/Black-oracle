@@ -4,6 +4,7 @@ import { buildProtectionPlan } from './protectionPlan';
 import { evaluateRisk } from './risk';
 import type {
   ExecutionDecision,
+  ExecutionPreRiskContext,
   LiquiditySnapshot,
   MultiTimeframeSnapshot,
   PaperPortfolioSnapshot,
@@ -41,9 +42,54 @@ const withoutRiskEvaluation = (decision: Omit<ExecutionDecision, 'riskDispositio
   riskReasons: [],
 });
 
-const noRiskCandidate = (decision: ExecutionDecision): PreRiskExecutionCandidate => ({
+const snapshotPreRiskContext = (
+  input: ExecutionPolicyInput,
+  riskInput: RiskCheckInput | null,
+): ExecutionPreRiskContext => ({
+  liquidity: {
+    tradePrice: input.liquidity.tradePrice,
+    accTradePrice24h: input.liquidity.accTradePrice24h,
+    signedChangeRate: input.liquidity.signedChangeRate,
+    spreadBps: input.liquidity.spreadBps,
+    top5BidDepthKrw: input.liquidity.top5BidDepthKrw,
+    top5AskDepthKrw: input.liquidity.top5AskDepthKrw,
+    orderbookImbalance: input.liquidity.orderbookImbalance,
+    score: input.liquidity.score,
+    eligible: input.liquidity.eligible,
+    warning: input.liquidity.warning,
+    marketDataTimestamp: Number.isFinite(Number(input.liquidity.marketDataTimestamp))
+      ? Number(input.liquidity.marketDataTimestamp)
+      : null,
+  },
+  portfolioRisk: {
+    initialEquity: input.portfolio.initialEquity,
+    cash: input.portfolio.cash,
+    equity: input.portfolio.equity,
+    marketValue: input.portfolio.marketValue,
+    realizedPnl: input.portfolio.realizedPnl,
+    unrealizedPnl: input.portfolio.unrealizedPnl,
+    totalPnl: input.portfolio.totalPnl,
+    feesPaid: input.portfolio.feesPaid,
+    drawdownPct: input.portfolio.drawdownPct,
+    dailyPnlPct: input.portfolio.dailyPnlPct,
+    openPositionCount: input.portfolio.positions.length,
+    grossExposurePct: input.portfolio.equity > 0 ? input.portfolio.marketValue / input.portfolio.equity : null,
+  },
+  riskInput: riskInput ? { ...riskInput } : null,
+});
+
+const withPreRiskContext = (
+  decision: ExecutionDecision,
+  input: ExecutionPolicyInput,
+  riskInput: RiskCheckInput | null,
+): ExecutionDecision => ({
+  ...decision,
+  preRiskContext: snapshotPreRiskContext(input, riskInput),
+});
+
+const noRiskCandidate = (decision: ExecutionDecision, input: ExecutionPolicyInput): PreRiskExecutionCandidate => ({
   stage: 'PRE_RISK_CANDIDATE',
-  decision,
+  decision: withPreRiskContext(decision, input, null),
   riskRequired: false,
   riskInput: null,
   passReasons: [],
@@ -76,7 +122,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
         action: 'EXIT', side: 'SELL', notional: currentPrice * position.quantity, quantity: position.quantity,
         confidence: 1, stopLossPrice: position.stopLossPrice, takeProfitPrice: position.takeProfitPrice,
         reasons: ['Protective stop-loss was reached.'],
-      }));
+      }), input);
     }
 
     const tp2 = position.takeProfit2Price ?? position.takeProfitPrice;
@@ -87,7 +133,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
         takeProfit1Price: position.takeProfit1Price ?? null,
         takeProfit2Price: tp2,
         reasons: ['Dynamic second take-profit target was reached; close the remaining position.'],
-      }));
+      }), input);
     }
 
     const tp1 = position.takeProfit1Price ?? null;
@@ -102,7 +148,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
         takeProfit2Price: tp2,
         takeProfit1Fraction: fraction,
         reasons: [`Dynamic first take-profit target was reached; realize ${(fraction * 100).toFixed(0)}% and retain the remainder for TP2.`],
-      }));
+      }), input);
     }
 
     if (multiTimeframe.action === 'SELL' || multiTimeframe.directionalScore <= -20) {
@@ -112,7 +158,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
         takeProfit1Price: position.takeProfit1Price ?? null,
         takeProfit2Price: tp2,
         reasons: ['Multi-timeframe direction reversed against the existing long spot position.'],
-      }));
+      }), input);
     }
 
     return noRiskCandidate(withoutRiskEvaluation({
@@ -121,7 +167,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
       takeProfit1Price: position.takeProfit1Price ?? null,
       takeProfit2Price: tp2,
       reasons: ['Existing position remains inside its dynamic protection plan and no exit signal is active.'],
-    }));
+    }), input);
   }
 
   if (input.newEntryAllowed === false) {
@@ -129,7 +175,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     return noRiskCandidate({
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
       stopLossPrice: null, takeProfitPrice: null, riskDisposition: 'REJECT', riskReasons: [reason], reasons: [reason],
-    });
+    }, input);
   }
 
   if (!liquidity.eligible) {
@@ -137,7 +183,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: 0,
       stopLossPrice: null, takeProfitPrice: null,
       reasons: ['Liquidity gate rejected this market.', ...liquidity.reasons],
-    }));
+    }), input);
   }
 
   if (multiTimeframe.action !== 'BUY' || multiTimeframe.confidence < 0.62) {
@@ -145,7 +191,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
       stopLossPrice: null, takeProfitPrice: null,
       reasons: ['A new spot entry requires BUY consensus with at least 62% confidence.'],
-    }));
+    }), input);
   }
 
   // Crypto is technical-first and may open Paper risk without news/evidence.
@@ -158,7 +204,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
         `${assetPolicy.assetClass} policy requires source-backed evidence before new risk is opened.`,
         'Request NARS coverage, analyze the returned evidence, then re-evaluate on a fresh market snapshot.',
       ],
-    }));
+    }), input);
   }
 
   const protection = buildProtectionPlan(oneHour, currentPrice);
@@ -177,8 +223,19 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     : input.newRiskEvidenceAllowed === false
       ? 'Crypto technical-first policy allows Paper entry without external evidence; evidence remains supplementary.'
       : 'External evidence is available as supplementary context under the crypto technical-first policy.';
+  const riskInput: RiskCheckInput = {
+    equity: portfolio.equity,
+    requestedNotional: sizing.requestedNotional,
+    dailyPnlPct: portfolio.dailyPnlPct,
+    totalDrawdownPct: portfolio.drawdownPct,
+    estimatedSlippageBps,
+    marketDataAgeMs: resolveMarketDataAgeMs(input),
+    feedConnected: input.feedConnected ?? true,
+    ledgerInSync: input.ledgerInSync ?? true,
+    duplicateOrderDetected: input.duplicateOrderDetected ?? false,
+  };
 
-  const decision = withoutRiskEvaluation({
+  const decision = withPreRiskContext(withoutRiskEvaluation({
     action: 'ENTER',
     side: 'BUY',
     notional: sizing.requestedNotional,
@@ -198,23 +255,13 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
       ...sizing.reasons,
       ...protection.reasons,
     ],
-  });
+  }), input, riskInput);
 
   return {
     stage: 'PRE_RISK_CANDIDATE',
     decision,
     riskRequired: true,
-    riskInput: {
-      equity: portfolio.equity,
-      requestedNotional: sizing.requestedNotional,
-      dailyPnlPct: portfolio.dailyPnlPct,
-      totalDrawdownPct: portfolio.drawdownPct,
-      estimatedSlippageBps,
-      marketDataAgeMs: resolveMarketDataAgeMs(input),
-      feedConnected: input.feedConnected ?? true,
-      ledgerInSync: input.ledgerInSync ?? true,
-      duplicateOrderDetected: input.duplicateOrderDetected ?? false,
-    },
+    riskInput,
     passReasons: [
       evidenceReason,
       ...sizing.reasons,
@@ -231,6 +278,7 @@ export const applyDeterministicRiskToCandidate = (candidate: PreRiskExecutionCan
     return {
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: candidate.decision.confidence,
       stopLossPrice: null, takeProfitPrice: null,
+      preRiskContext: candidate.decision.preRiskContext,
       riskDisposition: 'REJECT', riskReasons: risk.reasons.slice(),
       reasons: ['Deterministic risk gate rejected the candidate.', ...risk.reasons],
     };
