@@ -1,6 +1,6 @@
 import { TRADING_STRATEGY_VERSION, UNIFIED_PAPER_INITIAL_EQUITY_KRW } from '../../src/trading/config';
 import type { EvidenceAggregate } from '../../src/trading/evidence';
-import { buildExecutionDecision } from '../../src/trading/executionPolicy';
+import { applyDeterministicRiskToCandidate, buildPreRiskExecutionCandidate } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { buildMicrostructureChallenger } from '../../src/trading/microstructureChallenger';
 import { PaperBroker } from '../../src/trading/paperBroker';
@@ -397,7 +397,7 @@ export class PaperTradingSession {
       && liquidity.eligible
       && multiTimeframe.action === 'BUY'
       && multiTimeframe.confidence >= 0.62;
-    const decision = buildExecutionDecision({
+    const executionCandidate = buildPreRiskExecutionCandidate({
       liquidity,
       multiTimeframe,
       oneHour: multiTimeframe.frames.oneHour,
@@ -408,18 +408,22 @@ export class PaperTradingSession {
       newRiskEvidenceAllowed: externalEvidenceAvailable,
     });
 
-    // S2 shadow-only boundary: capture the exact evidence/router/council/arbiter
-    // review before any ORDER_SUBMITTED event. This snapshot has no execution
-    // authority and therefore cannot alter the qualification runtime outcome.
+    // S2 shadow-only ordering: Router -> Council -> Arbiter observes the exact
+    // executable candidate before deterministic Risk evaluates it. The review has
+    // no execution authority and cannot block, resize, redirect, or submit orders.
     const preTradeReview = evidence ? buildPreTradeShadowReview({
       timestamp: multiTimeframe.asOf,
       market: normalized,
-      decision,
+      decision: executionCandidate.decision,
       multiTimeframe,
       evidence,
       microstructure,
       challenger,
     }) : null;
+
+    // Risk remains the deterministic execution gate. This preserves the previous
+    // final decision semantics while making the pre-risk shadow judgment auditable.
+    const decision = applyDeterministicRiskToCandidate(executionCandidate);
 
     const tradeMap = buildTradeMap({
       currentPrice: liquidity.tradePrice,
