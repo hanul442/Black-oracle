@@ -23,6 +23,16 @@ export class EvidenceCoverageRequestStore {
     return Boolean(this.supabaseUrl && this.serviceRoleKey);
   }
 
+  private get runtimeScoped() {
+    return this.runtimeId === 'black-oracle-paper-s2-shadow';
+  }
+
+  private scopedRequestKey(requestKey: string) {
+    if (!this.runtimeScoped) return requestKey;
+    const prefix = `${this.runtimeId}:`;
+    return requestKey.startsWith(prefix) ? requestKey : `${prefix}${requestKey}`;
+  }
+
   private headers(extra: Record<string, string> = {}) {
     return {
       apikey: this.serviceRoleKey,
@@ -32,15 +42,17 @@ export class EvidenceCoverageRequestStore {
   }
 
   async enqueue(request: EvidenceCoverageRequest): Promise<StoredEvidenceCoverageRequest> {
+    const requestKey = this.scopedRequestKey(request.requestKey);
     const stored: StoredEvidenceCoverageRequest = {
       ...request,
+      requestKey,
       aliases: request.aliases.slice(),
       runtimeId: this.runtimeId,
       lastAttemptAt: null,
       fulfilledAt: null,
       evidenceIds: [],
     };
-    this.memory.set(request.requestKey, stored);
+    this.memory.set(requestKey, stored);
 
     if (!this.configured) return clone(stored);
 
@@ -48,7 +60,7 @@ export class EvidenceCoverageRequestStore {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify({
-        request_key: request.requestKey,
+        request_key: requestKey,
         runtime_id: this.runtimeId,
         market: request.market,
         asset_class: request.assetClass,
@@ -78,7 +90,8 @@ export class EvidenceCoverageRequestStore {
     options: { evidenceIds?: string[]; reason?: string; attemptedAt?: number } = {},
   ) {
     const attemptedAt = options.attemptedAt ?? Date.now();
-    const existing = this.memory.get(requestKey);
+    const persistedRequestKey = this.scopedRequestKey(requestKey);
+    const existing = this.memory.get(persistedRequestKey);
     if (existing) {
       const next: StoredEvidenceCoverageRequest = {
         ...existing,
@@ -88,11 +101,14 @@ export class EvidenceCoverageRequestStore {
         fulfilledAt: status === 'FULFILLED' ? attemptedAt : existing.fulfilledAt,
         evidenceIds: options.evidenceIds?.slice() ?? existing.evidenceIds.slice(),
       };
-      this.memory.set(requestKey, next);
+      this.memory.set(persistedRequestKey, next);
     }
 
     if (!this.configured) return;
-    const response = await fetch(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests?request_key=eq.${encodeURIComponent(requestKey)}`, {
+    const query = new URL(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests`);
+    query.searchParams.set('request_key', `eq.${persistedRequestKey}`);
+    query.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
+    const response = await fetch(query, {
       method: 'PATCH',
       headers: this.headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify({
@@ -116,6 +132,7 @@ export class EvidenceCoverageRequestStore {
     }
 
     const url = new URL(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests`);
+    url.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
     url.searchParams.set('select', '*');
     url.searchParams.set('order', 'requested_at.desc');
     url.searchParams.set('limit', String(Math.max(1, Math.min(500, limit))));

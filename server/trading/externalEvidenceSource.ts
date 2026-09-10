@@ -7,12 +7,24 @@ const sourceType = (value: unknown): TradingEvidence['sourceType'] => {
   return 'SYSTEM';
 };
 
+const runtimeScope = () => {
+  const runtimeId = String(process.env.TRADING_RUNTIME_ID ?? 'black-oracle-paper');
+  const scoped = runtimeId === 'black-oracle-paper-s2-shadow';
+  return {
+    runtimeId,
+    scoped,
+    table: scoped ? 'black_oracle_runtime_external_evidence' : 'black_oracle_external_evidence',
+  };
+};
+
 export const loadActiveExternalEvidence = async (limit = 500): Promise<TradingEvidence[]> => {
   const supabaseUrl = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
   const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
   if (!supabaseUrl || !serviceRoleKey) return [];
+  const scope = runtimeScope();
   const now = new Date().toISOString();
-  const url = new URL(`${supabaseUrl}/rest/v1/black_oracle_external_evidence`);
+  const url = new URL(`${supabaseUrl}/rest/v1/${scope.table}`);
+  if (scope.scoped) url.searchParams.set('runtime_id', `eq.${scope.runtimeId}`);
   url.searchParams.set('expires_at', `gt.${now}`);
   url.searchParams.set('select', 'id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,contradiction_of,tags');
   url.searchParams.set('order', 'observed_at.desc');
