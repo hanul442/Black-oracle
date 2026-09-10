@@ -1,6 +1,7 @@
 import type { CanonicalEventInput } from './eventLedger';
 
 export type InboxRow = {
+  runtime_id?: string | null;
   outbox_id: string;
   event_id?: string | null;
   status: string;
@@ -12,6 +13,7 @@ export type InboxRow = {
 };
 
 export type ExternalEvidenceRow = {
+  runtime_id?: string | null;
   id: string;
   packet_outbox_id?: string | null;
   event_id?: string | null;
@@ -56,13 +58,31 @@ const severityForStatus = (status: string): CanonicalEventInput['severity'] => {
   return 'INFO';
 };
 
-const readRows = async <T>(table: string, select: string, timeColumn: string, from: number, to: number, limit = 80): Promise<T[]> => {
+const runtimeScope = (runtimeId: string) => {
+  const scoped = runtimeId === 'black-oracle-paper-s2-shadow';
+  return {
+    scoped,
+    inboxTable: scoped ? 'black_oracle_nars_runtime_inbox' : 'black_oracle_nars_inbox',
+    evidenceTable: scoped ? 'black_oracle_runtime_external_evidence' : 'black_oracle_external_evidence',
+  };
+};
+
+const readRows = async <T>(
+  table: string,
+  select: string,
+  timeColumn: string,
+  from: number,
+  to: number,
+  limit = 80,
+  filters: Record<string, string> = {},
+): Promise<T[]> => {
   const db = dbConfig();
   if (!db) return [];
   const url = new URL(`${db.base}/rest/v1/${table}`);
   url.searchParams.set('select', select);
   url.searchParams.set(timeColumn, `gte.${new Date(from).toISOString()}`);
   url.searchParams.append(timeColumn, `lte.${new Date(to).toISOString()}`);
+  for (const [key, value] of Object.entries(filters)) url.searchParams.set(key, value);
   url.searchParams.set('order', `${timeColumn}.asc`);
   url.searchParams.set('limit', String(limit));
   const response = await fetch(url, { headers: db.headers, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
@@ -86,7 +106,7 @@ export const projectNarsRowsToCanonicalEvents = (
     const occurredAt = row.updated_at || row.analyzed_at || row.received_at || fallback;
     const markets = Array.isArray(row.mapped_markets) ? row.mapped_markets.map(String) : [];
     events.push({
-      eventKey: `nars-outbox:${row.outbox_id}:${status}:${occurredAt}`,
+      eventKey: `nars-outbox:${runtimeId}:${row.outbox_id}:${status}:${occurredAt}`,
       occurredAt,
       runtimeId,
       eventType: 'EVIDENCE',
@@ -106,6 +126,7 @@ export const projectNarsRowsToCanonicalEvents = (
       executionAuthority: false,
       source: 'nars_bridge',
       trace: {
+        runtimeId: row.runtime_id ?? runtimeId,
         status,
         mappedMarkets: markets,
         receivedAt: row.received_at ?? null,
@@ -120,7 +141,7 @@ export const projectNarsRowsToCanonicalEvents = (
   for (const row of externalRows) {
     const occurredAt = row.updated_at || fallback;
     events.push({
-      eventKey: `external-evidence:${row.id}:${occurredAt}`,
+      eventKey: `external-evidence:${runtimeId}:${row.id}:${occurredAt}`,
       occurredAt,
       runtimeId,
       eventType: 'EVIDENCE',
@@ -136,6 +157,7 @@ export const projectNarsRowsToCanonicalEvents = (
       executionAuthority: false,
       source: 'nars_impact_analysis',
       trace: {
+        runtimeId: row.runtime_id ?? runtimeId,
         title: row.title ?? null,
         direction: row.direction ?? null,
         materiality: row.materiality ?? null,
@@ -162,22 +184,30 @@ export const buildNarsCanonicalAuditEvents = async (cycle: any, runtimeId: strin
   const db = dbConfig();
   if (!db) return [];
   const { from, to } = boundedWindow(cycle?.startedAt, cycle?.finishedAt);
+  const scope = runtimeScope(runtimeId);
+  const filters = scope.scoped ? { runtime_id: `eq.${runtimeId}` } : {};
   const [inboxRows, externalRows] = await Promise.all([
     readRows<InboxRow>(
-      'black_oracle_nars_inbox',
-      'outbox_id,event_id,status,mapped_markets,received_at,updated_at,analyzed_at,last_error',
+      scope.inboxTable,
+      scope.scoped
+        ? 'runtime_id,outbox_id,event_id,status,mapped_markets,received_at,updated_at,analyzed_at,last_error'
+        : 'outbox_id,event_id,status,mapped_markets,received_at,updated_at,analyzed_at,last_error',
       'updated_at',
       from,
       to,
       100,
+      filters,
     ),
     readRows<ExternalEvidenceRow>(
-      'black_oracle_external_evidence',
-      'id,packet_outbox_id,event_id,market,title,direction,materiality,impact_confidence,evidence_grade,evidence_score,eligible_for_new_risk,analysis_model,analysis_version,updated_at,execution_authority',
+      scope.evidenceTable,
+      scope.scoped
+        ? 'runtime_id,id,packet_outbox_id,event_id,market,title,direction,materiality,impact_confidence,evidence_grade,evidence_score,eligible_for_new_risk,analysis_model,analysis_version,updated_at,execution_authority'
+        : 'id,packet_outbox_id,event_id,market,title,direction,materiality,impact_confidence,evidence_grade,evidence_score,eligible_for_new_risk,analysis_model,analysis_version,updated_at,execution_authority',
       'updated_at',
       from,
       to,
       100,
+      filters,
     ),
   ]);
   return projectNarsRowsToCanonicalEvents(inboxRows, externalRows, runtimeId, to);
