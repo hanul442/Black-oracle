@@ -1,5 +1,6 @@
 import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGate';
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
+import { buildArbiterCanonicalEvents } from '../server/eventLedgerArbiterProjection';
 import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
 import { buildNarsCanonicalAuditEvents } from '../server/eventLedgerNarsAudit';
 import { buildTradingSessionDeltaCanonicalEvents } from '../server/eventLedgerTradeProjection';
@@ -164,6 +165,7 @@ export default async function handler(request: any, response: any) {
           const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
           const events = [
             ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
+            ...buildArbiterCanonicalEvents(cycle, runtimeId),
             ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
             ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
             ...narsAuditEvents,
