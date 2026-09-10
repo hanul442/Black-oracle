@@ -6,6 +6,8 @@ import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
 import narsShadowConsumeHandler from './api/nars-shadow-consume';
 import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
+import strategyShadowPoolHandler from './api/strategy-shadow-pool';
+import councilCounterfactualHandler from './api/council-counterfactual';
 import activityBriefHandler from './api/activity-brief';
 import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
@@ -232,6 +234,16 @@ app.get('/api/trading-status', (req, res, next) => {
   void tradingStatusHandler(req, res);
 });
 
+app.get('/api/strategy-shadow-pool', (req, res, next) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
+  void strategyShadowPoolHandler(req, res);
+});
+
+app.get('/api/council-counterfactual', (req, res, next) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
+  void councilCounterfactualHandler(req, res);
+});
+
 app.post('/login', express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!authConfigured) return res.status(503).send(loginPage('로그인 설정이 아직 완료되지 않았습니다.'));
@@ -280,6 +292,14 @@ app.use((req, res, next) => {
 
 app.get('/api/trading-status', (req, res) => {
   void tradingStatusHandler(req, res);
+});
+
+app.get('/api/strategy-shadow-pool', (req, res) => {
+  void strategyShadowPoolHandler(req, res);
+});
+
+app.get('/api/council-counterfactual', (req, res) => {
+  void councilCounterfactualHandler(req, res);
 });
 
 app.get('/api/events', (req, res) => {
