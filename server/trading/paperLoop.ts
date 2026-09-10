@@ -294,6 +294,7 @@ export class PaperLoopController {
             liquidity,
             newEntryAllowed,
             externalEvidenceAvailable,
+            evidence,
           );
 
           let coverageRequestKey: string | null = null;
@@ -317,6 +318,7 @@ export class PaperLoopController {
             microstructure: step.microstructure,
             challenger: step.challenger,
             tradeMap: step.tradeMap,
+            preTradeReview: step.preTradeReview,
             hasOpenPositionAfterStep,
           });
           trace.reasons.push(
