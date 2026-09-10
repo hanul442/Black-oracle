@@ -8,9 +8,11 @@ import type { PreTradeShadowReview } from './preTradeReview';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
 import type {
   ExecutionDecision,
+  LiquiditySnapshot,
   MarketRegime,
   MultiCycleSnapshot,
   MultiTimeframeSnapshot,
+  PaperPortfolioSnapshot,
   RiskDisposition,
   TradeMapSnapshot,
 } from './types';
@@ -36,6 +38,45 @@ export interface DecisionTrace {
   evidenceActiveCount: number;
   evidenceContradictionCount: number;
   evidenceIds: string[];
+  liquidity: null | {
+    tradePrice: number;
+    accTradePrice24h: number;
+    signedChangeRate: number;
+    spreadBps: number;
+    top5BidDepthKrw: number;
+    top5AskDepthKrw: number;
+    orderbookImbalance: number;
+    score: number;
+    eligible: boolean;
+    warning: boolean;
+    marketDataTimestamp: number | null;
+  };
+  portfolioRisk: null | {
+    initialEquity: number;
+    cash: number;
+    equity: number;
+    marketValue: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalPnl: number;
+    feesPaid: number;
+    drawdownPct: number;
+    dailyPnlPct: number;
+    openPositionCount: number;
+    grossExposurePct: number | null;
+  };
+  positionSizing: {
+    mode: ExecutionDecision['positionSizingMode'] | null;
+    requestedNotional: number;
+    requestedQuantity: number;
+    expectedLossAtStop: number | null;
+    stopLossPrice: number | null;
+    takeProfit1Price: number | null;
+    takeProfit2Price: number | null;
+    takeProfit1Fraction: number | null;
+    protectionBasis: ExecutionDecision['protectionBasis'] | null;
+  };
+  executionCosts: null;
   technicalEvidence: null | {
     rawSignalCount: number;
     independentFamilyCount: number;
@@ -85,6 +126,8 @@ export interface DecisionTraceInput {
   decision: ExecutionDecision;
   multiTimeframe: MultiTimeframeSnapshot;
   evidence: EvidenceAggregate;
+  liquidity?: LiquiditySnapshot | null;
+  portfolioRisk?: PaperPortfolioSnapshot | null;
   microstructure?: MicrostructureSnapshot | null;
   challenger?: MicrostructureChallengerSnapshot | null;
   tradeMap?: TradeMapSnapshot | null;
@@ -136,6 +179,10 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     cycle: multiTimeframe.cycle ?? null,
     challenger: input.challenger ?? null,
   });
+  const portfolio = input.portfolioRisk ?? null;
+  const grossExposurePct = portfolio && portfolio.equity > 0
+    ? portfolio.marketValue / portfolio.equity
+    : null;
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -156,6 +203,47 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     evidenceActiveCount: evidence.activeCount,
     evidenceContradictionCount: evidence.contradictionCount,
     evidenceIds: evidence.evidenceIds.slice(),
+    liquidity: input.liquidity ? {
+      tradePrice: input.liquidity.tradePrice,
+      accTradePrice24h: input.liquidity.accTradePrice24h,
+      signedChangeRate: input.liquidity.signedChangeRate,
+      spreadBps: input.liquidity.spreadBps,
+      top5BidDepthKrw: input.liquidity.top5BidDepthKrw,
+      top5AskDepthKrw: input.liquidity.top5AskDepthKrw,
+      orderbookImbalance: input.liquidity.orderbookImbalance,
+      score: input.liquidity.score,
+      eligible: input.liquidity.eligible,
+      warning: input.liquidity.warning,
+      marketDataTimestamp: input.liquidity.marketDataTimestamp ?? null,
+    } : null,
+    portfolioRisk: portfolio ? {
+      initialEquity: portfolio.initialEquity,
+      cash: portfolio.cash,
+      equity: portfolio.equity,
+      marketValue: portfolio.marketValue,
+      realizedPnl: portfolio.realizedPnl,
+      unrealizedPnl: portfolio.unrealizedPnl,
+      totalPnl: portfolio.totalPnl,
+      feesPaid: portfolio.feesPaid,
+      drawdownPct: portfolio.drawdownPct,
+      dailyPnlPct: portfolio.dailyPnlPct,
+      openPositionCount: portfolio.positions.length,
+      grossExposurePct,
+    } : null,
+    positionSizing: {
+      mode: decision.positionSizingMode ?? null,
+      requestedNotional: decision.notional,
+      requestedQuantity: decision.quantity,
+      expectedLossAtStop: decision.expectedLossAtStop ?? null,
+      stopLossPrice: decision.stopLossPrice,
+      takeProfit1Price: decision.takeProfit1Price ?? null,
+      takeProfit2Price: decision.takeProfit2Price ?? decision.takeProfitPrice,
+      takeProfit1Fraction: decision.takeProfit1Fraction ?? null,
+      protectionBasis: decision.protectionBasis ?? null,
+    },
+    // Planned fee/slippage arithmetic is not currently exposed by ExecutionDecision.
+    // Keep it explicitly unavailable rather than duplicating broker constants here.
+    executionCosts: null,
     technicalEvidence: technical ? {
       rawSignalCount: technical.rawSignalCount,
       independentFamilyCount: technical.independentFamilyCount,
