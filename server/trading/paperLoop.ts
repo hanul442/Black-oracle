@@ -81,6 +81,9 @@ const cloneTrace = <T extends DecisionTrace & { decision: DecisionTrace['action'
   router: { ...item.router, reasons: item.router.reasons.slice() },
   forecast: { ...item.forecast, reasons: item.forecast.reasons.slice() },
   evidenceIds: item.evidenceIds.slice(),
+  liquidity: item.liquidity ? { ...item.liquidity } : null,
+  portfolioRisk: item.portfolioRisk ? { ...item.portfolioRisk } : null,
+  positionSizing: { ...item.positionSizing },
   technicalEvidence: item.technicalEvidence ? { ...item.technicalEvidence } : null,
   structure: item.structure ? { ...item.structure } : null,
   cycle: item.cycle ? { ...item.cycle, frames: { ...item.cycle.frames }, reasons: item.cycle.reasons.slice() } : null,
@@ -145,6 +148,20 @@ export class PaperLoopController {
       markets: checkpoint.lastCycle.markets.map((item) => ({
         ...cloneTrace({
           ...item,
+          liquidity: item.liquidity ?? null,
+          portfolioRisk: item.portfolioRisk ?? null,
+          positionSizing: item.positionSizing ?? {
+            mode: null,
+            requestedNotional: 0,
+            requestedQuantity: 0,
+            expectedLossAtStop: null,
+            stopLossPrice: null,
+            takeProfit1Price: null,
+            takeProfit2Price: null,
+            takeProfit1Fraction: null,
+            protectionBasis: null,
+          },
+          executionCosts: null,
           technicalEvidence: item.technicalEvidence ?? null,
           structure: item.structure ?? null,
           cycle: item.cycle ?? null,
@@ -263,8 +280,6 @@ export class PaperLoopController {
     };
 
     try {
-      // Evidence operations are best-effort and never grant execution authority by themselves.
-      // Crypto can continue technical-first if NARS is unavailable; evidence-required equities fail closed at their own entry gate.
       await this.runEvidenceOps(result.evidenceOps);
 
       const universe = await buildKrwLiquidityUniverse(Math.max(this.config.maxMarkets, 8), 30);
@@ -315,6 +330,8 @@ export class PaperLoopController {
             decision: step.decision,
             multiTimeframe: step.multiTimeframe,
             evidence,
+            liquidity,
+            portfolioRisk: currentState.portfolio,
             microstructure: step.microstructure,
             challenger: step.challenger,
             tradeMap: step.tradeMap,
