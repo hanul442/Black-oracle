@@ -51,15 +51,20 @@ test('entry candidate exists before risk and final decision remains wrapper-equi
   assert.ok(candidate.decision.notional > 0);
   assert.ok(candidate.decision.stopLossPrice);
   assert.ok(candidate.decision.expectedLossAtStop != null);
+  assert.equal(candidate.decision.preRiskContext?.liquidity.tradePrice, liquidity.tradePrice);
+  assert.equal(candidate.decision.preRiskContext?.portfolioRisk.initialEquity, 1_000_000);
+  assert.equal(candidate.decision.preRiskContext?.riskInput?.requestedNotional, candidate.decision.notional);
+  assert.equal(candidate.decision.preRiskContext?.riskInput?.estimatedSlippageBps, candidate.riskInput?.estimatedSlippageBps);
 
   const staged = applyDeterministicRiskToCandidate(candidate);
   const legacyWrapper = buildExecutionDecision(input);
   assert.deepEqual(staged, legacyWrapper);
   assert.equal(staged.action, 'ENTER');
   assert.equal(staged.riskDisposition, 'APPROVE');
+  assert.equal(staged.preRiskContext?.riskInput?.requestedNotional, candidate.decision.notional);
 });
 
-test('risk rejection occurs only after the pre-risk candidate has been formed', () => {
+test('risk rejection occurs only after the pre-risk candidate has been formed and keeps its provenance', () => {
   const input = {
     ...baseInput(),
     liquidity: { ...liquidity, marketDataTimestamp: Date.now() - 10 * 60 * 1000 } as any,
@@ -73,4 +78,6 @@ test('risk rejection occurs only after the pre-risk candidate has been formed', 
   assert.equal(finalDecision.action, 'HOLD');
   assert.equal(finalDecision.riskDisposition, 'REJECT');
   assert.match(finalDecision.riskReasons.join(' '), /stale/i);
+  assert.equal(finalDecision.preRiskContext?.liquidity.tradePrice, liquidity.tradePrice);
+  assert.ok((finalDecision.preRiskContext?.riskInput?.marketDataAgeMs ?? 0) > 0);
 });
