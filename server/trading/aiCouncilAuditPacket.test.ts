@@ -30,6 +30,7 @@ test('includes structured shadow inputs and reports missing execution arithmetic
       councilVerdict: 'CONDITIONAL', cycleTiming: 'NO_EDGE', challengerAlignment: 'CONFLICTS',
     },
     cycle: { state: 'NEUTRAL', entryTiming: 'NO_EDGE' },
+    structure: { bias: 'NEUTRAL', confidence: 0.6 },
     microstructure: { direction: 'BEARISH', pressureScore: -31, confidence: 0.9 },
     challenger: { alignment: 'CONFLICTS', pressureScore: -31, shadowOracleScore: 61.7 },
     tradeMap: { entryPrice: 3383000, stopLossPrice: 3355779, expectedRiskPct: 0.008 },
@@ -46,6 +47,27 @@ test('includes structured shadow inputs and reports missing execution arithmetic
   assert.equal(packet.dataCompleteness.microstructureProvided, true);
   assert.equal(packet.dataCompleteness.portfolioExposureProvided, false);
   assert.equal(packet.dataCompleteness.feeSlippageBreakdownProvided, false);
+  assert.equal(packet.dataCompleteness.requiredShadowInputsComplete, false);
+  assert.deepEqual(packet.dataCompleteness.missingInputs, ['liquidity', 'portfolioRisk', 'positionSizing', 'executionCosts']);
+});
+
+test('preserves missing facts as null instead of fabricating zero values', () => {
+  const packet = buildAiCouncilAuditPacket({
+    market: 'KRW-BTC',
+    action: 'NO_TRADE',
+    council: { verdict: 'CONDITIONAL', members: [] },
+  });
+
+  assert.equal(packet.identity.timestamp, null);
+  assert.equal(packet.decision.oracleTradeScore, null);
+  assert.equal(packet.decision.confidence, null);
+  assert.equal(packet.decision.regimeConfidence, null);
+  assert.equal(packet.evidence.eventScore, null);
+  assert.equal(packet.evidence.activeCount, null);
+  assert.equal(packet.evidence.contradictionCount, null);
+  assert.equal(packet.deterministicCouncil?.counts.approve, null);
+  assert.ok(packet.dataCompleteness.missingInputs.includes('cycle'));
+  assert.ok(packet.dataCompleteness.missingInputs.includes('positionSizing'));
 });
 
 test('bounds free-text and evidence arrays', () => {
@@ -58,7 +80,7 @@ test('bounds free-text and evidence arrays', () => {
     council: { verdict: 'CONDITIONAL', approveCount: 0, cautionCount: 1, rejectCount: 0, abstainCount: 4, members: [] },
   });
 
-  assert.equal(packet.decision.primaryReason.length, 800);
+  assert.equal(packet.decision.primaryReason?.length, 800);
   assert.equal(packet.decision.reasons.length, 10);
   assert.equal(packet.evidence.evidenceIds.length, 20);
 });
