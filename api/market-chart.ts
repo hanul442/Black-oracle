@@ -6,9 +6,16 @@ const boundedInt = (value: unknown, fallback: number, min: number, max: number) 
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 };
 
-const CRYPTO_UNITS = new Set([1, 3, 5, 10, 15, 30, 60, 240]);
+const MINUTE = 60_000;
+const DAY_UNIT = 1_440;
+const WEEK_UNIT = 10_080;
+const MONTH_UNIT = 43_200; // API contract value for a calendar-month frame; aggregation itself is calendar based.
+const MAX_CHART_UNIT = MONTH_UNIT;
+
+const CRYPTO_INTRADAY_UNITS = new Set([1, 3, 5, 10, 15, 30, 60, 240]);
+const CRYPTO_HIGHER_UNITS = new Set([DAY_UNIT, WEEK_UNIT, MONTH_UNIT]);
 const KRX_INTRADAY_UNITS = new Set([1, 3, 5, 10, 15, 30, 60]);
-const KRX_DAILY_UNIT = 1440;
+const KRX_HIGHER_UNITS = new Set([DAY_UNIT, WEEK_UNIT, MONTH_UNIT]);
 
 const validCandle = (item: Candle) => Number.isFinite(item.timestamp)
   && item.timestamp > 0
@@ -21,13 +28,56 @@ const validCandle = (item: Candle) => Number.isFinite(item.timestamp)
 
 const aggregateMinuteCandles = (candles: Candle[], unit: number): Candle[] => {
   if (unit === 1) return candles.filter(validCandle);
-  const intervalMs = unit * 60_000;
+  const intervalMs = unit * MINUTE;
   const buckets = new Map<number, Candle>();
   for (const candle of candles.filter(validCandle).sort((a, b) => a.timestamp - b.timestamp)) {
     const bucket = Math.floor(candle.timestamp / intervalMs) * intervalMs;
     const existing = buckets.get(bucket);
     if (!existing) {
       buckets.set(bucket, { ...candle, timestamp: bucket, timeframeMinutes: unit });
+      continue;
+    }
+    existing.high = Math.max(existing.high, candle.high);
+    existing.low = Math.min(existing.low, candle.low);
+    existing.close = candle.close;
+    existing.volume += candle.volume;
+    existing.quoteVolume = (existing.quoteVolume ?? 0) + (candle.quoteVolume ?? 0);
+  }
+  return [...buckets.values()].sort((a, b) => a.timestamp - b.timestamp);
+};
+
+const kstDateParts = (timestamp: number) => {
+  const date = new Date(timestamp + 9 * 60 * MINUTE);
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth(),
+    date: date.getUTCDate(),
+    day: date.getUTCDay(),
+  };
+};
+
+const higherTimeframeKey = (timestamp: number, unit: number) => {
+  const parts = kstDateParts(timestamp);
+  if (unit === MONTH_UNIT) return `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
+  if (unit === WEEK_UNIT) {
+    const daysSinceMonday = (parts.day + 6) % 7;
+    const mondayUtc = Date.UTC(parts.year, parts.month, parts.date - daysSinceMonday);
+    const monday = new Date(mondayUtc);
+    return `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+  }
+  return `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.date).padStart(2, '0')}`;
+};
+
+const aggregateHigherTimeframeCandles = (candles: Candle[], unit: number): Candle[] => {
+  if (unit === DAY_UNIT) return candles.filter(validCandle).map((candle) => ({ ...candle, timeframeMinutes: DAY_UNIT }));
+  if (unit !== WEEK_UNIT && unit !== MONTH_UNIT) return [];
+
+  const buckets = new Map<string, Candle>();
+  for (const candle of candles.filter(validCandle).sort((a, b) => a.timestamp - b.timestamp)) {
+    const key = higherTimeframeKey(candle.timestamp, unit);
+    const existing = buckets.get(key);
+    if (!existing) {
+      buckets.set(key, { ...candle, timeframeMinutes: unit });
       continue;
     }
     existing.high = Math.max(existing.high, candle.high);
@@ -48,9 +98,19 @@ const publicCandle = (item: Candle) => ({
   volume: item.volume,
 });
 
+const cryptoPathForUnit = (unit: number) => {
+  if (CRYPTO_INTRADAY_UNITS.has(unit)) return `/v1/candles/minutes/${unit}`;
+  if (unit === DAY_UNIT) return '/v1/candles/days';
+  if (unit === WEEK_UNIT) return '/v1/candles/weeks';
+  if (unit === MONTH_UNIT) return '/v1/candles/months';
+  throw new Error('Unsupported Upbit candle unit. Use intraday, daily, weekly, or monthly candles.');
+};
+
 const loadCryptoChart = async (market: string, unit: number, count: number) => {
-  if (!CRYPTO_UNITS.has(unit)) throw new Error('Unsupported Upbit candle unit.');
-  const url = new URL(`https://api.upbit.com/v1/candles/minutes/${unit}`);
+  if (!CRYPTO_INTRADAY_UNITS.has(unit) && !CRYPTO_HIGHER_UNITS.has(unit)) {
+    throw new Error('Unsupported Upbit candle unit.');
+  }
+  const url = new URL(`https://api.upbit.com${cryptoPathForUnit(unit)}`);
   url.searchParams.set('market', market);
   url.searchParams.set('count', String(Math.min(200, count)));
   const result = await fetch(url, {
@@ -80,6 +140,12 @@ const loadCryptoChart = async (market: string, unit: number, count: number) => {
   };
 };
 
+const krxDailyBarsNeeded = (unit: number, count: number) => {
+  if (unit === WEEK_UNIT) return Math.min(1_000, Math.max(200, count * 6));
+  if (unit === MONTH_UNIT) return Math.min(1_000, Math.max(260, count * 24));
+  return Math.max(200, count);
+};
+
 const loadKrxChart = async (market: string, unit: number, count: number) => {
   const configured = Boolean(String(process.env.KIS_APP_KEY ?? '').trim() && String(process.env.KIS_APP_SECRET ?? '').trim());
   if (!configured) {
@@ -95,11 +161,16 @@ const loadKrxChart = async (market: string, unit: number, count: number) => {
   const symbol = market.slice(4);
   const { createKisDomesticStockMarketDataFromEnv } = await import('../server/trading/equity/kisMarketData.js');
   const kis = createKisDomesticStockMarketDataFromEnv();
-  if (unit === KRX_DAILY_UNIT) {
-    const candles = (await kis.dailyCandles(symbol, Math.max(200, count))).filter(validCandle).slice(-count);
+
+  if (KRX_HIGHER_UNITS.has(unit)) {
+    const daily = (await kis.dailyCandles(symbol, krxDailyBarsNeeded(unit, count))).filter(validCandle);
+    const candles = aggregateHigherTimeframeCandles(daily, unit).slice(-count);
     return { source: 'KIS_OFFICIAL' as const, assetClass: 'EQUITY' as const, configured: true, unit, candles: candles.map(publicCandle) };
   }
-  if (!KRX_INTRADAY_UNITS.has(unit)) throw new Error('Unsupported KRX candle unit. Use 1/3/5/10/15/30/60 or 1440 for daily candles.');
+
+  if (!KRX_INTRADAY_UNITS.has(unit)) {
+    throw new Error('Unsupported KRX candle unit. Use intraday, daily, weekly, or monthly candles.');
+  }
   const minuteBarsNeeded = Math.min(300, Math.max(30, count * unit));
   const minuteCandles = await kis.minuteCandles(symbol, minuteBarsNeeded);
   const candles = aggregateMinuteCandles(minuteCandles, unit).slice(-count);
@@ -120,8 +191,8 @@ export default async function handler(request: any, response: any) {
     return response.status(400).json({ success: false, available: false, market, error: 'Market must be KRW-<asset> or KRX-<6 digit symbol>.' });
   }
 
-  const defaultUnit = isKrx ? KRX_DAILY_UNIT : 60;
-  const unit = boundedInt(request.query?.unit, defaultUnit, 1, KRX_DAILY_UNIT);
+  const defaultUnit = isKrx ? DAY_UNIT : 60;
+  const unit = boundedInt(request.query?.unit, defaultUnit, 1, MAX_CHART_UNIT);
   const count = boundedInt(request.query?.count, isKrx ? 60 : 48, 12, 120);
 
   try {

@@ -21,12 +21,19 @@ type ChartPayload = {
 
 type Timeframe = { label: string; unit: number; count: number };
 
+const DAY_UNIT = 1_440;
+const WEEK_UNIT = 10_080;
+const MONTH_UNIT = 43_200;
+
 const CRYPTO_TIMEFRAMES: Timeframe[] = [
   { label: '1m', unit: 1, count: 120 },
   { label: '5m', unit: 5, count: 120 },
   { label: '15m', unit: 15, count: 96 },
   { label: '1H', unit: 60, count: 72 },
   { label: '4H', unit: 240, count: 60 },
+  { label: '일봉', unit: DAY_UNIT, count: 90 },
+  { label: '주봉', unit: WEEK_UNIT, count: 104 },
+  { label: '월봉', unit: MONTH_UNIT, count: 60 },
 ];
 
 const EQUITY_TIMEFRAMES: Timeframe[] = [
@@ -34,7 +41,9 @@ const EQUITY_TIMEFRAMES: Timeframe[] = [
   { label: '5m', unit: 5, count: 96 },
   { label: '15m', unit: 15, count: 80 },
   { label: '1H', unit: 60, count: 60 },
-  { label: '1D', unit: 1440, count: 60 },
+  { label: '일봉', unit: DAY_UNIT, count: 90 },
+  { label: '주봉', unit: WEEK_UNIT, count: 104 },
+  { label: '월봉', unit: MONTH_UNIT, count: 36 },
 ];
 
 const DecisionPicker = ({ decisions, selected, onSelect }: { decisions: DecisionTapeItem[]; selected: DecisionTapeItem | null; onSelect: (decision: DecisionTapeItem) => void }) => (
@@ -220,7 +229,7 @@ export const AnalysisDetailV2 = ({ decisions, selected, onSelect, onCouncil, onB
   const timeframe = useMemo(() => timeframes.find((item) => item.unit === timeframeUnit) ?? timeframes.find((item) => item.unit === 60) ?? timeframes[0], [timeframeUnit, isEquity]);
 
   useEffect(() => {
-    if (!timeframes.some((item) => item.unit === timeframeUnit)) setTimeframeUnit(isEquity ? 1440 : 60);
+    if (!timeframes.some((item) => item.unit === timeframeUnit)) setTimeframeUnit(isEquity ? DAY_UNIT : 60);
   }, [isEquity]);
 
   useEffect(() => {
