@@ -1,6 +1,6 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { ResponsiveRoot } from './ResponsiveRoot';
 import './index.css';
 
 const canRegisterPwa =
@@ -11,9 +11,6 @@ if (canRegisterPwa) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((registration) => {
       const checkForUpdate = () => registration.update().catch(() => undefined);
-
-      // Installed PWAs can stay open for long periods. Check the app shell again
-      // when the user returns and periodically while it is running.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') void checkForUpdate();
       });
@@ -27,6 +24,6 @@ if (canRegisterPwa) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ResponsiveRoot />
   </StrictMode>,
 );
