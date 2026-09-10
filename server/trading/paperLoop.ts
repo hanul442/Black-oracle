@@ -374,3 +374,5 @@ export class PaperLoopController {
     }
   }
 }
+
+export const paperLoopController = new PaperLoopController();
