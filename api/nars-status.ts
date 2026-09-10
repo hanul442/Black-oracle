@@ -38,12 +38,45 @@ const compactEvidence = (value: unknown) => Array.isArray(value) ? value.slice(0
   sourceUrl: text(item?.source_url ?? item?.url ?? item?.canonical_url, 500) || null,
 })) : [];
 
+const compactEntities = (value: unknown) => Array.isArray(value) ? value.slice(0, 12).map((item: any) => {
+  if (typeof item === 'string') return { name: text(item, 180), type: null, source: null, authority: null };
+  return {
+    name: text(item?.name ?? item?.label, 180) || null,
+    type: text(item?.type, 80) || null,
+    source: text(item?.source, 120) || null,
+    authority: text(item?.authority_key, 120) || null,
+  };
+}).filter((item) => item.name) : [];
+
+const compactClaims = (value: unknown) => Array.isArray(value) ? value.slice(0, 8).map((item: any) => ({
+  text: typeof item === 'string' ? text(item, 400) : text(item?.text ?? item?.claim_text ?? item?.claim, 400),
+  type: typeof item === 'object' && item ? text(item?.type ?? item?.claim_type, 80) || null : null,
+  status: typeof item === 'object' && item ? text(item?.status, 80) || null : null,
+})).filter((item) => item.text) : [];
+
+const compactAnalysis = (value: unknown) => {
+  const item = value && typeof value === 'object' ? value as any : null;
+  if (!item) return null;
+  return {
+    version: text(item?.version, 120) || null,
+    method: text(item?.method, 120) || null,
+    claimCount: Number.isFinite(Number(item?.claim_count)) ? Number(item.claim_count) : null,
+    entityCount: Number.isFinite(Number(item?.entity_count)) ? Number(item.entity_count) : null,
+    marketDirectionAnalyzed: item?.market_direction_analyzed === true,
+    executionAuthority: item?.execution_authority === true,
+    fingerprint: text(item?.fingerprint, 160) || null,
+  };
+};
+
 const compactInbox = (row: any) => {
   const payload = row?.payload && typeof row.payload === 'object' ? row.payload : {};
+  const claims = compactClaims(payload?.claims);
+  const entities = compactEntities(payload?.entities);
   return {
     outboxId: String(row?.outbox_id ?? ''),
     eventId: row?.event_id == null ? null : String(row.event_id),
     packetType: String(row?.packet_type ?? ''),
+    packetSchemaVersion: text(payload?.schema_version, 40) || null,
     producer: String(row?.producer ?? ''),
     authority: String(row?.authority ?? 'evidence_only'),
     executionAuthority: Boolean(row?.execution_authority),
@@ -60,8 +93,11 @@ const compactInbox = (row: any) => {
     evidenceScore: Number.isFinite(Number(payload?.evidence_score)) ? Number(payload.evidence_score) : null,
     riskTags: strings(payload?.risk_tags, 12),
     marketTags: strings(payload?.market_tags, 12),
-    entities: strings(payload?.entities, 12),
-    claimsCount: Array.isArray(payload?.claims) ? payload.claims.length : 0,
+    entities,
+    entityCount: entities.length,
+    claims,
+    claimsCount: claims.length,
+    analysis: compactAnalysis(payload?.analysis),
     evidence: compactEvidence(payload?.evidence),
   };
 };
@@ -104,12 +140,16 @@ export default async function handler(request: any, response: any) {
     }, {});
     const mapped = inbox.filter((item) => item.mappedMarkets.length > 0).length;
     const analyzed = statusCounts.ANALYZED ?? 0;
+    const narsAnalyzed = inbox.filter((item) => item.analysis?.method === 'deterministic_source_bound').length;
+    const packetsWithEntities = inbox.filter((item) => item.entityCount > 0).length;
+    const packetsWithClaims = inbox.filter((item) => item.claimsCount > 0).length;
     const unmapped = statusCounts.UNMAPPED ?? 0;
     const errors = statusCounts.ERROR ?? 0;
     const totalObserved = inboxResult.total ?? inbox.length;
     const sampleSize = inbox.length;
     const mappingRate = sampleSize > 0 ? mapped / sampleSize : null;
     const analysisRate = sampleSize > 0 ? analyzed / sampleSize : null;
+    const narsAnalyzeCoverage = sampleSize > 0 ? narsAnalyzed / sampleSize : null;
     const degradedSources = sourcesResult.rows.filter((source) => String(source?.health_status ?? '').toLowerCase() !== 'up');
 
     const warnings: string[] = [];
@@ -131,6 +171,10 @@ export default async function handler(request: any, response: any) {
         errors,
         mappingRate,
         analysisRate,
+        narsAnalyzed,
+        narsAnalyzeCoverage,
+        packetsWithEntities,
+        packetsWithClaims,
         activeExternalEvidence: activeEvidenceResult.total ?? activeEvidenceResult.rows.length,
         enabledSources: sourcesResult.total ?? sourcesResult.rows.length,
         degradedSources: degradedSources.length,
