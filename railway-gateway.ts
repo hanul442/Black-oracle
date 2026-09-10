@@ -10,6 +10,7 @@ import activityBriefHandler from './api/activity-brief';
 import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
 import aiCostStatusHandler from './api/ai-cost-status';
+import marketChartHandler from './api/market-chart';
 import { tradingCheckpointStore } from './server/trading/persistence';
 import { assessRuntimeCheckpointCompatibility, tradingRuntimeProfile } from './server/trading/runtimeProfile';
 
@@ -283,6 +284,10 @@ app.get('/api/trading-status', (req, res) => {
 
 app.get('/api/events', (req, res) => {
   void eventsHandler(req, res);
+});
+
+app.get('/api/market-chart', (req, res) => {
+  void marketChartHandler(req, res);
 });
 
 app.post('/api/activity-brief', express.json({ limit: '16kb' }), (req, res) => {
