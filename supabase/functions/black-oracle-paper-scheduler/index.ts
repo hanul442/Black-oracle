@@ -8,6 +8,7 @@ const APPROVED_TARGETS: Record<string, string> = {
   "black-oracle-paper": "https://black-oracle-web-production.up.railway.app",
   "black-oracle-paper-vnext": "https://black-oracle-paper-vnext-production.up.railway.app",
   "black-oracle-paper-vnext-s1r2": "https://black-oracle-paper-vnext-production.up.railway.app",
+  "black-oracle-paper-s2-shadow": "https://black-oracle-paper-s2-shadow-production.up.railway.app",
 };
 
 const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
