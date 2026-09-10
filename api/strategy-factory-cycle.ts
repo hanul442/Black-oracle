@@ -1,5 +1,8 @@
 import { dailyDeterministicStrategySeed, runAiStrategyHypothesisResearch } from '../server/trading/strategyHypothesisResearcher';
 import { appendCanonicalEvents, buildStrategyFactoryCanonicalEvents } from '../server/eventLedger';
+import { attachStrategyFactoryRuntime } from '../server/eventLedgerStrategyFactoryRuntime';
+
+const S2_STRATEGY_RESEARCH_RUNTIME_ID = 'black-oracle-paper-s2-shadow';
 
 const json = (response: any, status: number, body: Record<string, unknown>) => response.status(status).json(body);
 
@@ -39,6 +42,15 @@ export default async function handler(request: any, response: any) {
   }
   if ((process.env.TRADING_PERSISTENCE_BACKEND ?? '').toLowerCase() !== 'supabase') {
     return json(response, 503, { success: false, error: 'Autonomous Strategy Factory requires Supabase persistence.' });
+  }
+
+  const runtimeId = String(process.env.TRADING_RUNTIME_ID ?? '').trim();
+  if (runtimeId !== S2_STRATEGY_RESEARCH_RUNTIME_ID) {
+    return json(response, 403, {
+      success: false,
+      researchOnly: true,
+      error: 'Scheduled Strategy Factory research is restricted to the isolated S2 runtime.',
+    });
   }
 
   try {
@@ -93,13 +105,14 @@ export default async function handler(request: any, response: any) {
 
     let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
     try {
-      eventLedger = await appendCanonicalEvents(buildStrategyFactoryCanonicalEvents(normalizeFactoryRunForLedger(run), {
+      const canonicalEvents = buildStrategyFactoryCanonicalEvents(normalizeFactoryRunForLedger(run), {
         market,
         unit: normalizedUnit,
         seed,
         seedSource,
         aiResearch,
-      }));
+      });
+      eventLedger = await appendCanonicalEvents(attachStrategyFactoryRuntime(canonicalEvents, runtimeId));
     } catch (ledgerError) {
       console.error('Strategy Factory canonical event append failed:', ledgerError);
       eventLedger = {
@@ -111,6 +124,7 @@ export default async function handler(request: any, response: any) {
 
     return json(response, 200, {
       success: true,
+      runtimeId,
       researchOnly: true,
       aiResearch,
       seedSource,
@@ -123,6 +137,6 @@ export default async function handler(request: any, response: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown autonomous Strategy Factory error.';
     console.error('Autonomous Strategy Factory cycle failed:', error);
-    return json(response, 500, { success: false, researchOnly: true, error: message });
+    return json(response, 500, { success: false, runtimeId, researchOnly: true, error: message });
   }
 }
