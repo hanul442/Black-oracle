@@ -92,7 +92,10 @@ export class EvidenceCoverageRequestStore {
     }
 
     if (!this.configured) return;
-    const response = await fetch(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests?request_key=eq.${encodeURIComponent(requestKey)}`, {
+    const query = new URL(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests`);
+    query.searchParams.set('request_key', `eq.${requestKey}`);
+    query.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
+    const response = await fetch(query, {
       method: 'PATCH',
       headers: this.headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify({
@@ -116,6 +119,7 @@ export class EvidenceCoverageRequestStore {
     }
 
     const url = new URL(`${this.supabaseUrl}/rest/v1/black_oracle_evidence_requests`);
+    url.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
     url.searchParams.set('select', '*');
     url.searchParams.set('order', 'requested_at.desc');
     url.searchParams.set('limit', String(Math.max(1, Math.min(500, limit))));
