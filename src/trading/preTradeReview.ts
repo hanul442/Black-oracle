@@ -5,7 +5,56 @@ import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast
 import type { MicrostructureSnapshot } from './microstructure';
 import type { MicrostructureChallengerSnapshot } from './microstructureChallenger';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
-import type { ExecutionDecision, MultiTimeframeSnapshot } from './types';
+import { buildTradeMap } from './tradeMap';
+import type {
+  ExecutionDecision,
+  LiquiditySnapshot,
+  MultiTimeframeSnapshot,
+  PaperPortfolioSnapshot,
+  RiskCheckInput,
+  TradeMapSnapshot,
+} from './types';
+
+export interface PreTradeShadowAuditContext {
+  liquidity: null | {
+    tradePrice: number;
+    accTradePrice24h: number;
+    signedChangeRate: number;
+    spreadBps: number;
+    top5BidDepthKrw: number;
+    top5AskDepthKrw: number;
+    orderbookImbalance: number;
+    score: number;
+    eligible: boolean;
+    warning: boolean;
+    marketDataTimestamp: number | null;
+  };
+  portfolioRisk: null | {
+    initialEquity: number;
+    cash: number;
+    equity: number;
+    marketValue: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalPnl: number;
+    feesPaid: number;
+    drawdownPct: number;
+    dailyPnlPct: number;
+    openPositionCount: number;
+    grossExposurePct: number | null;
+  };
+  positionSizing: null | {
+    mode: ExecutionDecision['positionSizingMode'] | null;
+    requestedNotional: number;
+    expectedLossAtStop: number | null;
+    stopLossPrice: number | null;
+    takeProfit1Price: number | null;
+    takeProfit2Price: number | null;
+    takeProfit1Fraction: number | null;
+  };
+  riskInput: RiskCheckInput | null;
+  proposedTradeMap: TradeMapSnapshot | null;
+}
 
 export interface PreTradeShadowReview {
   stage: 'PRE_EXECUTION_SHADOW';
@@ -17,6 +66,7 @@ export interface PreTradeShadowReview {
   router: StrategyRouterDecision;
   council: CouncilSnapshot;
   arbiter: ShadowArbiterSnapshot;
+  auditContext: PreTradeShadowAuditContext;
 }
 
 export interface PreTradeShadowReviewInput {
@@ -27,7 +77,93 @@ export interface PreTradeShadowReviewInput {
   evidence: EvidenceAggregate;
   microstructure?: MicrostructureSnapshot | null;
   challenger?: MicrostructureChallengerSnapshot | null;
+  liquidity?: LiquiditySnapshot | null;
+  portfolio?: PaperPortfolioSnapshot | null;
+  riskInput?: RiskCheckInput | null;
+  proposedTradeMap?: TradeMapSnapshot | null;
 }
+
+const snapshotLiquidity = (input: PreTradeShadowReviewInput) => {
+  if (input.liquidity) {
+    return {
+      tradePrice: input.liquidity.tradePrice,
+      accTradePrice24h: input.liquidity.accTradePrice24h,
+      signedChangeRate: input.liquidity.signedChangeRate,
+      spreadBps: input.liquidity.spreadBps,
+      top5BidDepthKrw: input.liquidity.top5BidDepthKrw,
+      top5AskDepthKrw: input.liquidity.top5AskDepthKrw,
+      orderbookImbalance: input.liquidity.orderbookImbalance,
+      score: input.liquidity.score,
+      eligible: input.liquidity.eligible,
+      warning: input.liquidity.warning,
+      marketDataTimestamp: Number.isFinite(Number(input.liquidity.marketDataTimestamp))
+        ? Number(input.liquidity.marketDataTimestamp)
+        : null,
+    };
+  }
+  return input.decision.preRiskContext?.liquidity
+    ? { ...input.decision.preRiskContext.liquidity }
+    : null;
+};
+
+const snapshotPortfolio = (input: PreTradeShadowReviewInput) => {
+  if (input.portfolio) {
+    return {
+      initialEquity: input.portfolio.initialEquity,
+      cash: input.portfolio.cash,
+      equity: input.portfolio.equity,
+      marketValue: input.portfolio.marketValue,
+      realizedPnl: input.portfolio.realizedPnl,
+      unrealizedPnl: input.portfolio.unrealizedPnl,
+      totalPnl: input.portfolio.totalPnl,
+      feesPaid: input.portfolio.feesPaid,
+      drawdownPct: input.portfolio.drawdownPct,
+      dailyPnlPct: input.portfolio.dailyPnlPct,
+      openPositionCount: input.portfolio.positions.length,
+      grossExposurePct: input.portfolio.equity > 0 ? input.portfolio.marketValue / input.portfolio.equity : null,
+    };
+  }
+  return input.decision.preRiskContext?.portfolioRisk
+    ? { ...input.decision.preRiskContext.portfolioRisk }
+    : null;
+};
+
+const snapshotAuditContext = (input: PreTradeShadowReviewInput): PreTradeShadowAuditContext => {
+  const liquidity = snapshotLiquidity(input);
+  const portfolioRisk = snapshotPortfolio(input);
+  const riskInput = input.riskInput ?? input.decision.preRiskContext?.riskInput ?? null;
+  const positionSizing = input.decision.action === 'ENTER' ? {
+    mode: input.decision.positionSizingMode ?? null,
+    requestedNotional: input.decision.notional,
+    expectedLossAtStop: Number.isFinite(Number(input.decision.expectedLossAtStop))
+      ? Number(input.decision.expectedLossAtStop)
+      : null,
+    stopLossPrice: input.decision.stopLossPrice,
+    takeProfit1Price: input.decision.takeProfit1Price ?? null,
+    takeProfit2Price: input.decision.takeProfit2Price ?? input.decision.takeProfitPrice,
+    takeProfit1Fraction: input.decision.takeProfit1Fraction ?? null,
+  } : null;
+  const derivedProposedTradeMap = !input.proposedTradeMap && liquidity
+    ? buildTradeMap({
+        currentPrice: liquidity.tradePrice,
+        decision: input.decision,
+        multiTimeframe: input.multiTimeframe,
+        oneHour: input.multiTimeframe.frames.oneHour,
+        stage: 'PRE_RISK_SHADOW',
+      })
+    : null;
+  const proposedTradeMap = input.proposedTradeMap ?? derivedProposedTradeMap;
+
+  return {
+    liquidity,
+    portfolioRisk,
+    positionSizing,
+    riskInput: riskInput ? { ...riskInput } : null,
+    proposedTradeMap: proposedTradeMap
+      ? { ...proposedTradeMap, reasons: proposedTradeMap.reasons.slice() }
+      : null,
+  };
+};
 
 export const buildPreTradeShadowReview = (input: PreTradeShadowReviewInput): PreTradeShadowReview => {
   const market = input.market.toUpperCase();
@@ -57,5 +193,6 @@ export const buildPreTradeShadowReview = (input: PreTradeShadowReviewInput): Pre
     router,
     council,
     arbiter,
+    auditContext: snapshotAuditContext(input),
   };
 };

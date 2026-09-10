@@ -7,15 +7,18 @@ export interface TradeMapInput {
   decision: ExecutionDecision;
   multiTimeframe: MultiTimeframeSnapshot;
   oneHour: TradingSnapshot;
+  stage?: 'FINAL_EXECUTION' | 'PRE_RISK_SHADOW';
 }
 
 export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
   const { currentPrice, decision, multiTimeframe, oneHour } = input;
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) throw new Error('Trade map requires a positive current price.');
 
+  const preRiskShadow = input.stage === 'PRE_RISK_SHADOW';
   const longBias = multiTimeframe.action === 'BUY' || multiTimeframe.directionalScore >= 20;
-  const active = decision.action === 'ENTER' && decision.side === 'BUY';
-  const status: TradeMapSnapshot['status'] = active ? 'ACTIVE' : longBias ? 'CANDIDATE' : 'NO_TRADE';
+  const proposedLong = decision.action === 'ENTER' && decision.side === 'BUY';
+  const active = !preRiskShadow && proposedLong;
+  const status: TradeMapSnapshot['status'] = active ? 'ACTIVE' : proposedLong || longBias ? 'CANDIDATE' : 'NO_TRADE';
   if (status === 'NO_TRADE') {
     return {
       status,
@@ -64,7 +67,9 @@ export const buildTradeMap = (input: TradeMapInput): TradeMapSnapshot => {
   const reasons = [
     active
       ? 'Execution gates passed; this map mirrors the active Paper entry and its dynamic protection levels.'
-      : 'Bullish structure exists, but execution has not authorized an entry; the map is candidate-only.',
+      : preRiskShadow && proposedLong
+        ? 'Pre-risk candidate map only: Router/Council/Arbiter may review these proposed levels, but deterministic Risk has not authorized execution.'
+        : 'Bullish structure exists, but execution has not authorized an entry; the map is candidate-only.',
     oneHour.structure?.lastEvent
       ? `${oneHour.structure.lastEvent.type} ${oneHour.structure.lastEvent.direction} is the latest 1H confirmed structure event.`
       : 'No 1H structural break is confirmed; ATR protection remains the fallback.',
