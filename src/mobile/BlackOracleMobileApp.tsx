@@ -1,1 +1,1 @@
-export { BlackOracleMobileApp } from './BlackOracleMobileAppV2';
+export { BlackOracleMobileApp } from './BlackOracleMobileAppV3';
