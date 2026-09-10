@@ -11,7 +11,7 @@ const liquidity = {
   market: 'KRW-TEST', tradePrice: 100, accTradePrice24h: 1_000_000_000,
   signedChangeRate: 0.01, spreadBps: 2, top5BidDepthKrw: 100_000_000,
   top5AskDepthKrw: 100_000_000, orderbookImbalance: 0, warning: false,
-  score: 90, eligible: true, reasons: [], marketDataTimestamp: Date.now() - 1_000,
+  score: 90, eligible: true, reasons: [], marketDataTimestamp: undefined,
 };
 
 const oneHour = {
@@ -52,9 +52,11 @@ test('entry candidate exists before risk and final decision remains wrapper-equi
   assert.ok(candidate.decision.stopLossPrice);
   assert.ok(candidate.decision.expectedLossAtStop != null);
   assert.equal(candidate.decision.preRiskContext?.liquidity.tradePrice, liquidity.tradePrice);
+  assert.equal(candidate.decision.preRiskContext?.liquidity.marketDataTimestamp, null);
   assert.equal(candidate.decision.preRiskContext?.portfolioRisk.initialEquity, 1_000_000);
   assert.equal(candidate.decision.preRiskContext?.riskInput?.requestedNotional, candidate.decision.notional);
   assert.equal(candidate.decision.preRiskContext?.riskInput?.estimatedSlippageBps, candidate.riskInput?.estimatedSlippageBps);
+  assert.equal(candidate.decision.preRiskContext?.riskInput?.marketDataAgeMs, 1_000);
 
   const staged = applyDeterministicRiskToCandidate(candidate);
   const legacyWrapper = buildExecutionDecision(input);
