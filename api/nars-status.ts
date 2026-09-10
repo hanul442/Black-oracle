@@ -73,6 +73,7 @@ const compactInbox = (row: any) => {
   const claims = compactClaims(payload?.claims);
   const entities = compactEntities(payload?.entities);
   return {
+    runtimeId: row?.runtime_id == null ? null : String(row.runtime_id),
     outboxId: String(row?.outbox_id ?? ''),
     eventId: row?.event_id == null ? null : String(row.event_id),
     packetType: String(row?.packet_type ?? ''),
@@ -110,16 +111,27 @@ export default async function handler(request: any, response: any) {
   response.setHeader('Cache-Control', 'no-store, max-age=0');
 
   try {
+    const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+    const runtimeScoped = runtimeId === 'black-oracle-paper-s2-shadow';
+    const inboxTable = runtimeScoped ? 'black_oracle_nars_runtime_inbox' : 'black_oracle_nars_inbox';
+    const evidenceTable = runtimeScoped ? 'black_oracle_runtime_external_evidence' : 'black_oracle_external_evidence';
     const limit = boundedInt(request.query?.limit, 50, 10, 200);
     const nowIso = new Date().toISOString();
+    const runtimeFilter = runtimeScoped ? { runtime_id: `eq.${runtimeId}` } : {};
     const [inboxResult, activeEvidenceResult, sourcesResult] = await Promise.all([
-      readRows('black_oracle_nars_inbox', {
-        select: 'outbox_id,event_id,packet_type,producer,authority,execution_authority,mapped_markets,status,payload,received_at,analyzed_at,updated_at,last_error',
+      readRows(inboxTable, {
+        select: runtimeScoped
+          ? 'runtime_id,outbox_id,event_id,packet_type,producer,authority,execution_authority,mapped_markets,status,payload,received_at,analyzed_at,updated_at,last_error'
+          : 'outbox_id,event_id,packet_type,producer,authority,execution_authority,mapped_markets,status,payload,received_at,analyzed_at,updated_at,last_error',
+        ...runtimeFilter,
         order: 'received_at.desc',
         limit: '500',
       }),
-      readRows('black_oracle_external_evidence', {
-        select: 'id,event_id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,rationale,materiality,impact_confidence,evidence_grade,evidence_score,citations,eligible_for_new_risk,analysis_model,analysis_version',
+      readRows(evidenceTable, {
+        select: runtimeScoped
+          ? 'runtime_id,id,event_id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,rationale,materiality,impact_confidence,evidence_grade,evidence_score,citations,eligible_for_new_risk,analysis_model,analysis_version'
+          : 'id,event_id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,rationale,materiality,impact_confidence,evidence_grade,evidence_score,citations,eligible_for_new_risk,analysis_model,analysis_version',
+        ...runtimeFilter,
         expires_at: `gt.${nowIso}`,
         order: 'observed_at.desc',
         limit: '200',
@@ -153,13 +165,18 @@ export default async function handler(request: any, response: any) {
     const degradedSources = sourcesResult.rows.filter((source) => String(source?.health_status ?? '').toLowerCase() !== 'up');
 
     const warnings: string[] = [];
-    if (sampleSize && unmapped / sampleSize >= 0.5) warnings.push(`NARS last-mile mapping is degraded: ${unmapped}/${sampleSize} sampled inbox packets are UNMAPPED.`);
-    if (activeEvidenceResult.rows.length === 0) warnings.push('No active Black Oracle external Evidence is currently available from the NARS bridge.');
+    if (sampleSize && unmapped / sampleSize >= 0.5) {
+      warnings.push(runtimeScoped
+        ? `NARS fan-out is receiving packets, but ${unmapped}/${sampleSize} sampled S2 packets are not mapped to an active/static market. This can be expected under demand-gated equity Evidence policy.`
+        : `NARS last-mile mapping coverage is low: ${unmapped}/${sampleSize} sampled inbox packets are UNMAPPED.`);
+    }
+    if (activeEvidenceResult.rows.length === 0) warnings.push('No active Black Oracle external Evidence is currently available from the NARS bridge for this runtime.');
     if (errors > 0) warnings.push(`${errors} NARS bridge packet(s) are in ERROR in the sampled inbox.`);
     if (degradedSources.length > 0) warnings.push(`${degradedSources.length} enabled NARS source(s) are not reporting health=up.`);
 
     return response.status(200).json({
       success: true,
+      runtime: { runtimeId, scopedNarsBridge: runtimeScoped },
       authority: { producer: 'NARS', role: 'evidence_only', executionAuthority: false },
       generatedAt: Date.now(),
       stats: {

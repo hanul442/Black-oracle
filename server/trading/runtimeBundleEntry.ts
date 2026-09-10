@@ -13,3 +13,4 @@ export {
   runCryptoStrategyFactory,
   strategyFactoryRunnerStatus,
 } from './strategyFactoryRunner';
+export { consumeNarsEvidencePackets } from './narsConsumer';
