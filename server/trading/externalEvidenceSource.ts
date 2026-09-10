@@ -10,9 +10,11 @@ const sourceType = (value: unknown): TradingEvidence['sourceType'] => {
 export const loadActiveExternalEvidence = async (limit = 500): Promise<TradingEvidence[]> => {
   const supabaseUrl = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
   const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+  const runtimeId = String(process.env.TRADING_RUNTIME_ID ?? 'black-oracle-paper');
   if (!supabaseUrl || !serviceRoleKey) return [];
   const now = new Date().toISOString();
   const url = new URL(`${supabaseUrl}/rest/v1/black_oracle_external_evidence`);
+  url.searchParams.set('runtime_id', `eq.${runtimeId}`);
   url.searchParams.set('expires_at', `gt.${now}`);
   url.searchParams.set('select', 'id,market,title,direction,strength,reliability,source_type,source,observed_at,expires_at,contradiction_of,tags');
   url.searchParams.set('order', 'observed_at.desc');
