@@ -14,12 +14,12 @@ import {
   eventTags,
   eventTypeKo,
   LedgerEvent,
-  number,
   pct,
   scoreHex,
   scoreText,
   TradeMap,
 } from './types';
+import { formatKrw } from './financial';
 
 export const Screen = ({ children, padded = true }: { children: React.ReactNode; padded?: boolean }) => (
   <div className={cn('h-full overflow-y-auto pb-[calc(88px+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),18px)]', padded && 'px-4')}>{children}</div>
@@ -172,12 +172,12 @@ export const EventTrace = ({ event }: { event: LedgerEvent }) => {
 };
 
 export const ProtectionCard = ({ tradeMap }: { tradeMap: TradeMap | null | undefined }) => {
-  if (!tradeMap || (!tradeMap.stopLossPrice && !tradeMap.takeProfit1Price && !tradeMap.takeProfit2Price)) return <EmptyCard title="보호 가격 대기 중" body="현재 판단에는 SL / TP1 / TP2가 포함된 Trade Map이 없습니다." />;
+  if (!tradeMap || (!tradeMap.stopLossPrice && !tradeMap.takeProfit1Price && !tradeMap.takeProfit2Price)) return <EmptyCard title="보호 가격 대기 중" body="현재 판단에는 손절가 / 1차 익절가 / 2차 익절가가 포함된 Trade Map이 없습니다." />;
   return (
     <div className="rounded-[20px] border border-[#edf0f2] bg-white p-4">
-      <div className="flex items-center justify-between"><div className="text-[12px] font-semibold">동적 보호 계획</div><StatusChip value={tradeMap.status} /></div>
-      <div className="mt-4 grid grid-cols-2 gap-3"><Metric label="Entry" value={tradeMap.entryPrice == null ? '—' : number.format(tradeMap.entryPrice)} /><Metric label="Stop Loss" value={tradeMap.stopLossPrice == null ? '—' : number.format(tradeMap.stopLossPrice)} accent="#d95360" /><Metric label="TP1" value={tradeMap.takeProfit1Price == null ? '—' : number.format(tradeMap.takeProfit1Price)} accent="#0a9f79" /><Metric label="TP2" value={tradeMap.takeProfit2Price == null ? '—' : number.format(tradeMap.takeProfit2Price)} accent="#087fbf" /></div>
-      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#f0f2f4] pt-3"><Metric label="예상 위험" value={pct(tradeMap.expectedRiskPct)} /><Metric label="TP1 R" value={scoreText(tradeMap.riskReward1)} /><Metric label="TP2 R" value={scoreText(tradeMap.riskReward2)} /></div>
+      <div className="flex items-center justify-between"><div><div className="text-[12px] font-semibold">동적 보호 계획</div><div className="mt-1 text-[9px] text-[#98a1aa]">아래 값은 모두 자산 1개당 가격이며 거래금액이 아닙니다.</div></div><StatusChip value={tradeMap.status} /></div>
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4"><Metric label="기준 진입가 · 1개당" value={formatKrw(tradeMap.entryPrice)} /><Metric label="손절가 · 1개당" value={formatKrw(tradeMap.stopLossPrice)} accent="#d95360" /><Metric label="1차 익절가 · 1개당" value={formatKrw(tradeMap.takeProfit1Price)} accent="#0a9f79" /><Metric label="2차 익절가 · 1개당" value={formatKrw(tradeMap.takeProfit2Price)} accent="#087fbf" /></div>
+      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#f0f2f4] pt-3"><Metric label="손절 폭" value={pct(tradeMap.expectedRiskPct)} /><Metric label="1차 목표 R" value={scoreText(tradeMap.riskReward1)} /><Metric label="2차 목표 R" value={scoreText(tradeMap.riskReward2)} /></div>
     </div>
   );
 };
