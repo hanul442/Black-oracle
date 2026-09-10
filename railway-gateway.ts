@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
+import narsShadowConsumeHandler from './api/nars-shadow-consume';
 import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
 import activityBriefHandler from './api/activity-brief';
 import eventsHandler from './api/events';
@@ -209,6 +210,13 @@ app.get('/api/trading-paper-cycle', (req, res) => {
     return res.status(401).json({ success: false, error: 'Unauthorized scheduled invocation.' });
   }
   void tradingPaperCycleHandler(req, res);
+});
+
+app.get('/api/nars-shadow-consume', (req, res) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized NARS shadow invocation.' });
+  }
+  void narsShadowConsumeHandler(req, res);
 });
 
 app.post('/api/strategy-factory-cycle', express.json({ limit: '64kb' }), (req, res) => {
