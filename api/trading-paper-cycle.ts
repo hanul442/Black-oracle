@@ -2,6 +2,7 @@ import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGa
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
 import { buildArbiterCanonicalEvents } from '../server/eventLedgerArbiterProjection';
 import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
+import { attachDecisionReplayLineage } from '../server/eventLedgerLineage';
 import { buildNarsCanonicalAuditEvents } from '../server/eventLedgerNarsAudit';
 import { buildTradingSessionDeltaCanonicalEvents } from '../server/eventLedgerTradeProjection';
 
@@ -163,13 +164,13 @@ export default async function handler(request: any, response: any) {
         let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
         try {
           const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
-          const events = [
+          const events = attachDecisionReplayLineage([
             ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
             ...buildArbiterCanonicalEvents(cycle, runtimeId),
             ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
             ...buildTradingSessionDeltaCanonicalEvents(beforeSession, afterSession, runtimeId),
             ...narsAuditEvents,
-          ];
+          ], cycle, runtimeId);
           eventLedger = await appendCanonicalEvents(events);
         } catch (ledgerError) {
           console.error('Canonical event ledger append failed after completed Paper cycle:', ledgerError);
