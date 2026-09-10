@@ -31,7 +31,6 @@ import type {
 import {
   actionKo,
   cn,
-  eventTypeKo,
   pct,
   reasonKo,
   regimeKo,
@@ -53,7 +52,6 @@ import {
   StatusChip,
 } from './v2/ui';
 import {
-  AnalysisDetail,
   CouncilDetail,
   EventDetail,
   EvidenceItemDetail,
@@ -62,6 +60,7 @@ import {
   StrategyDetail,
   TradeTimelineDetail,
 } from './v2/details';
+import { AnalysisDetailV2 } from './v2/AnalysisDetailV2';
 import { PositionDetailClarity } from './v2/PositionDetailClarity';
 import { PortfolioTabClarity } from './v2/PortfolioTabClarity';
 import { formatKrw } from './v2/financial';
@@ -127,70 +126,25 @@ const averageConfidence = (decision: DecisionTapeItem | null) => {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 };
 
-const DecisionRadar = ({ decision }: { decision: DecisionTapeItem | null }) => {
-  if (!decision) return <EmptyCard title="판단 레이더 대기 중" body="최신 decision trace가 생성되면 판단 축별 confidence를 한눈에 보여줍니다." />;
-
+const DecisionConfidencePanel = ({ decision }: { decision: DecisionTapeItem | null }) => {
+  if (!decision) return <EmptyCard title="판단 신뢰도 대기 중" body="최신 decision trace가 생성되면 각 모듈의 confidence를 따로 보여줍니다." />;
   const metrics = [
     { label: '최종 판단', value: clamp01(decision.confidence) },
     { label: '시장 국면', value: clamp01(decision.regimeConfidence) },
     { label: '기술 근거', value: clamp01(decision.technicalEvidence?.confidence) },
     { label: 'Forecast', value: decision.forecast?.available ? clamp01(decision.forecast.confidence) : null },
-    { label: 'Council', value: averageConfidence(decision) },
+    { label: 'Council 평균', value: averageConfidence(decision) },
   ];
-  const centerX = 110;
-  const centerY = 90;
-  const radius = 58;
-  const labelRadius = 79;
-  const count = metrics.length;
-  const coordinate = (index: number, scale: number) => {
-    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
-    return [centerX + Math.cos(angle) * radius * scale, centerY + Math.sin(angle) * radius * scale] as const;
-  };
-  const polygon = (scale: number) => metrics.map((_, index) => coordinate(index, scale).join(',')).join(' ');
-  const dataPolygon = metrics
-    .map((metric, index) => coordinate(index, metric.value ?? 0).join(','))
-    .join(' ');
-  const aria = metrics.map((metric) => `${metric.label} ${metric.value == null ? '자료 없음' : `${Math.round(metric.value * 100)}점`}`).join(', ');
-
   return (
     <div className="rounded-[22px] border border-[#edf0f2] bg-white p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[13px] font-semibold">판단 신뢰도 레이더</div>
-          <div className="mt-1 text-[10px] text-[#929aa2]">{decision.market} 최신 판단 · 서로 다른 confidence 축을 비교합니다.</div>
-        </div>
+      <div className="flex items-start justify-between gap-3">
+        <div><div className="text-[13px] font-semibold">판단 Confidence</div><div className="mt-1 text-[9px] leading-4 text-[#929aa2]">각 모듈의 값은 의미가 달라 동일 확률 척도로 직접 비교하지 않습니다.</div></div>
         <Pill>{actionKo(decision.decision)}</Pill>
       </div>
-      <svg viewBox="0 0 220 184" className="mt-2 h-[184px] w-full" role="img" aria-label={aria}>
-        {[0.33, 0.66, 1].map((level) => (
-          <polygon key={level} points={polygon(level)} fill="none" stroke="#e7ebee" strokeWidth="1" />
-        ))}
-        {metrics.map((metric, index) => {
-          const [x, y] = coordinate(index, 1);
-          const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
-          const lx = centerX + Math.cos(angle) * labelRadius;
-          const ly = centerY + Math.sin(angle) * labelRadius;
-          return (
-            <g key={metric.label}>
-              <line x1={centerX} y1={centerY} x2={x} y2={y} stroke="#e7ebee" strokeWidth="1" />
-              <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="#68727c">{metric.label}</text>
-            </g>
-          );
-        })}
-        <polygon points={dataPolygon} fill="rgba(20, 28, 36, 0.10)" stroke="#1b242c" strokeWidth="1.8" />
-        {metrics.map((metric, index) => {
-          const [x, y] = coordinate(index, metric.value ?? 0);
-          return <circle key={`${metric.label}-point`} cx={x} cy={y} r="2.7" fill="#1b242c" />;
-        })}
-      </svg>
-      <div className="grid grid-cols-5 gap-1 border-t border-[#f0f2f4] pt-3">
-        {metrics.map((metric) => (
-          <div key={`${metric.label}-value`} className="text-center">
-            <div className="text-[8px] text-[#9aa2aa]">{metric.label}</div>
-            <div className="mt-1 text-[11px] font-semibold">{metric.value == null ? '—' : Math.round(metric.value * 100)}</div>
-          </div>
-        ))}
-      </div>
+      <div className="mt-4 space-y-3">{metrics.map((metric) => {
+        const width = metric.value == null ? 0 : Math.round(metric.value * 100);
+        return <div key={metric.label}><div className="mb-1 flex justify-between text-[9px]"><span className="text-[#7f8992]">{metric.label}</span><span className="font-semibold text-[#303840]">{metric.value == null ? '—' : `${width}%`}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-[#edf1f3]"><div className="h-full rounded-full bg-[#303840]" style={{ width: `${width}%` }} /></div></div>;
+      })}</div>
     </div>
   );
 };
@@ -211,7 +165,7 @@ const HomeTab = ({ operations, decisions, strategies, events, loading, onRefresh
   const portfolio = operations?.portfolio;
   const initial = portfolio?.initialEquity ?? 0;
   const totalReturn = portfolio && initial > 0 ? portfolio.equity / initial - 1 : operations?.performance?.totalReturnPct ?? null;
-  const equityValues = operations?.equityCurve?.map((item) => item.equity) ?? [];
+  const equityValues = operations?.equityCurve?.map((item) => item.equity).filter(Number.isFinite) ?? [];
   const currentDecision = decisions[0] ?? null;
   const systemHealthy = operations?.status === 'OK' && !operations?.loop?.stale;
   const lastCycleAt = operations?.loop?.lastCycle?.finishedAt ?? null;
@@ -245,7 +199,7 @@ const HomeTab = ({ operations, decisions, strategies, events, loading, onRefresh
         </div>
         <div className="mt-2 text-[30px] font-semibold tracking-[-0.05em]">{formatKrw(portfolio?.equity)}</div>
         <div className="mt-1 text-[15px] font-semibold" style={{ color: (totalReturn ?? 0) >= 0 ? '#0aa77d' : '#dc5a66' }}>{pct(totalReturn, true)}</div>
-        <div className="mt-3"><Sparkline values={equityValues} positive={(totalReturn ?? 0) >= 0} /></div>
+        <div className="mt-3">{equityValues.length >= 2 ? <Sparkline values={equityValues} positive={(totalReturn ?? 0) >= 0} /> : <div className="flex h-12 items-center justify-center rounded-xl bg-[#f7f8f9] text-[9px] text-[#9aa2aa]">자산곡선 데이터 대기 중 · 임의 곡선을 표시하지 않습니다.</div>}</div>
         <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#f0f2f4] pt-4">
           <Metric label="오늘 손익률" value={pct(portfolio?.dailyPnlPct, true)} />
           <Metric label="현재 Drawdown" value={pct(portfolio?.currentDrawdownPct)} />
@@ -283,7 +237,7 @@ const HomeTab = ({ operations, decisions, strategies, events, loading, onRefresh
         ) : <EmptyCard title="최신 판단 없음" body="Paper Engine이 decision trace를 남기면 Evidence → Strategy → Council → Risk → Decision 흐름을 이곳에서 요약합니다." />}
       </section>
 
-      <div className="mt-4"><DecisionRadar decision={currentDecision} /></div>
+      <div className="mt-4"><DecisionConfidencePanel decision={currentDecision} /></div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button type="button" onClick={() => onRoute('evidence')} className="rounded-[20px] border border-[#edf0f2] bg-white p-4 text-left">
@@ -559,7 +513,7 @@ export const BlackOracleMobileApp: React.FC = () => {
   const detail = () => {
     if (route === 'strategy') return <StrategyDetail strategy={selectedStrategy} onBack={back} />;
     if (route === 'position') return <PositionDetailClarity position={selectedPosition} decision={selectedPosition ? decisions.find((item) => item.market === selectedPosition.market) ?? null : null} onBack={back} />;
-    if (route === 'analysis') return <AnalysisDetail decisions={decisions} selected={selectedDecision} onSelect={setSelectedDecision} onCouncil={() => openChild('council', 'analysis')} onBack={back} />;
+    if (route === 'analysis') return <AnalysisDetailV2 decisions={decisions} selected={selectedDecision} onSelect={setSelectedDecision} onCouncil={() => openChild('council', 'analysis')} onBack={back} />;
     if (route === 'evidence') return <EvidenceListDetail items={evidenceItems} events={events.filter((event) => event.eventType === 'EVIDENCE')} onSelectItem={(item) => { setSelectedEvidence(item); openChild('evidence-item', 'evidence'); }} onSelectEvent={(event) => chooseEvent(event, 'evidence')} onBack={back} />;
     if (route === 'evidence-item') return <EvidenceItemDetail item={selectedEvidence} onBack={back} />;
     if (route === 'council') return <CouncilDetail decisions={decisions} selected={selectedDecision} onSelect={setSelectedDecision} onBack={back} />;
