@@ -319,6 +319,37 @@ export interface MultiTimeframeSnapshot {
   reasons: string[];
 }
 
+export interface ExecutionPreRiskContext {
+  liquidity: {
+    tradePrice: number;
+    accTradePrice24h: number;
+    signedChangeRate: number;
+    spreadBps: number;
+    top5BidDepthKrw: number;
+    top5AskDepthKrw: number;
+    orderbookImbalance: number;
+    score: number;
+    eligible: boolean;
+    warning: boolean;
+    marketDataTimestamp: number | null;
+  };
+  portfolioRisk: {
+    initialEquity: number;
+    cash: number;
+    equity: number;
+    marketValue: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalPnl: number;
+    feesPaid: number;
+    drawdownPct: number;
+    dailyPnlPct: number;
+    openPositionCount: number;
+    grossExposurePct: number | null;
+  };
+  riskInput: RiskCheckInput | null;
+}
+
 export interface ExecutionDecision {
   action: 'ENTER' | 'EXIT' | 'HOLD';
   side: TradeSide | null;
@@ -333,6 +364,8 @@ export interface ExecutionDecision {
   protectionBasis?: 'STRUCTURE_ATR' | 'ATR' | null;
   positionSizingMode?: 'EQUAL_NOTIONAL_RISK_CAPPED' | 'FIXED_RISK_AT_STOP';
   expectedLossAtStop?: number;
+  /** Immutable provenance captured before deterministic Risk evaluates this candidate. */
+  preRiskContext?: ExecutionPreRiskContext;
   riskDisposition: RiskDisposition;
   riskReasons: string[];
   reasons: string[];
