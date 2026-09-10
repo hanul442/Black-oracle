@@ -4,6 +4,7 @@ import type { EvidenceAggregate } from './evidence';
 import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast';
 import type { MicrostructureSnapshot } from './microstructure';
 import type { MicrostructureChallengerSnapshot } from './microstructureChallenger';
+import type { PreTradeShadowReview } from './preTradeReview';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
 import type {
   ExecutionDecision,
@@ -28,6 +29,7 @@ export interface DecisionTrace {
   router: StrategyRouterDecision;
   council: CouncilSnapshot;
   arbiter: ShadowArbiterSnapshot;
+  preTradeReview: PreTradeShadowReview | null;
   riskDisposition: RiskDisposition;
   eventScore: number | null;
   forecast: EvidenceForecast;
@@ -86,6 +88,7 @@ export interface DecisionTraceInput {
   microstructure?: MicrostructureSnapshot | null;
   challenger?: MicrostructureChallengerSnapshot | null;
   tradeMap?: TradeMapSnapshot | null;
+  preTradeReview?: PreTradeShadowReview | null;
   hasOpenPositionAfterStep: boolean;
 }
 
@@ -97,25 +100,37 @@ export const classifyDecisionTraceAction = (
   return hasOpenPositionAfterStep ? 'HOLD' : 'NO_TRADE';
 };
 
+const clonePreTradeReview = (review: PreTradeShadowReview | null): PreTradeShadowReview | null => review ? {
+  ...review,
+  forecast: { ...review.forecast, reasons: review.forecast.reasons.slice() },
+  router: { ...review.router, reasons: review.router.reasons.slice() },
+  council: {
+    ...review.council,
+    members: review.council.members.map((member) => ({ ...member, reasons: member.reasons.slice() })),
+  },
+  arbiter: { ...review.arbiter, reasons: review.arbiter.reasons.slice() },
+} : null;
+
 export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => {
   const { decision, multiTimeframe, evidence } = input;
   const action = classifyDecisionTraceAction(decision.action, input.hasOpenPositionAfterStep);
   const oneHour = multiTimeframe.frames.oneHour;
   const oneHourRegime = oneHour.regime;
   const primaryReason = decision.reasons[0] ?? 'No explicit decision reason was recorded.';
-  const forecast = buildEvidenceForecast(evidence);
-  const router = buildStrategyRouterDecision(multiTimeframe, forecast);
+  const preTradeReview = input.preTradeReview ?? null;
+  const forecast = preTradeReview?.forecast ?? buildEvidenceForecast(evidence);
+  const router = preTradeReview?.router ?? buildStrategyRouterDecision(multiTimeframe, forecast);
   const technical = oneHour.technicalEvidence;
   const structure = oneHour.structure;
   const micro = input.microstructure;
-  const council = buildShadowCouncil({
+  const council = preTradeReview?.council ?? buildShadowCouncil({
     market: input.market.toUpperCase(),
     decision,
     multiTimeframe,
     evidence,
     microstructure: micro,
   });
-  const arbiter = buildShadowArbiterRecommendation({
+  const arbiter = preTradeReview?.arbiter ?? buildShadowArbiterRecommendation({
     action,
     council,
     cycle: multiTimeframe.cycle ?? null,
@@ -134,6 +149,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     router,
     council,
     arbiter,
+    preTradeReview: clonePreTradeReview(preTradeReview),
     riskDisposition: decision.riskDisposition,
     eventScore: evidence.activeCount > 0 ? evidence.score : null,
     forecast,
