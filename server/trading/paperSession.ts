@@ -1,10 +1,12 @@
 import { TRADING_STRATEGY_VERSION, UNIFIED_PAPER_INITIAL_EQUITY_KRW } from '../../src/trading/config';
+import type { EvidenceAggregate } from '../../src/trading/evidence';
 import { buildExecutionDecision } from '../../src/trading/executionPolicy';
 import { TradingLedger } from '../../src/trading/ledger';
 import { buildMicrostructureChallenger } from '../../src/trading/microstructureChallenger';
 import { PaperBroker } from '../../src/trading/paperBroker';
 import { PaperPortfolio, type PaperPortfolioState } from '../../src/trading/paperPortfolio';
 import { buildPaperPerformance, type ClosedPaperTrade, type PaperEntryAuditSnapshot } from '../../src/trading/performance';
+import { buildPreTradeShadowReview } from '../../src/trading/preTradeReview';
 import { buildDynamicProtectionUpdate, type DynamicProtectionUpdate } from '../../src/trading/protectionManager';
 import { buildTradeMap } from '../../src/trading/tradeMap';
 import type { LiquiditySnapshot, PaperFill, TradingLedgerEvent } from '../../src/trading/types';
@@ -359,6 +361,7 @@ export class PaperTradingSession {
     precomputedLiquidity?: LiquiditySnapshot,
     newEntryAllowed = true,
     externalEvidenceAvailable = true,
+    evidence?: EvidenceAggregate,
   ) {
     const normalized = market.toUpperCase();
     const [liquidity, multiTimeframe] = await Promise.all([
@@ -404,6 +407,20 @@ export class PaperTradingSession {
       newEntryAllowed,
       newRiskEvidenceAllowed: externalEvidenceAvailable,
     });
+
+    // S2 shadow-only boundary: capture the exact evidence/router/council/arbiter
+    // review before any ORDER_SUBMITTED event. This snapshot has no execution
+    // authority and therefore cannot alter the qualification runtime outcome.
+    const preTradeReview = evidence ? buildPreTradeShadowReview({
+      timestamp: multiTimeframe.asOf,
+      market: normalized,
+      decision,
+      multiTimeframe,
+      evidence,
+      microstructure,
+      challenger,
+    }) : null;
+
     const tradeMap = buildTradeMap({
       currentPrice: liquidity.tradePrice,
       decision,
@@ -491,6 +508,7 @@ export class PaperTradingSession {
       tradeMap,
       microstructure: entryAudit.microstructure,
       challenger: entryAudit.challenger,
+      preTradeReview,
       protectionUpdate,
     });
 
@@ -632,6 +650,7 @@ export class PaperTradingSession {
       technicalEntryCandidate,
       protectionUpdate,
       decision,
+      preTradeReview,
       tradeMap,
       fill,
       closedTrade,
