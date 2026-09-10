@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDecisionTrace, classifyDecisionTraceAction } from './decisionTrace';
 import type { EvidenceAggregate } from './evidence';
+import type { PreTradeShadowReview } from './preTradeReview';
 import type { ExecutionDecision, MultiTimeframeSnapshot } from './types';
 
 const evidence: EvidenceAggregate = {
@@ -86,4 +87,71 @@ test('keeps HOLD for an existing open position', () => {
   assert.equal(trace.action, 'HOLD');
   assert.equal(trace.eventScore, null);
   assert.equal(trace.riskDisposition, 'NOT_EVALUATED');
+});
+
+test('reuses an existing pre-trade shadow review instead of recomputing router/council/arbiter', () => {
+  const preTradeReview = {
+    stage: 'PRE_EXECUTION_SHADOW',
+    executionAuthority: false,
+    generatedAt: 1_500,
+    market: 'KRW-BTC',
+    reviewedAction: 'HOLD',
+    forecast: {
+      asOf: 1_000,
+      available: false,
+      direction: 'UNAVAILABLE',
+      score: null,
+      confidence: 0,
+      uncertainty: 1,
+      probabilityBullish: null,
+      probabilityBearish: null,
+      activeCount: 0,
+      contradictionCount: 0,
+      evidenceIds: [],
+      reasons: ['pre-trade forecast'],
+    },
+    router: {
+      route: 'TREND_MOMENTUM',
+      confidence: 0.77,
+      forecastAlignment: 'UNAVAILABLE',
+      reasons: ['sentinel pre-trade router'],
+    },
+    council: {
+      mode: 'SHADOW',
+      executionAuthority: false,
+      promotionAuthority: false,
+      reviewedAction: 'HOLD',
+      verdict: 'APPROVE',
+      approveCount: 3,
+      cautionCount: 0,
+      rejectCount: 0,
+      abstainCount: 2,
+      members: [],
+      summary: 'sentinel pre-trade council',
+    },
+    arbiter: {
+      mode: 'SHADOW',
+      executionAuthority: false,
+      recommendation: 'NOT_APPLICABLE',
+      reasons: ['sentinel pre-trade arbiter'],
+      councilVerdict: 'APPROVE',
+      cycleTiming: 'UNAVAILABLE',
+      challengerAlignment: 'UNAVAILABLE',
+    },
+  } as PreTradeShadowReview;
+
+  const trace = buildDecisionTrace({
+    market: 'KRW-BTC',
+    decision,
+    multiTimeframe,
+    evidence,
+    preTradeReview,
+    hasOpenPositionAfterStep: false,
+  });
+
+  assert.equal(trace.strategyDisposition, 'TREND_MOMENTUM');
+  assert.equal(trace.router.reasons[0], 'sentinel pre-trade router');
+  assert.equal(trace.council.summary, 'sentinel pre-trade council');
+  assert.equal(trace.arbiter.reasons[0], 'sentinel pre-trade arbiter');
+  assert.equal(trace.preTradeReview?.stage, 'PRE_EXECUTION_SHADOW');
 });
