@@ -5,6 +5,7 @@ import { buildEvidenceForecast, type EvidenceForecast } from './evidenceForecast
 import type { MicrostructureSnapshot } from './microstructure';
 import type { MicrostructureChallengerSnapshot } from './microstructureChallenger';
 import { buildStrategyRouterDecision, type StrategyRouterDecision } from './strategyRouter';
+import { buildTradeMap } from './tradeMap';
 import type {
   ExecutionDecision,
   LiquiditySnapshot,
@@ -82,36 +83,55 @@ export interface PreTradeShadowReviewInput {
   proposedTradeMap?: TradeMapSnapshot | null;
 }
 
+const snapshotLiquidity = (input: PreTradeShadowReviewInput) => {
+  if (input.liquidity) {
+    return {
+      tradePrice: input.liquidity.tradePrice,
+      accTradePrice24h: input.liquidity.accTradePrice24h,
+      signedChangeRate: input.liquidity.signedChangeRate,
+      spreadBps: input.liquidity.spreadBps,
+      top5BidDepthKrw: input.liquidity.top5BidDepthKrw,
+      top5AskDepthKrw: input.liquidity.top5AskDepthKrw,
+      orderbookImbalance: input.liquidity.orderbookImbalance,
+      score: input.liquidity.score,
+      eligible: input.liquidity.eligible,
+      warning: input.liquidity.warning,
+      marketDataTimestamp: Number.isFinite(Number(input.liquidity.marketDataTimestamp))
+        ? Number(input.liquidity.marketDataTimestamp)
+        : null,
+    };
+  }
+  return input.decision.preRiskContext?.liquidity
+    ? { ...input.decision.preRiskContext.liquidity }
+    : null;
+};
+
+const snapshotPortfolio = (input: PreTradeShadowReviewInput) => {
+  if (input.portfolio) {
+    return {
+      initialEquity: input.portfolio.initialEquity,
+      cash: input.portfolio.cash,
+      equity: input.portfolio.equity,
+      marketValue: input.portfolio.marketValue,
+      realizedPnl: input.portfolio.realizedPnl,
+      unrealizedPnl: input.portfolio.unrealizedPnl,
+      totalPnl: input.portfolio.totalPnl,
+      feesPaid: input.portfolio.feesPaid,
+      drawdownPct: input.portfolio.drawdownPct,
+      dailyPnlPct: input.portfolio.dailyPnlPct,
+      openPositionCount: input.portfolio.positions.length,
+      grossExposurePct: input.portfolio.equity > 0 ? input.portfolio.marketValue / input.portfolio.equity : null,
+    };
+  }
+  return input.decision.preRiskContext?.portfolioRisk
+    ? { ...input.decision.preRiskContext.portfolioRisk }
+    : null;
+};
+
 const snapshotAuditContext = (input: PreTradeShadowReviewInput): PreTradeShadowAuditContext => {
-  const liquidity = input.liquidity ? {
-    tradePrice: input.liquidity.tradePrice,
-    accTradePrice24h: input.liquidity.accTradePrice24h,
-    signedChangeRate: input.liquidity.signedChangeRate,
-    spreadBps: input.liquidity.spreadBps,
-    top5BidDepthKrw: input.liquidity.top5BidDepthKrw,
-    top5AskDepthKrw: input.liquidity.top5AskDepthKrw,
-    orderbookImbalance: input.liquidity.orderbookImbalance,
-    score: input.liquidity.score,
-    eligible: input.liquidity.eligible,
-    warning: input.liquidity.warning,
-    marketDataTimestamp: Number.isFinite(Number(input.liquidity.marketDataTimestamp))
-      ? Number(input.liquidity.marketDataTimestamp)
-      : null,
-  } : null;
-  const portfolio = input.portfolio ? {
-    initialEquity: input.portfolio.initialEquity,
-    cash: input.portfolio.cash,
-    equity: input.portfolio.equity,
-    marketValue: input.portfolio.marketValue,
-    realizedPnl: input.portfolio.realizedPnl,
-    unrealizedPnl: input.portfolio.unrealizedPnl,
-    totalPnl: input.portfolio.totalPnl,
-    feesPaid: input.portfolio.feesPaid,
-    drawdownPct: input.portfolio.drawdownPct,
-    dailyPnlPct: input.portfolio.dailyPnlPct,
-    openPositionCount: input.portfolio.positions.length,
-    grossExposurePct: input.portfolio.equity > 0 ? input.portfolio.marketValue / input.portfolio.equity : null,
-  } : null;
+  const liquidity = snapshotLiquidity(input);
+  const portfolioRisk = snapshotPortfolio(input);
+  const riskInput = input.riskInput ?? input.decision.preRiskContext?.riskInput ?? null;
   const positionSizing = input.decision.action === 'ENTER' ? {
     mode: input.decision.positionSizingMode ?? null,
     requestedNotional: input.decision.notional,
@@ -123,14 +143,24 @@ const snapshotAuditContext = (input: PreTradeShadowReviewInput): PreTradeShadowA
     takeProfit2Price: input.decision.takeProfit2Price ?? input.decision.takeProfitPrice,
     takeProfit1Fraction: input.decision.takeProfit1Fraction ?? null,
   } : null;
+  const derivedProposedTradeMap = !input.proposedTradeMap && liquidity
+    ? buildTradeMap({
+        currentPrice: liquidity.tradePrice,
+        decision: input.decision,
+        multiTimeframe: input.multiTimeframe,
+        oneHour: input.multiTimeframe.frames.oneHour,
+        stage: 'PRE_RISK_SHADOW',
+      })
+    : null;
+  const proposedTradeMap = input.proposedTradeMap ?? derivedProposedTradeMap;
 
   return {
     liquidity,
-    portfolioRisk: portfolio,
+    portfolioRisk,
     positionSizing,
-    riskInput: input.riskInput ? { ...input.riskInput } : null,
-    proposedTradeMap: input.proposedTradeMap
-      ? { ...input.proposedTradeMap, reasons: input.proposedTradeMap.reasons.slice() }
+    riskInput: riskInput ? { ...riskInput } : null,
+    proposedTradeMap: proposedTradeMap
+      ? { ...proposedTradeMap, reasons: proposedTradeMap.reasons.slice() }
       : null,
   };
 };
