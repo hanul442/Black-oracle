@@ -7,6 +7,9 @@ const boundedInt = (value: unknown, fallback: number, min: number, max: number) 
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 };
 
+const textQuery = (value: unknown, max: number) =>
+  typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
+
 export default async function handler(request: any, response: any) {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
@@ -23,18 +26,36 @@ export default async function handler(request: any, response: any) {
       ? request.query.market.trim().toUpperCase()
       : null;
     const limit = boundedInt(request.query?.limit, 300, 1, 500);
-    const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
-    const [events, health] = await Promise.all([
-      readCanonicalEvents({ limit, type, market }),
-      readCanonicalLedgerHealth(runtimeId),
-    ]);
+    const configuredRuntimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+    const requestedRuntime = textQuery(request.query?.runtimeId, 200);
+    const runtimeScope = requestedRuntime?.toUpperCase() === 'ALL'
+      ? null
+      : (requestedRuntime ?? configuredRuntimeId);
+
+    // readCanonicalEvents predates runtime scoping. Pull the bounded maximum and
+    // filter here so unrelated Paper/shadow runtimes cannot silently mix in one UI tape.
+    const rawEvents = await readCanonicalEvents({ limit: 500, type, market });
+    const events = (runtimeScope
+      ? rawEvents.filter((event) => event.runtimeId === runtimeScope)
+      : rawEvents
+    ).slice(0, limit);
+    const health = runtimeScope ? await readCanonicalLedgerHealth(runtimeScope) : null;
+    const runtimeBreakdown = rawEvents.reduce<Record<string, number>>((acc, event) => {
+      const key = event.runtimeId ?? 'UNSCOPED';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
 
     return response.status(200).json({
       success: true,
       canonical: true,
       appendOnly: true,
-      coverage: `CUTOVER_FORWARD · ${health.status}`,
+      coverage: health ? `CUTOVER_FORWARD · ${health.status}` : 'CUTOVER_FORWARD · ALL_RUNTIMES',
       source: 'black_oracle_events',
+      runtimeScope: runtimeScope ?? 'ALL',
+      configuredRuntimeId,
+      runtimeMixed: runtimeScope == null,
+      runtimeBreakdown,
       count: events.length,
       health,
       events,
