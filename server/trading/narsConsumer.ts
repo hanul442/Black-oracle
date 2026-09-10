@@ -182,6 +182,17 @@ const dbConfig = () => {
   return { url, key, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } };
 };
 
+const runtimeScope = () => {
+  const runtimeId = String(process.env.TRADING_RUNTIME_ID ?? 'black-oracle-paper');
+  const scoped = runtimeId === 'black-oracle-paper-s2-shadow';
+  return {
+    runtimeId,
+    scoped,
+    inboxTable: scoped ? 'black_oracle_nars_runtime_inbox' : 'black_oracle_nars_inbox',
+    evidenceTable: scoped ? 'black_oracle_runtime_external_evidence' : 'black_oracle_external_evidence',
+  };
+};
+
 const loadResolutionContext = async (eventId?: string | null): Promise<ResolutionContext | null> => {
   if (!eventId) return null;
   const { url, headers } = dbConfig();
@@ -226,6 +237,7 @@ const loadResolutionContext = async (eventId?: string | null): Promise<Resolutio
 };
 
 const patchOutbox = async (row: OutboxRow, values: Record<string, unknown>) => {
+  if (runtimeScope().scoped) return;
   const { url, headers } = dbConfig();
   const response = await fetch(`${url}/rest/v1/nars_intel_outbox?id=eq.${encodeURIComponent(row.id)}`, {
     method: 'PATCH', headers, body: JSON.stringify(values),
@@ -235,11 +247,14 @@ const patchOutbox = async (row: OutboxRow, values: Record<string, unknown>) => {
 
 const upsertInbox = async (row: OutboxRow, mappedMarkets: string[], status: string, error: string | null = null) => {
   const { url, headers } = dbConfig();
+  const scope = runtimeScope();
   const payload = row.payload ?? {};
-  const response = await fetch(`${url}/rest/v1/black_oracle_nars_inbox?on_conflict=outbox_id`, {
+  const conflict = scope.scoped ? 'runtime_id,outbox_id' : 'outbox_id';
+  const response = await fetch(`${url}/rest/v1/${scope.inboxTable}?on_conflict=${encodeURIComponent(conflict)}`, {
     method: 'POST',
     headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({
+      ...(scope.scoped ? { runtime_id: scope.runtimeId } : {}),
       outbox_id: row.id,
       event_id: row.event_id ?? payload?.event_id ?? null,
       packet_type: payload?.packet_type ?? 'EvidencePacket',
@@ -259,6 +274,7 @@ const upsertInbox = async (row: OutboxRow, mappedMarkets: string[], status: stri
 
 const upsertExternalEvidence = async (row: OutboxRow, instrument: TradingInstrument, analysis: Awaited<ReturnType<typeof analyzeImpact>>, context?: ResolutionContext | null) => {
   const { url, headers } = dbConfig();
+  const scope = runtimeScope();
   const payload = row.payload ?? {};
   const impact = analysis.impact;
   const now = Date.now();
@@ -267,10 +283,12 @@ const upsertExternalEvidence = async (row: OutboxRow, instrument: TradingInstrum
   const id = `nars:${row.id}:${instrument.market}`;
   const reliability = packetReliability(payload);
   const eligibleForNewRisk = impact.direction !== 'NEUTRAL' && impact.materiality >= 0.35 && impact.confidence >= 0.55 && reliability >= 0.55;
-  const response = await fetch(`${url}/rest/v1/black_oracle_external_evidence?on_conflict=id`, {
+  const conflict = scope.scoped ? 'runtime_id,id' : 'id';
+  const response = await fetch(`${url}/rest/v1/${scope.evidenceTable}?on_conflict=${encodeURIComponent(conflict)}`, {
     method: 'POST',
     headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({
+      ...(scope.scoped ? { runtime_id: scope.runtimeId } : {}),
       id,
       packet_outbox_id: row.id,
       event_id: row.event_id ?? payload?.event_id ?? null,
@@ -380,7 +398,9 @@ const remapDeferredInbox = async (
 ) => {
   if (!coverageRequests.some(activeCoverageRequest)) return [];
   const { url, headers } = dbConfig();
-  const query = new URL(`${url}/rest/v1/black_oracle_nars_inbox`);
+  const scope = runtimeScope();
+  const query = new URL(`${url}/rest/v1/${scope.inboxTable}`);
+  if (scope.scoped) query.searchParams.set('runtime_id', `eq.${scope.runtimeId}`);
   query.searchParams.set('status', 'in.(UNMAPPED,MAPPED)');
   query.searchParams.set('select', 'outbox_id,event_id,payload');
   query.searchParams.set('order', 'received_at.desc');
@@ -410,15 +430,20 @@ const remapDeferredInbox = async (
   return results;
 };
 
-/**
- * Idempotent NARS → Black Oracle bridge. NARS remains evidence-only; this
- * consumer maps and analyzes packets but never creates orders or execution authority.
- */
-export const consumeNarsEvidencePackets = async (limit = 12) => {
+const loadDeliveryRows = async (limit: number): Promise<OutboxRow[]> => {
   const { url, headers } = dbConfig();
-  const coverageRequests = await evidenceCoverageRequestStore.list(500).catch(() => [] as StoredEvidenceCoverageRequest[]);
-  await persistCoverageAliases(coverageRequests);
-  const dynamicInstruments = await loadDynamicInstrumentAliases().catch(() => [] as TradingInstrument[]);
+  const scope = runtimeScope();
+  const bounded = Math.max(1, Math.min(50, limit));
+  if (scope.scoped) {
+    const response = await fetch(`${url}/rest/v1/rpc/black_oracle_nars_delivery_candidates`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ p_runtime_id: scope.runtimeId, p_limit: bounded }),
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`Runtime-scoped NARS fan-out read failed (${response.status}): ${(await response.text()).slice(0, 240)}`);
+    return await response.json() as OutboxRow[];
+  }
 
   const query = new URL(`${url}/rest/v1/nars_intel_outbox`);
   query.searchParams.set('destination', 'eq.black_oracle');
@@ -426,10 +451,26 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
   query.searchParams.set('available_at', `lte.${new Date().toISOString()}`);
   query.searchParams.set('select', 'id,event_id,payload,attempts');
   query.searchParams.set('order', 'created_at.asc');
-  query.searchParams.set('limit', String(Math.max(1, Math.min(50, limit))));
+  query.searchParams.set('limit', String(bounded));
   const response = await fetch(query, { headers, cache: 'no-store' });
   if (!response.ok) throw new Error(`NARS outbox read failed (${response.status}): ${(await response.text()).slice(0, 240)}`);
-  const rows = await response.json() as OutboxRow[];
+  return await response.json() as OutboxRow[];
+};
+
+/**
+ * Idempotent NARS → Black Oracle bridge. NARS remains evidence-only; this
+ * consumer maps and analyzes packets but never creates orders or execution authority.
+ * S2 shadow uses a runtime-scoped fan-out path so the pinned S1R2 qualification
+ * runtime cannot consume packets on S2's behalf.
+ */
+export const consumeNarsEvidencePackets = async (limit = 12) => {
+  const scope = runtimeScope();
+  const coverageRequests = await evidenceCoverageRequestStore.list(500).catch(() => [] as StoredEvidenceCoverageRequest[]);
+  if (!scope.scoped) await persistCoverageAliases(coverageRequests);
+  const dynamicInstruments = scope.scoped
+    ? [] as TradingInstrument[]
+    : await loadDynamicInstrumentAliases().catch(() => [] as TradingInstrument[]);
+  const rows = await loadDeliveryRows(limit);
   const results: any[] = [];
 
   for (const row of rows) {
@@ -445,7 +486,6 @@ export const consumeNarsEvidencePackets = async (limit = 12) => {
 
       const resolved = await resolveInstruments(row, coverageRequests, dynamicInstruments);
       instruments = resolved.instruments;
-      const markets = instruments.map((item) => item.market);
       if (!instruments.length) {
         await upsertInbox(row, [], 'UNMAPPED');
         await patchOutbox(row, { status: 'sent', attempts: Number(row.attempts ?? 0) + 1, sent_at: new Date().toISOString(), last_error: null });
