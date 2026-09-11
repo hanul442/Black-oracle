@@ -31,41 +31,78 @@ const mtf = (regime = 'UPTREND') => ({
   },
 }) as any;
 
-const decision = (action: 'ENTER' | 'EXIT' | 'HOLD' = 'ENTER', riskDisposition: 'APPROVE' | 'REJECT' | 'NOT_EVALUATED' = 'APPROVE') => ({
+const decision = (action: 'ENTER' | 'EXIT' | 'HOLD' = 'ENTER') => ({
   action,
   side: action === 'EXIT' ? 'SELL' : 'BUY',
   confidence: 0.72,
-  notional: 1_000_000,
+  notional: action === 'ENTER' ? 1_000_000 : 0,
   quantity: 0,
-  riskDisposition,
+  stopLossPrice: action === 'ENTER' ? 95 : null,
+  takeProfitPrice: action === 'ENTER' ? 110 : null,
+  takeProfit1Price: action === 'ENTER' ? 105 : null,
+  takeProfit2Price: action === 'ENTER' ? 110 : null,
+  expectedLossAtStop: action === 'ENTER' ? 10_000 : null,
+  riskDisposition: 'NOT_EVALUATED',
   reasons: ['test'],
-  riskReasons: riskDisposition === 'REJECT' ? ['risk rejected'] : [],
+  riskReasons: [],
 }) as any;
 
-test('Shadow Council never receives execution or promotion authority', () => {
+test('Council v3 never receives execution or promotion authority', () => {
   const council = buildShadowCouncil({ market: 'KRW-BTC', decision: decision(), multiTimeframe: mtf(), evidence: evidence() });
   assert.equal(council.mode, 'SHADOW');
   assert.equal(council.executionAuthority, false);
   assert.equal(council.promotionAuthority, false);
+  assert.equal(council.decisionMethod, 'EVIDENCE_GATED');
   assert.equal(council.members.length, 5);
 });
 
-test('Crypto Evidence member abstains when no external Evidence exists', () => {
+test('Council v3 uses professional primary-team roles plus an independent Red Team', () => {
   const council = buildShadowCouncil({ market: 'KRW-BTC', decision: decision(), multiTimeframe: mtf(), evidence: evidence() });
-  assert.equal(council.members.find((member) => member.role === 'EVIDENCE')?.vote, 'ABSTAIN');
+  assert.deepEqual(
+    council.members.map((member) => member.role),
+    [
+      'CHIEF_MARKET_STRATEGIST',
+      'EVIDENCE_INTELLIGENCE',
+      'QUANT_MODEL_VALIDATION',
+      'TRADE_ARCHITECT',
+      'ADVERSARIAL_RESEARCH',
+    ],
+  );
+  assert.equal(council.members.at(-1)?.team, 'RED_TEAM');
 });
 
-test('Equity Evidence member rejects new risk when source-backed Evidence is missing', () => {
+test('Crypto Evidence Intelligence abstains when no external Evidence exists', () => {
+  const council = buildShadowCouncil({ market: 'KRW-BTC', decision: decision(), multiTimeframe: mtf(), evidence: evidence() });
+  assert.equal(council.members.find((member) => member.role === 'EVIDENCE_INTELLIGENCE')?.vote, 'ABSTAIN');
+});
+
+test('Equity Evidence Intelligence rejects new risk when source-backed Evidence is missing', () => {
   const council = buildShadowCouncil({ market: 'KRX-005930', decision: decision(), multiTimeframe: mtf(), evidence: evidence({ market: 'KRX-005930' }) });
-  assert.equal(council.members.find((member) => member.role === 'EVIDENCE')?.vote, 'REJECT');
+  assert.equal(council.members.find((member) => member.role === 'EVIDENCE_INTELLIGENCE')?.vote, 'REJECT');
+  assert.equal(council.verdict, 'REJECT');
 });
 
-test('Risk rejection forces Shadow Council reject verdict', () => {
+test('vote counts are observability only; missing quant validation makes an otherwise healthy entry conditional', () => {
   const council = buildShadowCouncil({
     market: 'KRW-BTC',
-    decision: decision('ENTER', 'REJECT'),
+    decision: decision(),
     multiTimeframe: mtf(),
     evidence: evidence({ activeCount: 1, bullishWeight: 0.8, score: 35, confidence: 0.75, evidenceIds: ['e1'] }),
   });
+  assert.equal(council.members.find((member) => member.role === 'QUANT_MODEL_VALIDATION')?.vote, 'ABSTAIN');
+  assert.equal(council.verdict, 'CONDITIONAL');
+  assert.match(council.summary, /not a majority-vote decision rule/i);
+});
+
+test('Red Team can invalidate an entry when contradictions and adverse microstructure stack', () => {
+  const council = buildShadowCouncil({
+    market: 'KRW-BTC',
+    decision: decision(),
+    multiTimeframe: mtf('DOWNTREND'),
+    evidence: evidence({ activeCount: 2, score: 15, confidence: 0.7, contradictionCount: 2, evidenceIds: ['e1', 'e2'] }),
+    microstructure: { available: true, direction: 'BEARISH', confidence: 0.8 } as any,
+  });
+  assert.equal(council.redTeamResult, 'INVALIDATED');
   assert.equal(council.verdict, 'REJECT');
+  assert.ok(council.criticalDissent.length > 0);
 });
