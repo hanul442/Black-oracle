@@ -110,7 +110,7 @@ test('does not duplicate ledger or closed-trade events already present before cy
   assert.equal(events.length, 0);
 });
 
-test('replays a bounded retained ledger tail with stable idempotent keys for self-healing retries', () => {
+test('replays bounded retained ledger and outcome windows with stable idempotent keys', () => {
   const ledger = Array.from({ length: 300 }, (_, index) => ({
     id: `event-${index + 1}`,
     sequence: index + 1,
@@ -119,16 +119,23 @@ test('replays a bounded retained ledger tail with stable idempotent keys for sel
     strategyVersion: 'v2',
     payload: { market: 'KRW-BTC', action: 'WAIT', marker: index + 1 },
   }));
+  const closedTrades = Array.from({ length: 140 }, (_, index) => ({
+    id: `trade-${index + 1}`,
+    market: 'KRW-BTC',
+    closedAt: 2_000 + index,
+    netPnl: index,
+    returnPct: 0.001,
+  }));
 
-  const session = {
-    ledger,
-    closedTrades: [{ id: 'trade-old', market: 'KRW-BTC', closedAt: 999, netPnl: 1, returnPct: 0.01 }],
-  };
-  const events = buildTradingSessionRetryCanonicalEvents(session, 'black-oracle-paper', 256);
+  const events = buildTradingSessionRetryCanonicalEvents({ ledger, closedTrades }, 'black-oracle-paper', 256, 128);
+  const ledgerEvents = events.filter((event) => event.source === 'paper_trading_ledger');
+  const outcomes = events.filter((event) => event.eventType === 'OUTCOME');
 
-  assert.equal(events.length, 256);
-  assert.equal(events[0]?.eventKey, 'black-oracle-paper:paper-ledger:event-45');
-  assert.equal(events.at(-1)?.eventKey, 'black-oracle-paper:paper-ledger:event-300');
-  assert.equal(events.some((event) => event.eventType === 'OUTCOME'), false);
-  assert.equal((events[0]?.trace as any)?.payload?.marker, 45);
+  assert.equal(ledgerEvents.length, 256);
+  assert.equal(outcomes.length, 128);
+  assert.equal(ledgerEvents[0]?.eventKey, 'black-oracle-paper:paper-ledger:event-45');
+  assert.equal(ledgerEvents.at(-1)?.eventKey, 'black-oracle-paper:paper-ledger:event-300');
+  assert.equal(outcomes[0]?.eventKey, 'black-oracle-paper:paper-outcome:trade-13');
+  assert.equal(outcomes.at(-1)?.eventKey, 'black-oracle-paper:paper-outcome:trade-140');
+  assert.equal((ledgerEvents[0]?.trace as any)?.payload?.marker, 45);
 });
