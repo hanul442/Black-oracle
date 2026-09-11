@@ -4,6 +4,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const DEFAULT_RUNTIME_ID = "black-oracle-paper";
 const CONFIG_TABLE = "black_oracle_trading_scheduler_config";
 const AUTH_TABLE = "black_oracle_scheduler_auth";
+const STATUS_TIMEOUT_MS = 15_000;
+const CYCLE_TIMEOUT_MS = 120_000;
 const APPROVED_TARGETS: Record<string, string> = {
   "black-oracle-paper": "https://black-oracle-web-production.up.railway.app",
   "black-oracle-paper-vnext": "https://black-oracle-paper-vnext-production.up.railway.app",
@@ -79,7 +81,9 @@ Deno.serve(async (req: Request) => {
   target.hash = "";
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), mode.action === "status" ? 15_000 : 55_000);
+  const timeoutBudgetMs = mode.action === "status" ? STATUS_TIMEOUT_MS : CYCLE_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutBudgetMs);
+  const downstreamStartedAt = Date.now();
   let downstreamStatus: number | null = null;
   let downstreamOk = false;
   let downstreamError: string | null = null;
@@ -91,17 +95,28 @@ Deno.serve(async (req: Request) => {
     downstreamStatus = response.status;
     const bodyText = await response.text();
     downstreamOk = mode.action === "cycle" ? response.ok || response.status === 409 : response.ok;
-    if (mode.action === "status") {
-      try { downstreamBody = bodyText ? JSON.parse(bodyText) : null; } catch { downstreamBody = bodyText.slice(0, 2000); }
-    }
+    try { downstreamBody = bodyText ? JSON.parse(bodyText) : null; } catch { downstreamBody = bodyText.slice(0, 2000); }
     if (!downstreamOk) downstreamError = bodyText.slice(0, 1000) || `Downstream returned HTTP ${response.status}.`;
   } catch (error) {
     downstreamError = error instanceof Error ? error.message : "Unknown downstream request error.";
   } finally { clearTimeout(timeout); }
 
+  const downstreamDurationMs = Date.now() - downstreamStartedAt;
+  console.info("Black Oracle Paper scheduler downstream result", JSON.stringify({
+    runtimeId,
+    action: mode.action,
+    downstreamStatus,
+    downstreamOk,
+    downstreamDurationMs,
+    timeoutBudgetMs,
+    downstreamTimings: downstreamBody && typeof downstreamBody === "object" && "timings" in downstreamBody
+      ? (downstreamBody as Record<string, unknown>).timings
+      : null,
+  }));
+
   if (mode.action === "status") {
-    if (!downstreamOk) return json({ success: false, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Trading status probe failed." }, 502);
-    return json({ success: true, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, data: downstreamBody });
+    if (!downstreamOk) return json({ success: false, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, downstreamDurationMs, error: downstreamError ?? "Trading status probe failed." }, 502);
+    return json({ success: true, action: mode.action, runtimeId, target: normalizedBase, downstreamStatus, downstreamDurationMs, data: downstreamBody });
   }
 
   const now = new Date().toISOString();
@@ -112,7 +127,16 @@ Deno.serve(async (req: Request) => {
     last_error: downstreamError,
     updated_at: now,
   }).eq("runtime_id", runtimeId);
-  if (updateError) return json({ success: false, runtimeId, downstreamOk, downstreamStatus, error: `Scheduler telemetry update failed: ${updateError.message}` }, 500);
-  if (!downstreamOk) return json({ success: false, runtimeId, target: normalizedBase, downstreamStatus, error: downstreamError ?? "Scheduled Black Oracle Paper cycle failed." }, 502);
-  return json({ success: true, runtimeId, target: normalizedBase, downstreamStatus });
+  if (updateError) return json({ success: false, runtimeId, downstreamOk, downstreamStatus, downstreamDurationMs, error: `Scheduler telemetry update failed: ${updateError.message}` }, 500);
+  if (!downstreamOk) return json({ success: false, runtimeId, target: normalizedBase, downstreamStatus, downstreamDurationMs, error: downstreamError ?? "Scheduled Black Oracle Paper cycle failed." }, 502);
+  return json({
+    success: true,
+    runtimeId,
+    target: normalizedBase,
+    downstreamStatus,
+    downstreamDurationMs,
+    downstreamTimings: downstreamBody && typeof downstreamBody === "object" && "timings" in downstreamBody
+      ? (downstreamBody as Record<string, unknown>).timings
+      : null,
+  });
 });

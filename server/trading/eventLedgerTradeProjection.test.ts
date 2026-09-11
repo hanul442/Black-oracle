@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTradingSessionDeltaCanonicalEvents } from '../eventLedgerTradeProjection';
+import {
+  buildTradingSessionDeltaCanonicalEvents,
+  buildTradingSessionRetryCanonicalEvents,
+} from '../eventLedgerTradeProjection';
 
 test('projects every supported new Paper session ledger event into canonical audit history', () => {
   const before = {
@@ -105,4 +108,34 @@ test('does not duplicate ledger or closed-trade events already present before cy
   };
   const events = buildTradingSessionDeltaCanonicalEvents(before, before, 'black-oracle-paper');
   assert.equal(events.length, 0);
+});
+
+test('replays bounded retained ledger and outcome windows with stable idempotent keys', () => {
+  const ledger = Array.from({ length: 300 }, (_, index) => ({
+    id: `event-${index + 1}`,
+    sequence: index + 1,
+    timestamp: 1_000 + index,
+    type: index % 2 === 0 ? 'MARKET_SNAPSHOT' : 'SIGNAL',
+    strategyVersion: 'v2',
+    payload: { market: 'KRW-BTC', action: 'WAIT', marker: index + 1 },
+  }));
+  const closedTrades = Array.from({ length: 140 }, (_, index) => ({
+    id: `trade-${index + 1}`,
+    market: 'KRW-BTC',
+    closedAt: 2_000 + index,
+    netPnl: index,
+    returnPct: 0.001,
+  }));
+
+  const events = buildTradingSessionRetryCanonicalEvents({ ledger, closedTrades }, 'black-oracle-paper', 256, 128);
+  const ledgerEvents = events.filter((event) => event.source === 'paper_trading_ledger');
+  const outcomes = events.filter((event) => event.eventType === 'OUTCOME');
+
+  assert.equal(ledgerEvents.length, 256);
+  assert.equal(outcomes.length, 128);
+  assert.equal(ledgerEvents[0]?.eventKey, 'black-oracle-paper:paper-ledger:event-45');
+  assert.equal(ledgerEvents.at(-1)?.eventKey, 'black-oracle-paper:paper-ledger:event-300');
+  assert.equal(outcomes[0]?.eventKey, 'black-oracle-paper:paper-outcome:trade-13');
+  assert.equal(outcomes.at(-1)?.eventKey, 'black-oracle-paper:paper-outcome:trade-140');
+  assert.equal((ledgerEvents[0]?.trace as any)?.payload?.marker, 45);
 });
