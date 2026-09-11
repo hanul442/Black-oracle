@@ -22,6 +22,9 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown scheduled Paper cycle error.';
 
 export default async function handler(request: any, response: any) {
+  const requestStartedAt = Date.now();
+  const timings: Record<string, number> = {};
+
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
     return json(response, 405, { success: false, error: 'Method not allowed.' });
@@ -41,49 +44,56 @@ export default async function handler(request: any, response: any) {
   let paperLoopController: any;
   let claimTradingCycleLease: any;
   let releaseTradingCycleLease: any;
+  let buildRuntimePreimage: any;
   let initializeFreshQualificationRuntime: any;
   let restoreRuntimeCheckpoint: any;
+  let restoreRuntimePreimage: any;
   let saveRuntimeCheckpoint: any;
 
+  const importStartedAt = Date.now();
   try {
-    // The full Paper runtime is bundled during the build step so Railway's Node ESM
-    // loader never has to resolve the runtime's extensionless TypeScript imports.
-    // Keep this import as an explicit `any` boundary because the generated bundle on
-    // disk may lag the source entrypoint during pre-build TypeScript validation.
     // @ts-ignore build-generated module is replaced by esbuild before deployment packaging.
     const runtimeModule: any = await import('../server/trading/runtime-bundle.mjs');
 
     paperLoopController = runtimeModule.paperLoopController;
     claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
     releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
+    buildRuntimePreimage = runtimeModule.buildRuntimePreimage;
     initializeFreshQualificationRuntime = runtimeModule.initializeFreshQualificationRuntime;
     restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
+    restoreRuntimePreimage = runtimeModule.restoreRuntimePreimage;
     saveRuntimeCheckpoint = runtimeModule.saveRuntimeCheckpoint;
 
     if (
       !paperLoopController ||
       typeof claimTradingCycleLease !== 'function' ||
       typeof releaseTradingCycleLease !== 'function' ||
+      typeof buildRuntimePreimage !== 'function' ||
       typeof initializeFreshQualificationRuntime !== 'function' ||
       typeof restoreRuntimeCheckpoint !== 'function' ||
+      typeof restoreRuntimePreimage !== 'function' ||
       typeof saveRuntimeCheckpoint !== 'function'
     ) {
       throw new Error('Trading runtime bundle is missing required exports.');
     }
   } catch (error) {
+    timings.importMs = Date.now() - importStartedAt;
     console.error('Scheduled Paper cycle module initialization failed:', error);
     return json(response, 500, {
       success: false,
       phase: 'startup-import',
+      timings: { ...timings, totalMs: Date.now() - requestStartedAt },
       error: errorMessage(error),
     });
   }
+  timings.importMs = Date.now() - importStartedAt;
 
   const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
   const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeLoaded = false;
   let qualificationBootstrapInProgress = false;
+  let cycleCheckpointCommitted = false;
   let responseStatus = 500;
   let responseBody: Record<string, unknown> = {
     success: false,
@@ -93,7 +103,10 @@ export default async function handler(request: any, response: any) {
   };
 
   try {
+    const leaseStartedAt = Date.now();
     leaseAcquired = await claimTradingCycleLease(runtimeId, owner, 840);
+    timings.leaseMs = Date.now() - leaseStartedAt;
+
     if (!leaseAcquired) {
       responseStatus = 409;
       responseBody = {
@@ -103,12 +116,16 @@ export default async function handler(request: any, response: any) {
         runtimeId,
       };
     } else {
+      const restoreStartedAt = Date.now();
       const restore = await restoreRuntimeCheckpoint(false);
+      timings.restoreMs = Date.now() - restoreStartedAt;
       runtimeLoaded = true;
 
       if (!restore.restored && restore.profile?.qualificationId) {
         qualificationBootstrapInProgress = true;
+        const bootstrapStartedAt = Date.now();
         const initialized = await initializeFreshQualificationRuntime();
+        timings.qualificationBootstrapMs = Date.now() - bootstrapStartedAt;
         qualificationBootstrapInProgress = false;
         responseStatus = 200;
         responseBody = {
@@ -130,12 +147,40 @@ export default async function handler(request: any, response: any) {
         };
       } else {
         const beforeSession = paperLoopController.status().session;
+        const cyclePreimage = buildRuntimePreimage('scheduled-paper-cycle-preimage');
+
+        const cycleStartedAt = Date.now();
         const cycle = await paperLoopController.runCycle();
+        timings.cycleMs = Date.now() - cycleStartedAt;
         const afterSession = paperLoopController.status().session;
 
-        // Trading state is persisted BEFORE any AI review or event-ledger projection.
-        // Neither the AI Council nor observability can alter this cycle's execution outcome.
-        const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+        // Preserve frozen S1R2 strategy/risk semantics. The only new behavior is:
+        // if the durable checkpoint cannot commit, restore the exact pre-cycle
+        // in-memory state so the process cannot diverge from recovery state.
+        let saved: any;
+        const checkpointStartedAt = Date.now();
+        try {
+          saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+          cycleCheckpointCommitted = true;
+        } catch (persistenceError) {
+          timings.checkpointMs = Date.now() - checkpointStartedAt;
+          try {
+            restoreRuntimePreimage(cyclePreimage, false);
+          } catch (rollbackError) {
+            throw new Error(
+              `Paper cycle checkpoint commit failed and exact rollback also failed. `
+              + `Persistence: ${errorMessage(persistenceError)} Rollback: ${errorMessage(rollbackError)}`,
+            );
+          }
+          throw new Error(`Paper cycle rolled back because checkpoint persistence failed: ${errorMessage(persistenceError)}`);
+        }
+        timings.checkpointMs = Date.now() - checkpointStartedAt;
+
+        console.info('S1R2 Paper checkpoint committed', JSON.stringify({
+          runtimeId,
+          timings,
+          persistence: saved?.persistence ?? null,
+        }));
 
         let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
           advisoryOnly: true,
@@ -145,6 +190,7 @@ export default async function handler(request: any, response: any) {
           skippedCount: 0,
           reviews: [],
         };
+        const councilStartedAt = Date.now();
         try {
           councilAi = await runCostGatedAiCouncilForCycle(cycle, runtimeId, 2);
         } catch (councilError) {
@@ -158,8 +204,10 @@ export default async function handler(request: any, response: any) {
             reviews: [],
           };
         }
+        timings.councilMs = Date.now() - councilStartedAt;
 
         let eventLedger: Record<string, unknown> = { persisted: false, attempted: 0 };
+        const ledgerStartedAt = Date.now();
         try {
           const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
           const events = [
@@ -177,6 +225,7 @@ export default async function handler(request: any, response: any) {
             error: errorMessage(ledgerError),
           };
         }
+        timings.canonicalLedgerMs = Date.now() - ledgerStartedAt;
 
         responseStatus = 200;
         responseBody = {
@@ -190,17 +239,27 @@ export default async function handler(request: any, response: any) {
           },
           cycle,
           persistence: saved.persistence,
+          atomicity: {
+            checkpointCommitted: true,
+            rollbackRequired: false,
+          },
           councilAi,
           eventLedger,
         };
       }
     }
   } catch (error) {
-    if (runtimeLoaded && !qualificationBootstrapInProgress) {
+    // If the cycle did not commit, exact rollback already restored the durable
+    // preimage. Do NOT attempt an error checkpoint because that would reintroduce
+    // a second failing write and could obscure the original persistence failure.
+    if (runtimeLoaded && !qualificationBootstrapInProgress && cycleCheckpointCommitted) {
+      const errorCheckpointStartedAt = Date.now();
       try {
         await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
       } catch (checkpointError) {
-        console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
+        console.error('Failed to checkpoint after post-commit scheduled Paper cycle error:', checkpointError);
+      } finally {
+        timings.errorCheckpointMs = Date.now() - errorCheckpointStartedAt;
       }
     }
 
@@ -211,20 +270,22 @@ export default async function handler(request: any, response: any) {
       success: false,
       runtimeId,
       phase: qualificationBootstrapInProgress ? 'qualification-bootstrap' : runtimeLoaded ? 'cycle' : 'startup',
+      atomicity: {
+        checkpointCommitted: cycleCheckpointCommitted,
+        rolledBackToPreimage: runtimeLoaded && !cycleCheckpointCommitted,
+      },
       error: message,
     };
   }
 
   if (leaseAcquired) {
+    const cleanupStartedAt = Date.now();
     try {
       const released = await releaseTradingCycleLease(runtimeId, owner);
-      if (!released) {
-        throw new Error('Runtime lease release returned false.');
-      }
+      if (!released) throw new Error('Runtime lease release returned false.');
     } catch (releaseError) {
       const cleanupError = errorMessage(releaseError);
       console.error('Failed to release scheduled Paper cycle lease:', releaseError);
-
       if (responseStatus === 200) {
         responseStatus = 500;
         responseBody = {
@@ -236,13 +297,21 @@ export default async function handler(request: any, response: any) {
           error: cleanupError,
         };
       } else {
-        responseBody = {
-          ...responseBody,
-          cleanupError,
-        };
+        responseBody = { ...responseBody, cleanupError };
       }
+    } finally {
+      timings.cleanupMs = Date.now() - cleanupStartedAt;
     }
   }
+
+  timings.totalMs = Date.now() - requestStartedAt;
+  responseBody = { ...responseBody, timings };
+  console.info('S1R2 Paper cycle request finished', JSON.stringify({
+    runtimeId,
+    status: responseStatus,
+    success: responseBody.success === true,
+    timings,
+  }));
 
   return json(response, responseStatus, responseBody);
 }

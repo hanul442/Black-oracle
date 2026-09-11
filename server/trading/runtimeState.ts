@@ -2,7 +2,7 @@ import { compactPaperSessionCheckpoint } from './checkpointPolicy';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
-import { tradingCheckpointStore } from './persistence';
+import { tradingCheckpointStore, type TradingRuntimeCheckpoint } from './persistence';
 import {
   assessRuntimeCheckpointCompatibility,
   checkpointIdentityFromProfile,
@@ -26,15 +26,70 @@ let restoreSummary: {
   compatibility: null,
 };
 
-export const buildRuntimeCheckpoint = (reason = 'manual') => ({
-  schemaVersion: 1 as const,
+export const buildRuntimePreimage = (reason = 'runtime-preimage'): TradingRuntimeCheckpoint => ({
+  schemaVersion: 1,
   savedAt: Date.now(),
   reason,
   runtime: checkpointIdentityFromProfile(tradingRuntimeProfile),
-  session: compactPaperSessionCheckpoint(paperTradingSession.checkpoint()),
+  // IMPORTANT: this is intentionally NOT compacted. It is the exact in-memory
+  // rollback image used only if the durable checkpoint commit fails.
+  session: paperTradingSession.checkpoint(),
   evidence: tradingEvidenceStore.list(undefined, true),
   loop: paperLoopController.checkpoint(),
 });
+
+export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpoint => {
+  const preimage = buildRuntimePreimage(reason);
+  return {
+    ...preimage,
+    // Preserve the frozen S1R2 checkpoint policy exactly as it was at qualification start.
+    session: compactPaperSessionCheckpoint(preimage.session),
+  };
+};
+
+const restoreRuntimeState = (
+  checkpoint: TradingRuntimeCheckpoint,
+  resumeLoop: boolean,
+  compactSessionLedger: boolean,
+) => {
+  const compatibility = assessRuntimeCheckpointCompatibility(
+    tradingRuntimeProfile,
+    checkpoint.runtime,
+    checkpoint.session.portfolio.initialEquity,
+  );
+  if (!compatibility.compatible) {
+    throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${compatibility.reasons.join(' ')}`);
+  }
+
+  paperTradingSession.restore(
+    compactSessionLedger
+      ? compactPaperSessionCheckpoint(checkpoint.session)
+      : checkpoint.session,
+  );
+  tradingEvidenceStore.replaceAll(checkpoint.evidence);
+  paperLoopController.restore(checkpoint.loop, resumeLoop);
+  runtimeCompatibility = compatibility;
+
+  return {
+    restored: true,
+    savedAt: checkpoint.savedAt,
+    reason: checkpoint.reason,
+    resumedLoop: checkpoint.loop.running && resumeLoop,
+    compatibility,
+    profile: checkpointIdentityFromProfile(tradingRuntimeProfile),
+    persistence: tradingCheckpointStore.status(),
+  };
+};
+
+export const restoreRuntimeCheckpointValue = (
+  checkpoint: TradingRuntimeCheckpoint,
+  resumeLoop = false,
+) => restoreRuntimeState(checkpoint, resumeLoop, true);
+
+export const restoreRuntimePreimage = (
+  checkpoint: TradingRuntimeCheckpoint,
+  resumeLoop = false,
+) => restoreRuntimeState(checkpoint, resumeLoop, false);
 
 export const saveRuntimeCheckpoint = async (reason = 'manual') => {
   const checkpoint = buildRuntimeCheckpoint(reason);
@@ -65,37 +120,35 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
     };
   }
 
-  runtimeCompatibility = assessRuntimeCheckpointCompatibility(
+  const compatibility = assessRuntimeCheckpointCompatibility(
     tradingRuntimeProfile,
     checkpoint.runtime,
     checkpoint.session.portfolio.initialEquity,
   );
-  if (!runtimeCompatibility.compatible) {
+  if (!compatibility.compatible) {
+    runtimeCompatibility = compatibility;
     restoreSummary = {
       restored: false,
       savedAt: checkpoint.savedAt,
       reason: checkpoint.reason,
       resumedLoop: false,
-      compatibility: runtimeCompatibility,
+      compatibility,
     };
-    throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${runtimeCompatibility.reasons.join(' ')}`);
+    throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${compatibility.reasons.join(' ')}`);
   }
 
-  paperTradingSession.restore(compactPaperSessionCheckpoint(checkpoint.session));
-  tradingEvidenceStore.replaceAll(checkpoint.evidence);
-  paperLoopController.restore(checkpoint.loop, resumeLoop);
-
+  const restored = restoreRuntimeCheckpointValue(checkpoint, resumeLoop);
   restoreSummary = {
     restored: true,
-    savedAt: checkpoint.savedAt,
-    reason: checkpoint.reason,
-    resumedLoop: checkpoint.loop.running && resumeLoop,
-    compatibility: runtimeCompatibility,
+    savedAt: restored.savedAt,
+    reason: restored.reason,
+    resumedLoop: restored.resumedLoop,
+    compatibility: restored.compatibility,
   };
   return {
     ...restoreSummary,
-    profile: checkpointIdentityFromProfile(tradingRuntimeProfile),
-    persistence: tradingCheckpointStore.status(),
+    profile: restored.profile,
+    persistence: restored.persistence,
   };
 };
 

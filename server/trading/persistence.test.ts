@@ -45,7 +45,7 @@ const buildCheckpoint = (): TradingRuntimeCheckpoint => ({
   },
 });
 
-test('JSON checkpoint store roundtrips runtime state', async () => {
+test('JSON checkpoint store roundtrips runtime state with telemetry', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'black-oracle-trading-'));
   const filePath = path.join(directory, 'runtime.json');
   const store = new JsonTradingCheckpointStore(filePath);
@@ -60,6 +60,9 @@ test('JSON checkpoint store roundtrips runtime state', async () => {
     assert.equal(store.status().writes, 1);
     assert.equal(store.status().restores, 1);
     assert.equal(store.status().lastError, null);
+    assert.ok((store.status().lastPayloadBytes ?? 0) > 0);
+    assert.ok((store.status().lastWriteDurationMs ?? -1) >= 0);
+    assert.ok((store.status().lastReadDurationMs ?? -1) >= 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -79,7 +82,7 @@ test('missing checkpoint returns null without marking persistence faulty', async
   }
 });
 
-test('Supabase checkpoint store upserts and restores the runtime row', async () => {
+test('Supabase checkpoint store upserts and restores the runtime row with telemetry', async () => {
   const checkpoint = buildCheckpoint();
   let stored: TradingRuntimeCheckpoint | null = null;
   const calls: Array<{ url: string; method: string; headers: Headers; body?: string }> = [];
@@ -125,6 +128,10 @@ test('Supabase checkpoint store upserts and restores the runtime row', async () 
   assert.equal(store.status().writes, 1);
   assert.equal(store.status().restores, 1);
   assert.equal(store.status().lastError, null);
+  assert.equal(store.status().lastRequestAttempts, 1);
+  assert.equal(store.status().totalRetries, 0);
+  assert.equal(store.status().lastHttpStatus, 200);
+  assert.ok((store.status().lastPayloadBytes ?? 0) > 0);
   assert.equal(calls.length, 2);
 });
 
@@ -142,4 +149,60 @@ test('Supabase checkpoint store treats an absent runtime row as a fresh Paper ac
 
   assert.equal(await store.load(), null);
   assert.equal(store.status().lastError, null);
+});
+
+test('Supabase checkpoint store retries transient PGRST303 future-time rejection', async () => {
+  let attempts = 0;
+  const fakeFetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response(JSON.stringify({ code: 'PGRST303', message: 'JWT issued at future' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    assert.equal(init?.method, 'POST');
+    return new Response(null, { status: 201 });
+  }) as typeof fetch;
+
+  const store = new SupabaseTradingCheckpointStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-role-test',
+    runtimeId: 'paper-primary',
+    fetchImpl: fakeFetch,
+    retryDelaysMs: [0],
+  });
+
+  await store.save(buildCheckpoint());
+  assert.equal(attempts, 2);
+  assert.equal(store.status().writes, 1);
+  assert.equal(store.status().lastRequestAttempts, 2);
+  assert.equal(store.status().totalRetries, 1);
+  assert.equal(store.status().lastHttpStatus, 201);
+  assert.equal(store.status().lastError, null);
+});
+
+test('Supabase checkpoint store does not retry non-transient auth failure', async () => {
+  let attempts = 0;
+  const fakeFetch = (async () => {
+    attempts += 1;
+    return new Response(JSON.stringify({ code: 'PGRST301', message: 'invalid JWT' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const store = new SupabaseTradingCheckpointStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-role-test',
+    runtimeId: 'paper-primary',
+    fetchImpl: fakeFetch,
+    retryDelaysMs: [0, 0],
+  });
+
+  await assert.rejects(() => store.save(buildCheckpoint()), /Supabase checkpoint write failed \(401\)/);
+  assert.equal(attempts, 1);
+  assert.equal(store.status().lastRequestAttempts, 1);
+  assert.equal(store.status().totalRetries, 0);
+  assert.match(store.status().lastError ?? '', /401/);
 });
