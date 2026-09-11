@@ -142,11 +142,45 @@ interface SupabaseTradingCheckpointStoreOptions {
   runtimeId?: string;
   table?: string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
+  retryDelaysMs?: number[];
 }
 
 interface SupabaseCheckpointRow {
   checkpoint: unknown;
 }
+
+const DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS = 20_000;
+const DEFAULT_SUPABASE_RETRY_DELAYS_MS = [500, 1_500];
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
+
+const transientFetchError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as {
+    name?: string;
+    code?: string;
+    cause?: { code?: string; name?: string };
+  };
+  const codes = [candidate.code, candidate.cause?.code].filter(Boolean);
+  return candidate.name === 'AbortError'
+    || candidate.name === 'TimeoutError'
+    || candidate.cause?.name === 'TimeoutError'
+    || codes.some((code) => [
+      'UND_ERR_HEADERS_TIMEOUT',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'ECONNRESET',
+      'ETIMEDOUT',
+    ].includes(String(code)));
+};
+
+const transientSupabaseResponse = (status: number, body: string) => {
+  if (status === 429 || status === 502 || status === 503 || status === 504) return true;
+  if (status >= 500) return true;
+  return status === 401
+    && body.includes('PGRST303')
+    && /future|time|clock/i.test(body);
+};
 
 export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
   private readonly url: string;
@@ -154,6 +188,8 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
   private readonly runtimeId: string;
   private readonly table: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
+  private readonly retryDelaysMs: number[];
   private writeChain: Promise<void> = Promise.resolve();
   private lastSavedAt: number | null = null;
   private lastRestoredAt: number | null = null;
@@ -169,6 +205,12 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
     this.runtimeId = options.runtimeId?.trim() || 'black-oracle-paper';
     this.table = options.table?.trim() || 'black_oracle_trading_runtime';
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.requestTimeoutMs = Number.isFinite(options.requestTimeoutMs) && Number(options.requestTimeoutMs) > 0
+      ? Number(options.requestTimeoutMs)
+      : DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS;
+    this.retryDelaysMs = (options.retryDelaysMs ?? DEFAULT_SUPABASE_RETRY_DELAYS_MS)
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .map(Number);
   }
 
   status(): PersistenceStatus {
@@ -197,11 +239,37 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
     return `${this.url}/rest/v1/${this.table}`;
   }
 
+  private async fetchAttempt(input: URL | string, init: RequestInit) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    try {
+      return await this.fetchImpl(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async request(input: URL | string, init: RequestInit) {
+    const maxAttempts = this.retryDelaysMs.length + 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const response = await this.fetchAttempt(input, init);
+        if (response.ok || attempt === maxAttempts - 1) return response;
+        const body = await response.clone().text();
+        if (!transientSupabaseResponse(response.status, body)) return response;
+      } catch (error) {
+        if (attempt === maxAttempts - 1 || !transientFetchError(error)) throw error;
+      }
+      await delay(this.retryDelaysMs[attempt] ?? 0);
+    }
+    throw new Error('Supabase checkpoint request exhausted retry attempts.');
+  }
+
   async save(checkpoint: TradingRuntimeCheckpoint) {
     const validated = validateCheckpoint(checkpoint);
     this.writeChain = this.writeChain.catch(() => undefined).then(async () => {
       try {
-        const response = await this.fetchImpl(`${this.endpoint()}?on_conflict=runtime_id`, {
+        const response = await this.request(`${this.endpoint()}?on_conflict=runtime_id`, {
           method: 'POST',
           headers: this.headers({
             'Content-Type': 'application/json',
@@ -237,7 +305,7 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
       url.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
       url.searchParams.set('select', 'checkpoint');
       url.searchParams.set('limit', '1');
-      const response = await this.fetchImpl(url, {
+      const response = await this.request(url, {
         method: 'GET',
         headers: this.headers({ Accept: 'application/json' }),
       });
