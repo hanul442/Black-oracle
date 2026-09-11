@@ -49,6 +49,12 @@ export const attachDecisionReplayLineage = (
   }
 
   return events.map((event) => {
+    const internalEvent = event as CanonicalEventInput & { __lineagePolicy?: 'PRESERVE' };
+    if (internalEvent.__lineagePolicy === 'PRESERVE') {
+      const { __lineagePolicy: _lineagePolicy, ...preserved } = internalEvent as CanonicalEventInput & { __lineagePolicy?: 'PRESERVE' };
+      return preserved as CanonicalEventInput;
+    }
+
     const market = normalizeMarket(event.market);
     const lineage = market ? lineageByMarket.get(market) : null;
     if (!lineage) return event;
