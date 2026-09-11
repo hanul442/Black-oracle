@@ -1,4 +1,4 @@
-import { compactPaperSessionCheckpoint } from './checkpointPolicy';
+import { compactPaperSessionCheckpoint, paperCheckpointLedgerLimitForMode } from './checkpointPolicy';
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
@@ -26,12 +26,18 @@ let restoreSummary: {
   compatibility: null,
 };
 
+const runtimeCheckpointLedgerLimit = () =>
+  paperCheckpointLedgerLimitForMode(tradingRuntimeProfile.qualificationMode);
+
 export const buildRuntimeCheckpoint = (reason = 'manual') => ({
   schemaVersion: 1 as const,
   savedAt: Date.now(),
   reason,
   runtime: checkpointIdentityFromProfile(tradingRuntimeProfile),
-  session: compactPaperSessionCheckpoint(paperTradingSession.checkpoint()),
+  session: compactPaperSessionCheckpoint(
+    paperTradingSession.checkpoint(),
+    runtimeCheckpointLedgerLimit(),
+  ),
   evidence: tradingEvidenceStore.list(undefined, true),
   loop: paperLoopController.checkpoint(),
 });
@@ -81,7 +87,10 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
     throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${runtimeCompatibility.reasons.join(' ')}`);
   }
 
-  paperTradingSession.restore(compactPaperSessionCheckpoint(checkpoint.session));
+  paperTradingSession.restore(compactPaperSessionCheckpoint(
+    checkpoint.session,
+    runtimeCheckpointLedgerLimit(),
+  ));
   tradingEvidenceStore.replaceAll(checkpoint.evidence);
   paperLoopController.restore(checkpoint.loop, resumeLoop);
 
