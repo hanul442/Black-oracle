@@ -45,7 +45,7 @@ const buildCheckpoint = (): TradingRuntimeCheckpoint => ({
   },
 });
 
-test('JSON checkpoint store roundtrips runtime state', async () => {
+test('JSON checkpoint store roundtrips runtime state and exposes local persistence telemetry', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'black-oracle-trading-'));
   const filePath = path.join(directory, 'runtime.json');
   const store = new JsonTradingCheckpointStore(filePath);
@@ -54,12 +54,19 @@ test('JSON checkpoint store roundtrips runtime state', async () => {
     const checkpoint = buildCheckpoint();
     await store.save(checkpoint);
     const restored = await store.load();
+    const status = store.status();
 
     assert.deepEqual(restored, checkpoint);
-    assert.equal(store.status().backend, 'json');
-    assert.equal(store.status().writes, 1);
-    assert.equal(store.status().restores, 1);
-    assert.equal(store.status().lastError, null);
+    assert.equal(status.backend, 'json');
+    assert.equal(status.writes, 1);
+    assert.equal(status.restores, 1);
+    assert.equal(status.lastError, null);
+    assert.ok((status.lastPayloadBytes ?? 0) > 0);
+    assert.ok((status.lastWriteDurationMs ?? -1) >= 0);
+    assert.ok((status.lastReadDurationMs ?? -1) >= 0);
+    assert.equal(status.lastRequestAttempts, null);
+    assert.equal(status.totalRetries, 0);
+    assert.equal(status.lastHttpStatus, null);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -74,12 +81,13 @@ test('missing checkpoint returns null without marking persistence faulty', async
     const restored = await store.load();
     assert.equal(restored, null);
     assert.equal(store.status().lastError, null);
+    assert.ok((store.status().lastReadDurationMs ?? -1) >= 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test('Supabase checkpoint store upserts and restores the runtime row', async () => {
+test('Supabase checkpoint store upserts and restores the runtime row with request telemetry', async () => {
   const checkpoint = buildCheckpoint();
   let stored: TradingRuntimeCheckpoint | null = null;
   const calls: Array<{ url: string; method: string; headers: Headers; body?: string }> = [];
@@ -117,14 +125,26 @@ test('Supabase checkpoint store upserts and restores the runtime row', async () 
   });
 
   await store.save(checkpoint);
+  const savedStatus = store.status();
+  assert.ok((savedStatus.lastPayloadBytes ?? 0) > 0);
+  assert.ok((savedStatus.lastWriteDurationMs ?? -1) >= 0);
+  assert.equal(savedStatus.lastRequestAttempts, 1);
+  assert.equal(savedStatus.totalRetries, 0);
+  assert.equal(savedStatus.lastHttpStatus, 201);
+
   const restored = await store.load();
+  const restoredStatus = store.status();
 
   assert.deepEqual(restored, checkpoint);
-  assert.equal(store.status().backend, 'supabase');
-  assert.equal(store.status().runtimeId, 'paper-primary');
-  assert.equal(store.status().writes, 1);
-  assert.equal(store.status().restores, 1);
-  assert.equal(store.status().lastError, null);
+  assert.equal(restoredStatus.backend, 'supabase');
+  assert.equal(restoredStatus.runtimeId, 'paper-primary');
+  assert.equal(restoredStatus.writes, 1);
+  assert.equal(restoredStatus.restores, 1);
+  assert.equal(restoredStatus.lastError, null);
+  assert.ok((restoredStatus.lastReadDurationMs ?? -1) >= 0);
+  assert.equal(restoredStatus.lastRequestAttempts, 1);
+  assert.equal(restoredStatus.totalRetries, 0);
+  assert.equal(restoredStatus.lastHttpStatus, 200);
   assert.equal(calls.length, 2);
 });
 
@@ -142,9 +162,11 @@ test('Supabase checkpoint store treats an absent runtime row as a fresh Paper ac
 
   assert.equal(await store.load(), null);
   assert.equal(store.status().lastError, null);
+  assert.equal(store.status().lastRequestAttempts, 1);
+  assert.equal(store.status().lastHttpStatus, 200);
 });
 
-test('Supabase checkpoint store retries transient PGRST303 future-time rejection', async () => {
+test('Supabase checkpoint store retries transient PGRST303 future-time rejection and counts the retry', async () => {
   const checkpoint = buildCheckpoint();
   let attempts = 0;
 
@@ -172,9 +194,15 @@ test('Supabase checkpoint store retries transient PGRST303 future-time rejection
   });
 
   await store.save(checkpoint);
+  const status = store.status();
   assert.equal(attempts, 2);
-  assert.equal(store.status().writes, 1);
-  assert.equal(store.status().lastError, null);
+  assert.equal(status.writes, 1);
+  assert.equal(status.lastError, null);
+  assert.equal(status.lastRequestAttempts, 2);
+  assert.equal(status.totalRetries, 1);
+  assert.equal(status.lastHttpStatus, 201);
+  assert.ok((status.lastPayloadBytes ?? 0) > 0);
+  assert.ok((status.lastWriteDurationMs ?? -1) >= 0);
 });
 
 test('Supabase checkpoint store does not retry a non-transient authentication failure', async () => {
@@ -202,6 +230,11 @@ test('Supabase checkpoint store does not retry a non-transient authentication fa
     () => store.save(buildCheckpoint()),
     /Supabase checkpoint write failed \(401\)/,
   );
+  const status = store.status();
   assert.equal(attempts, 1);
-  assert.match(store.status().lastError ?? '', /401/);
+  assert.match(status.lastError ?? '', /401/);
+  assert.equal(status.lastRequestAttempts, 1);
+  assert.equal(status.totalRetries, 0);
+  assert.equal(status.lastHttpStatus, 401);
+  assert.ok((status.lastWriteDurationMs ?? -1) >= 0);
 });
