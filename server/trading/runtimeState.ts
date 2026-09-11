@@ -29,22 +29,31 @@ let restoreSummary: {
 const runtimeCheckpointLedgerLimit = () =>
   paperCheckpointLedgerLimitForMode(tradingRuntimeProfile.qualificationMode);
 
-export const buildRuntimeCheckpoint = (reason = 'manual') => ({
-  schemaVersion: 1 as const,
+export const buildRuntimePreimage = (reason = 'runtime-preimage'): TradingRuntimeCheckpoint => ({
+  schemaVersion: 1,
   savedAt: Date.now(),
   reason,
   runtime: checkpointIdentityFromProfile(tradingRuntimeProfile),
-  session: compactPaperSessionCheckpoint(
-    paperTradingSession.checkpoint(),
-    runtimeCheckpointLedgerLimit(),
-  ),
+  session: paperTradingSession.checkpoint(),
   evidence: tradingEvidenceStore.list(undefined, true),
   loop: paperLoopController.checkpoint(),
 });
 
-export const restoreRuntimeCheckpointValue = (
+export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpoint => {
+  const preimage = buildRuntimePreimage(reason);
+  return {
+    ...preimage,
+    session: compactPaperSessionCheckpoint(
+      preimage.session,
+      runtimeCheckpointLedgerLimit(),
+    ),
+  };
+};
+
+const restoreRuntimeState = (
   checkpoint: TradingRuntimeCheckpoint,
-  resumeLoop = false,
+  resumeLoop: boolean,
+  compactSessionLedger: boolean,
 ) => {
   const compatibility = assessRuntimeCheckpointCompatibility(
     tradingRuntimeProfile,
@@ -55,10 +64,11 @@ export const restoreRuntimeCheckpointValue = (
     throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${compatibility.reasons.join(' ')}`);
   }
 
-  paperTradingSession.restore(compactPaperSessionCheckpoint(
-    checkpoint.session,
-    runtimeCheckpointLedgerLimit(),
-  ));
+  paperTradingSession.restore(
+    compactSessionLedger
+      ? compactPaperSessionCheckpoint(checkpoint.session, runtimeCheckpointLedgerLimit())
+      : checkpoint.session,
+  );
   tradingEvidenceStore.replaceAll(checkpoint.evidence);
   paperLoopController.restore(checkpoint.loop, resumeLoop);
   runtimeCompatibility = compatibility;
@@ -73,6 +83,16 @@ export const restoreRuntimeCheckpointValue = (
     persistence: tradingCheckpointStore.status(),
   };
 };
+
+export const restoreRuntimeCheckpointValue = (
+  checkpoint: TradingRuntimeCheckpoint,
+  resumeLoop = false,
+) => restoreRuntimeState(checkpoint, resumeLoop, true);
+
+export const restoreRuntimePreimage = (
+  checkpoint: TradingRuntimeCheckpoint,
+  resumeLoop = false,
+) => restoreRuntimeState(checkpoint, resumeLoop, false);
 
 export const saveRuntimeCheckpoint = async (reason = 'manual') => {
   const checkpoint = buildRuntimeCheckpoint(reason);
@@ -101,6 +121,23 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
       profile: checkpointIdentityFromProfile(tradingRuntimeProfile),
       persistence: tradingCheckpointStore.status(),
     };
+  }
+
+  const compatibility = assessRuntimeCheckpointCompatibility(
+    tradingRuntimeProfile,
+    checkpoint.runtime,
+    checkpoint.session.portfolio.initialEquity,
+  );
+  if (!compatibility.compatible) {
+    runtimeCompatibility = compatibility;
+    restoreSummary = {
+      restored: false,
+      savedAt: checkpoint.savedAt,
+      reason: checkpoint.reason,
+      resumedLoop: false,
+      compatibility,
+    };
+    throw new Error(`Paper runtime checkpoint is incompatible with the configured qualification profile: ${compatibility.reasons.join(' ')}`);
   }
 
   const restored = restoreRuntimeCheckpointValue(checkpoint, resumeLoop);
