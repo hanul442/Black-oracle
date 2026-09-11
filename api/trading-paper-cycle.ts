@@ -43,8 +43,10 @@ export default async function handler(request: any, response: any) {
   let paperLoopController: any;
   let claimTradingCycleLease: any;
   let releaseTradingCycleLease: any;
+  let buildRuntimePreimage: any;
   let initializeFreshQualificationRuntime: any;
   let restoreRuntimeCheckpoint: any;
+  let restoreRuntimePreimage: any;
   let saveRuntimeCheckpoint: any;
 
   try {
@@ -58,16 +60,20 @@ export default async function handler(request: any, response: any) {
     paperLoopController = runtimeModule.paperLoopController;
     claimTradingCycleLease = runtimeModule.claimTradingCycleLease;
     releaseTradingCycleLease = runtimeModule.releaseTradingCycleLease;
+    buildRuntimePreimage = runtimeModule.buildRuntimePreimage;
     initializeFreshQualificationRuntime = runtimeModule.initializeFreshQualificationRuntime;
     restoreRuntimeCheckpoint = runtimeModule.restoreRuntimeCheckpoint;
+    restoreRuntimePreimage = runtimeModule.restoreRuntimePreimage;
     saveRuntimeCheckpoint = runtimeModule.saveRuntimeCheckpoint;
 
     if (
       !paperLoopController ||
       typeof claimTradingCycleLease !== 'function' ||
       typeof releaseTradingCycleLease !== 'function' ||
+      typeof buildRuntimePreimage !== 'function' ||
       typeof initializeFreshQualificationRuntime !== 'function' ||
       typeof restoreRuntimeCheckpoint !== 'function' ||
+      typeof restoreRuntimePreimage !== 'function' ||
       typeof saveRuntimeCheckpoint !== 'function'
     ) {
       throw new Error('Trading runtime bundle is missing required exports.');
@@ -131,13 +137,33 @@ export default async function handler(request: any, response: any) {
           persistence: initialized.persistence ?? null,
         };
       } else {
+        // Capture an exact, non-compacted in-memory recovery preimage before the cycle
+        // mutates portfolio, broker, evidence, loop, or session state. If persistence
+        // cannot commit the completed cycle, restore this preimage so memory and durable
+        // recovery state cannot split.
+        const cyclePreimage = buildRuntimePreimage('scheduled-paper-cycle-preimage');
         const beforeSession = paperLoopController.status().session;
         const cycle = await paperLoopController.runCycle();
         const afterSession = paperLoopController.status().session;
 
         // Trading state is persisted BEFORE any AI review or event-ledger projection.
         // Neither the AI Council nor observability can alter this cycle's execution outcome.
-        const saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+        let saved: any;
+        try {
+          saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+        } catch (persistenceError) {
+          try {
+            restoreRuntimePreimage(cyclePreimage, false);
+          } catch (rollbackError) {
+            throw new Error(
+              `Paper cycle checkpoint commit failed and in-memory rollback also failed. `
+              + `Persistence: ${errorMessage(persistenceError)} Rollback: ${errorMessage(rollbackError)}`,
+            );
+          }
+          throw new Error(
+            `Paper cycle rolled back because checkpoint persistence failed: ${errorMessage(persistenceError)}`,
+          );
+        }
 
         let councilAi: Awaited<ReturnType<typeof runCostGatedAiCouncilForCycle>> = {
           advisoryOnly: true,
@@ -193,6 +219,10 @@ export default async function handler(request: any, response: any) {
           },
           cycle,
           persistence: saved.persistence,
+          atomicity: {
+            checkpointCommitted: true,
+            rollbackRequired: false,
+          },
           councilAi,
           eventLedger,
         };
