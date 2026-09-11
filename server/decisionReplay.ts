@@ -1,4 +1,10 @@
 import type { CanonicalEventRow } from './eventLedger';
+import {
+  buildDirectionalOutcomeCalibration,
+  buildEmpiricalReturnDistribution,
+  extractDirectionalForecast,
+  type DirectionalOutcomeCalibration,
+} from './eventLedgerForecastCalibration';
 
 const dbConfig = () => {
   const base = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
@@ -54,15 +60,26 @@ export const buildDecisionReplayRestUrl = (
   return url;
 };
 
-const readByJsonLink = async (
+export const buildOutcomeHistoryRestUrl = (
+  base: string,
   runtimeId: string,
-  jsonColumn: 'trace' | 'links',
-  jsonKey: 'traceId' | 'entryTraceId',
-  value: string,
-): Promise<CanonicalEventRow[]> => {
+  market: string,
+  limit = 40,
+) => {
+  const url = new URL(`${base.replace(/\/+$/, '')}/rest/v1/black_oracle_events`);
+  url.searchParams.set('select', '*');
+  url.searchParams.set('runtime_id', `eq.${runtimeId}`);
+  url.searchParams.set('event_type', 'eq.OUTCOME');
+  url.searchParams.set('market', `eq.${market}`);
+  url.searchParams.set('order', 'occurred_at.desc,recorded_at.desc');
+  url.searchParams.set('limit', String(Math.max(1, Math.min(100, Math.trunc(limit)))));
+  return url;
+};
+
+const readRows = async (url: URL): Promise<CanonicalEventRow[]> => {
   const db = dbConfig();
   if (!db) return [];
-  const response = await fetch(buildDecisionReplayRestUrl(db.base, runtimeId, jsonColumn, jsonKey, value), {
+  const response = await fetch(url, {
     headers: db.headers,
     cache: 'no-store',
     signal: AbortSignal.timeout(15_000),
@@ -71,6 +88,27 @@ const readByJsonLink = async (
     throw new Error(`Decision Replay read failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
   }
   return ((await response.json()) as any[]).map(mapRow);
+};
+
+const readByJsonLink = async (
+  runtimeId: string,
+  jsonColumn: 'trace' | 'links',
+  jsonKey: 'traceId' | 'entryTraceId',
+  value: string,
+): Promise<CanonicalEventRow[]> => {
+  const db = dbConfig();
+  if (!db) return [];
+  return readRows(buildDecisionReplayRestUrl(db.base, runtimeId, jsonColumn, jsonKey, value));
+};
+
+const readOutcomeHistory = async (
+  runtimeId: string,
+  market: string,
+  limit = 40,
+): Promise<CanonicalEventRow[]> => {
+  const db = dbConfig();
+  if (!db) return [];
+  return readRows(buildOutcomeHistoryRestUrl(db.base, runtimeId, market, limit));
 };
 
 const traceIdOf = (event: CanonicalEventRow) =>
@@ -86,6 +124,46 @@ export const mergeDecisionReplayTimeline = (...groups: CanonicalEventRow[][]) =>
   }
   return Array.from(byId.values()).sort((a, b) =>
     a.occurredAt - b.occurredAt || a.recordedAt - b.recordedAt || a.eventKey.localeCompare(b.eventKey));
+};
+
+const buildHistoricalCalibration = async (
+  runtimeId: string,
+  market: string | null,
+  targetProbabilityBullish: number | null,
+) => {
+  if (!market || targetProbabilityBullish == null) {
+    return {
+      distribution: buildEmpiricalReturnDistribution([], targetProbabilityBullish, 8),
+      samples: 0,
+      historyError: null as string | null,
+    };
+  }
+
+  try {
+    const outcomes = await readOutcomeHistory(runtimeId, market, 40);
+    const uniqueEntryTraceIds = Array.from(new Set(
+      outcomes.map(entryTraceIdOf).filter((value): value is string => Boolean(value)),
+    )).slice(0, 30);
+    const entryGroups = await Promise.all(
+      uniqueEntryTraceIds.map((entryTraceId) => readByJsonLink(runtimeId, 'trace', 'traceId', entryTraceId)),
+    );
+    const historyTimeline = mergeDecisionReplayTimeline(outcomes, ...entryGroups);
+    const calibrations = outcomes
+      .map((outcome) => buildDirectionalOutcomeCalibration(historyTimeline, outcome))
+      .filter((value): value is DirectionalOutcomeCalibration => Boolean(value));
+
+    return {
+      distribution: buildEmpiricalReturnDistribution(calibrations, targetProbabilityBullish, 8),
+      samples: calibrations.length,
+      historyError: null as string | null,
+    };
+  } catch (error) {
+    return {
+      distribution: buildEmpiricalReturnDistribution([], targetProbabilityBullish, 8),
+      samples: 0,
+      historyError: error instanceof Error ? error.message : 'Historical calibration read failed.',
+    };
+  }
 };
 
 export const readDecisionReplay = async (traceId: string, runtimeId: string) => {
@@ -113,6 +191,23 @@ export const readDecisionReplay = async (traceId: string, runtimeId: string) => 
   const timeline = mergeDecisionReplayTimeline(primary, directOutcomes, ...relatedGroups);
   const entryTraceIds = Array.from(new Set(timeline.map(entryTraceIdOf).filter((value): value is string => Boolean(value))));
   const traceIds = Array.from(new Set(timeline.map(traceIdOf).filter((value): value is string => Boolean(value))));
+  const currentOutcomeCalibrations = timeline
+    .filter((event) => event.eventType === 'OUTCOME')
+    .map((outcome) => buildDirectionalOutcomeCalibration(timeline, outcome))
+    .filter((value): value is DirectionalOutcomeCalibration => Boolean(value));
+
+  const linkedEntryTraceId = entryTraceIds[0] ?? null;
+  const targetForecast = extractDirectionalForecast(timeline, normalizedTraceId)
+    ?? extractDirectionalForecast(timeline, linkedEntryTraceId);
+  const market = primary.find((event) => event.market)?.market
+    ?? directOutcomes.find((event) => event.market)?.market
+    ?? timeline.find((event) => event.market)?.market
+    ?? null;
+  const historicalCalibration = await buildHistoricalCalibration(
+    normalizedRuntimeId,
+    market,
+    targetForecast?.probabilityBullish ?? null,
+  );
 
   return {
     runtimeId: normalizedRuntimeId,
@@ -123,6 +218,13 @@ export const readDecisionReplay = async (traceId: string, runtimeId: string) => 
     traceIds,
     entryTraceIds,
     completeThrough: timeline.some((event) => event.eventType === 'OUTCOME') ? 'OUTCOME' : 'CURRENT_TRACE',
+    forecastCalibration: {
+      targetForecast,
+      currentOutcomes: currentOutcomeCalibrations,
+      empiricalReturnDistribution: historicalCalibration.distribution,
+      historicalCalibratedOutcomes: historicalCalibration.samples,
+      historyError: historicalCalibration.historyError,
+    },
     timeline,
   };
 };
