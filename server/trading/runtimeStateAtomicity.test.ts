@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { TRADING_STRATEGY_VERSION } from '../../src/trading/config';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingRuntimeProfile } from './runtimeProfile';
@@ -9,9 +10,11 @@ test('runtime preimage restores exact execution, loop, and ledger state after a 
   paperTradingSession.reset(tradingRuntimeProfile.initialEquityKrw);
   const seededSession = paperTradingSession.checkpoint();
   seededSession.ledger = Array.from({ length: 550 }, (_, index) => ({
+    id: `atomicity-ledger-${index + 1}`,
     sequence: index + 1,
     timestamp: index + 1,
     type: 'SIGNAL',
+    strategyVersion: TRADING_STRATEGY_VERSION,
     payload: { index },
   } as any));
   paperTradingSession.restore(seededSession);
@@ -56,7 +59,9 @@ test('runtime preimage restores exact execution, loop, and ledger state after a 
   assert.equal(session.portfolio.initialEquity, tradingRuntimeProfile.initialEquityKrw);
   assert.equal(session.portfolio.cash, tradingRuntimeProfile.initialEquityKrw);
   assert.equal(session.ledger.length, 550);
+  assert.equal((session.ledger[0] as any).id, 'atomicity-ledger-1');
   assert.equal((session.ledger[0] as any).sequence, 1);
+  assert.equal((session.ledger.at(-1) as any).id, 'atomicity-ledger-550');
   assert.equal((session.ledger.at(-1) as any).sequence, 550);
   assert.equal(loop.cycleCount, 12);
   assert.equal(loop.config.intervalMs, 900_000);
