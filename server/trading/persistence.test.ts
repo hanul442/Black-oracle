@@ -143,3 +143,65 @@ test('Supabase checkpoint store treats an absent runtime row as a fresh Paper ac
   assert.equal(await store.load(), null);
   assert.equal(store.status().lastError, null);
 });
+
+test('Supabase checkpoint store retries transient PGRST303 future-time rejection', async () => {
+  const checkpoint = buildCheckpoint();
+  let attempts = 0;
+
+  const fakeFetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response(JSON.stringify({
+        code: 'PGRST303',
+        message: 'JWT issued at future',
+      }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    assert.equal(init?.method, 'POST');
+    return new Response(null, { status: 201 });
+  }) as typeof fetch;
+
+  const store = new SupabaseTradingCheckpointStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-role-test',
+    runtimeId: 'paper-primary',
+    fetchImpl: fakeFetch,
+    retryDelaysMs: [0],
+  });
+
+  await store.save(checkpoint);
+  assert.equal(attempts, 2);
+  assert.equal(store.status().writes, 1);
+  assert.equal(store.status().lastError, null);
+});
+
+test('Supabase checkpoint store does not retry a non-transient authentication failure', async () => {
+  let attempts = 0;
+  const fakeFetch = (async () => {
+    attempts += 1;
+    return new Response(JSON.stringify({
+      code: 'PGRST301',
+      message: 'invalid JWT',
+    }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const store = new SupabaseTradingCheckpointStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-role-test',
+    runtimeId: 'paper-primary',
+    fetchImpl: fakeFetch,
+    retryDelaysMs: [0, 0],
+  });
+
+  await assert.rejects(
+    () => store.save(buildCheckpoint()),
+    /Supabase checkpoint write failed \(401\)/,
+  );
+  assert.equal(attempts, 1);
+  assert.match(store.status().lastError ?? '', /401/);
+});
