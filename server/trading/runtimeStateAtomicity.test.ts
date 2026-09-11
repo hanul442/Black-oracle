@@ -3,10 +3,19 @@ import test from 'node:test';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { tradingRuntimeProfile } from './runtimeProfile';
-import { buildRuntimeCheckpoint, restoreRuntimeCheckpointValue } from './runtimeState';
+import { buildRuntimePreimage, restoreRuntimePreimage } from './runtimeState';
 
-test('runtime checkpoint preimage restores execution and loop state after a failed cycle commit', () => {
+test('runtime preimage restores exact execution, loop, and ledger state after a failed cycle commit', () => {
   paperTradingSession.reset(tradingRuntimeProfile.initialEquityKrw);
+  const seededSession = paperTradingSession.checkpoint();
+  seededSession.ledger = Array.from({ length: 550 }, (_, index) => ({
+    sequence: index + 1,
+    timestamp: index + 1,
+    type: 'SIGNAL',
+    payload: { index },
+  } as any));
+  paperTradingSession.restore(seededSession);
+
   paperLoopController.restore({
     schemaVersion: 1,
     running: false,
@@ -19,7 +28,8 @@ test('runtime checkpoint preimage restores execution and loop state after a fail
     lastCycle: null,
   }, false);
 
-  const preimage = buildRuntimeCheckpoint('atomicity-test-preimage');
+  const preimage = buildRuntimePreimage('atomicity-test-preimage');
+  assert.equal(preimage.session.ledger.length, 550);
 
   paperTradingSession.reset(tradingRuntimeProfile.initialEquityKrw - 1_000_000);
   paperLoopController.restore({
@@ -37,7 +47,7 @@ test('runtime checkpoint preimage restores execution and loop state after a fail
   assert.equal(paperTradingSession.state().portfolio.initialEquity, tradingRuntimeProfile.initialEquityKrw - 1_000_000);
   assert.equal(paperLoopController.checkpoint().cycleCount, 99);
 
-  const restored = restoreRuntimeCheckpointValue(preimage, false);
+  const restored = restoreRuntimePreimage(preimage, false);
   const session = paperTradingSession.state();
   const loop = paperLoopController.checkpoint();
 
@@ -45,6 +55,9 @@ test('runtime checkpoint preimage restores execution and loop state after a fail
   assert.equal(restored.reason, 'atomicity-test-preimage');
   assert.equal(session.portfolio.initialEquity, tradingRuntimeProfile.initialEquityKrw);
   assert.equal(session.portfolio.cash, tradingRuntimeProfile.initialEquityKrw);
+  assert.equal(session.ledger.length, 550);
+  assert.equal((session.ledger[0] as any).sequence, 1);
+  assert.equal((session.ledger.at(-1) as any).sequence, 550);
   assert.equal(loop.cycleCount, 12);
   assert.equal(loop.config.intervalMs, 900_000);
   assert.equal(loop.config.maxMarkets, 6);
