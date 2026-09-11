@@ -28,6 +28,12 @@ export interface PersistenceStatus {
   lastError: string | null;
   writes: number;
   restores: number;
+  lastReadDurationMs: number | null;
+  lastWriteDurationMs: number | null;
+  lastPayloadBytes: number | null;
+  lastRequestAttempts: number | null;
+  totalRetries: number;
+  lastHttpStatus: number | null;
 }
 
 export interface TradingCheckpointStore {
@@ -75,6 +81,9 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
   private lastError: string | null = null;
   private writes = 0;
   private restores = 0;
+  private lastReadDurationMs: number | null = null;
+  private lastWriteDurationMs: number | null = null;
+  private lastPayloadBytes: number | null = null;
 
   constructor(filePath = defaultStatePath()) {
     this.filePath = filePath;
@@ -91,6 +100,12 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
       lastError: this.lastError,
       writes: this.writes,
       restores: this.restores,
+      lastReadDurationMs: this.lastReadDurationMs,
+      lastWriteDurationMs: this.lastWriteDurationMs,
+      lastPayloadBytes: this.lastPayloadBytes,
+      lastRequestAttempts: null,
+      totalRetries: 0,
+      lastHttpStatus: null,
     };
   }
 
@@ -100,8 +115,11 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
       const directory = path.dirname(this.filePath);
       await mkdir(directory, { recursive: true });
       const temporaryPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+      const payload = `${JSON.stringify(validated, null, 2)}\n`;
+      const startedAt = Date.now();
+      this.lastPayloadBytes = Buffer.byteLength(payload, 'utf-8');
       try {
-        await writeFile(temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, { encoding: 'utf-8', mode: 0o600 });
+        await writeFile(temporaryPath, payload, { encoding: 'utf-8', mode: 0o600 });
         await rename(temporaryPath, this.filePath);
         this.lastSavedAt = validated.savedAt;
         this.lastError = null;
@@ -109,6 +127,8 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : 'Unknown checkpoint write error.';
         throw error;
+      } finally {
+        this.lastWriteDurationMs = Date.now() - startedAt;
       }
     });
     await this.writeChain;
@@ -116,6 +136,7 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
   }
 
   async load(): Promise<TradingRuntimeCheckpoint | null> {
+    const startedAt = Date.now();
     try {
       const raw = await readFile(this.filePath, 'utf-8');
       const parsed = validateCheckpoint(JSON.parse(raw));
@@ -132,6 +153,8 @@ export class JsonTradingCheckpointStore implements TradingCheckpointStore {
       }
       this.lastError = error instanceof Error ? error.message : 'Unknown checkpoint read error.';
       throw error;
+    } finally {
+      this.lastReadDurationMs = Date.now() - startedAt;
     }
   }
 }
@@ -196,6 +219,12 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
   private lastError: string | null = null;
   private writes = 0;
   private restores = 0;
+  private lastReadDurationMs: number | null = null;
+  private lastWriteDurationMs: number | null = null;
+  private lastPayloadBytes: number | null = null;
+  private lastRequestAttempts: number | null = null;
+  private totalRetries = 0;
+  private lastHttpStatus: number | null = null;
 
   constructor(options: SupabaseTradingCheckpointStoreOptions) {
     if (!options.url.trim()) throw new Error('SUPABASE_URL is required for Supabase trading persistence.');
@@ -224,6 +253,12 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
       lastError: this.lastError,
       writes: this.writes,
       restores: this.restores,
+      lastReadDurationMs: this.lastReadDurationMs,
+      lastWriteDurationMs: this.lastWriteDurationMs,
+      lastPayloadBytes: this.lastPayloadBytes,
+      lastRequestAttempts: this.lastRequestAttempts,
+      totalRetries: this.totalRetries,
+      lastHttpStatus: this.lastHttpStatus,
     };
   }
 
@@ -251,15 +286,22 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
 
   private async request(input: URL | string, init: RequestInit) {
     const maxAttempts = this.retryDelaysMs.length + 1;
+    this.lastRequestAttempts = 0;
+    this.lastHttpStatus = null;
+
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      this.lastRequestAttempts = attempt + 1;
       try {
         const response = await this.fetchAttempt(input, init);
+        this.lastHttpStatus = response.status;
         if (response.ok || attempt === maxAttempts - 1) return response;
         const body = await response.clone().text();
         if (!transientSupabaseResponse(response.status, body)) return response;
       } catch (error) {
+        this.lastHttpStatus = null;
         if (attempt === maxAttempts - 1 || !transientFetchError(error)) throw error;
       }
+      this.totalRetries += 1;
       await delay(this.retryDelaysMs[attempt] ?? 0);
     }
     throw new Error('Supabase checkpoint request exhausted retry attempts.');
@@ -268,6 +310,15 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
   async save(checkpoint: TradingRuntimeCheckpoint) {
     const validated = validateCheckpoint(checkpoint);
     this.writeChain = this.writeChain.catch(() => undefined).then(async () => {
+      const body = JSON.stringify({
+        runtime_id: this.runtimeId,
+        schema_version: validated.schemaVersion,
+        saved_at: new Date(validated.savedAt).toISOString(),
+        reason: validated.reason,
+        checkpoint: validated,
+      });
+      const startedAt = Date.now();
+      this.lastPayloadBytes = Buffer.byteLength(body, 'utf-8');
       try {
         const response = await this.request(`${this.endpoint()}?on_conflict=runtime_id`, {
           method: 'POST',
@@ -275,17 +326,11 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
             'Content-Type': 'application/json',
             Prefer: 'resolution=merge-duplicates,return=minimal',
           }),
-          body: JSON.stringify({
-            runtime_id: this.runtimeId,
-            schema_version: validated.schemaVersion,
-            saved_at: new Date(validated.savedAt).toISOString(),
-            reason: validated.reason,
-            checkpoint: validated,
-          }),
+          body,
         });
         if (!response.ok) {
-          const body = await response.text();
-          throw new Error(`Supabase checkpoint write failed (${response.status}): ${body.slice(0, 300)}`);
+          const responseBody = await response.text();
+          throw new Error(`Supabase checkpoint write failed (${response.status}): ${responseBody.slice(0, 300)}`);
         }
         this.lastSavedAt = validated.savedAt;
         this.lastError = null;
@@ -293,6 +338,8 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : 'Unknown Supabase checkpoint write error.';
         throw error;
+      } finally {
+        this.lastWriteDurationMs = Date.now() - startedAt;
       }
     });
     await this.writeChain;
@@ -300,6 +347,7 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
   }
 
   async load(): Promise<TradingRuntimeCheckpoint | null> {
+    const startedAt = Date.now();
     try {
       const url = new URL(this.endpoint());
       url.searchParams.set('runtime_id', `eq.${this.runtimeId}`);
@@ -327,6 +375,8 @@ export class SupabaseTradingCheckpointStore implements TradingCheckpointStore {
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : 'Unknown Supabase checkpoint read error.';
       throw error;
+    } finally {
+      this.lastReadDurationMs = Date.now() - startedAt;
     }
   }
 }
