@@ -170,3 +170,17 @@ export const buildTradingSessionDeltaCanonicalEvents = (
 
   return events;
 };
+
+export const buildTradingSessionRetryCanonicalEvents = (
+  session: any,
+  runtimeId: string,
+  maxLedgerEvents = 256,
+): CanonicalEventInput[] => {
+  const ledger = asArray(session?.ledger);
+  const bounded = ledger.slice(-Math.max(1, Math.trunc(maxLedgerEvents)));
+  return buildTradingSessionDeltaCanonicalEvents(
+    { ledger: [], closedTrades: asArray(session?.closedTrades) },
+    { ledger: bounded, closedTrades: asArray(session?.closedTrades) },
+    runtimeId,
+  );
+};
