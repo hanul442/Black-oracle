@@ -25,12 +25,12 @@ export default async function handler(request: any, response: any) {
     return response.status(200).json({
       success: true,
       canonical: true,
-      replayVersion: 1,
+      replayVersion: 2,
       ...replay,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown Decision Replay error.';
     console.error('Black Oracle Decision Replay failed:', error);
-    return response.status(500).json({ success: false, replayVersion: 1, error: message, timeline: [] });
+    return response.status(500).json({ success: false, replayVersion: 2, error: message, timeline: [] });
   }
 }
