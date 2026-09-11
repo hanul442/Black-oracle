@@ -146,3 +146,24 @@ test('Decision Replay attaches one trace to equity research decisions and their 
     assert.deepEqual(event.links?.evidenceIds, ['nars:packet:KRX-039490']);
   }
 });
+
+test('Decision Replay does not relabel retained retry events with the current cycle lineage', () => {
+  const retryEvent = {
+    eventKey: 'retry-old-signal',
+    occurredAt: decisionTimestamp - 900_000,
+    runtimeId,
+    eventType: 'STRATEGY',
+    eventName: 'SIGNAL',
+    market: 'KRW-BTC',
+    summary: 'Historical signal retry.',
+    source: 'paper_trading_ledger',
+    trace: { ledgerEventId: 'old-signal' },
+    __lineagePolicy: 'PRESERVE',
+  } as CanonicalEventInput;
+
+  const [projected] = attachDecisionReplayLineage([retryEvent], cycle, runtimeId);
+  assert.equal(projected?.trace?.traceId, undefined);
+  assert.equal(projected?.links?.decisionId, undefined);
+  assert.equal((projected as any)?.__lineagePolicy, undefined);
+  assert.equal(projected?.trace?.ledgerEventId, 'old-signal');
+});
