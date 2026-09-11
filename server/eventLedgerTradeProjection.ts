@@ -175,12 +175,13 @@ export const buildTradingSessionRetryCanonicalEvents = (
   session: any,
   runtimeId: string,
   maxLedgerEvents = 256,
+  maxClosedTrades = 128,
 ): CanonicalEventInput[] => {
-  const ledger = asArray(session?.ledger);
-  const bounded = ledger.slice(-Math.max(1, Math.trunc(maxLedgerEvents)));
+  const ledger = asArray(session?.ledger).slice(-Math.max(1, Math.trunc(maxLedgerEvents)));
+  const closedTrades = asArray(session?.closedTrades).slice(-Math.max(1, Math.trunc(maxClosedTrades)));
   return buildTradingSessionDeltaCanonicalEvents(
-    { ledger: [], closedTrades: asArray(session?.closedTrades) },
-    { ledger: bounded, closedTrades: asArray(session?.closedTrades) },
+    { ledger: [], closedTrades: [] },
+    { ledger, closedTrades },
     runtimeId,
   );
 };
