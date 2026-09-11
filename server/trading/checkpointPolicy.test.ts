@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compactPaperSessionCheckpoint, PAPER_CHECKPOINT_LEDGER_LIMIT } from './checkpointPolicy';
+import {
+  compactPaperSessionCheckpoint,
+  PAPER_CHECKPOINT_LEDGER_LIMIT,
+  PAPER_NON_QUALIFICATION_CHECKPOINT_LEDGER_LIMIT,
+  paperCheckpointLedgerLimitForMode,
+} from './checkpointPolicy';
 import type { PaperTradingSessionCheckpoint } from './paperSession';
 
 const buildCheckpoint = (ledgerCount: number): PaperTradingSessionCheckpoint => ({
@@ -35,6 +40,27 @@ test('Paper checkpoint keeps only the newest bounded ledger tail', () => {
   assert.equal((compacted.ledger[0] as any).sequence, 506);
   assert.equal((compacted.ledger.at(-1) as any).sequence, PAPER_CHECKPOINT_LEDGER_LIMIT + 505);
   assert.equal(original.ledger.length, PAPER_CHECKPOINT_LEDGER_LIMIT + 505);
+});
+
+test('Paper checkpoint uses a smaller ledger tail outside qualification mode', () => {
+  assert.equal(paperCheckpointLedgerLimitForMode(true), PAPER_CHECKPOINT_LEDGER_LIMIT);
+  assert.equal(
+    paperCheckpointLedgerLimitForMode(false),
+    PAPER_NON_QUALIFICATION_CHECKPOINT_LEDGER_LIMIT,
+  );
+
+  const original = buildCheckpoint(PAPER_CHECKPOINT_LEDGER_LIMIT);
+  const compacted = compactPaperSessionCheckpoint(
+    original,
+    PAPER_NON_QUALIFICATION_CHECKPOINT_LEDGER_LIMIT,
+  );
+
+  assert.equal(compacted.ledger.length, PAPER_NON_QUALIFICATION_CHECKPOINT_LEDGER_LIMIT);
+  assert.equal(
+    (compacted.ledger[0] as any).sequence,
+    PAPER_CHECKPOINT_LEDGER_LIMIT - PAPER_NON_QUALIFICATION_CHECKPOINT_LEDGER_LIMIT + 1,
+  );
+  assert.equal((compacted.ledger.at(-1) as any).sequence, PAPER_CHECKPOINT_LEDGER_LIMIT);
 });
 
 test('Paper checkpoint compaction preserves portfolio and execution state', () => {
