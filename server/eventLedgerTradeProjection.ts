@@ -183,5 +183,8 @@ export const buildTradingSessionRetryCanonicalEvents = (
     { ledger: [], closedTrades: [] },
     { ledger, closedTrades },
     runtimeId,
-  );
+  ).map((event) => ({
+    ...event,
+    __lineagePolicy: 'PRESERVE',
+  } as CanonicalEventInput));
 };
