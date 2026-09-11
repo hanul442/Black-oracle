@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalEventRow } from './eventLedger';
+import { resolveObservedEntryTraceId } from './decisionReplay';
 import {
   buildDirectionalOutcomeCalibration,
   buildEmpiricalReturnDistribution,
@@ -110,4 +111,31 @@ test('empirical distribution hard-gates quantiles until enough completed compara
   assert.equal(ready.probabilityBucket?.upper, 0.8);
   assert.ok((ready.quantiles?.p10 ?? 1) <= (ready.quantiles?.p50 ?? 0));
   assert.ok((ready.quantiles?.p50 ?? 1) <= (ready.quantiles?.p90 ?? 0));
+});
+
+test('replay recovers the canonical entry trace from observed openedAt when legacy entryTraceId does not resolve', () => {
+  const actualEntryTraceId = 'black-oracle-paper:KRW-BTC:5000';
+  const entryDecisionEvent = baseEvent({
+    id: 'entry-decision',
+    eventKey: 'entry-decision',
+    occurredAt: 5_000,
+    eventType: 'DECISION',
+    eventName: 'DECISION_ENTER',
+    action: 'ENTER',
+    trace: { traceId: actualEntryTraceId },
+  });
+  const legacyOutcome = baseEvent({
+    id: 'legacy-outcome',
+    eventKey: 'legacy-outcome',
+    occurredAt: 20_000,
+    eventType: 'OUTCOME',
+    eventName: 'PAPER_TRADE_CLOSED_OUTCOME',
+    action: 'CLOSED',
+    trace: { traceId: 'exit-trace', openedAt: 5_120, closedAt: 20_000, returnPct: 0.01 },
+    links: { entryTraceId: 'black-oracle-paper:KRW-BTC:wrong-analysis-time' },
+  });
+
+  const resolved = resolveObservedEntryTraceId(legacyOutcome, [entryDecisionEvent]);
+  assert.equal(resolved.traceId, actualEntryTraceId);
+  assert.equal(resolved.method, 'OPENED_AT_NEAREST_DECISION');
 });
