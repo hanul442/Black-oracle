@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { BlackOracleMobileApp as BlackOracleMobileAppV8 } from './BlackOracleMobileAppV8';
+import { BlackOracleMobileApp as BlackOracleMobileAppV81 } from './BlackOracleMobileAppV81';
 
 const TAB_LABELS = ['Home', 'Portfolio', 'Positions', 'Activity', 'More'] as const;
 const SWIPE_DISTANCE_PX = 56;
@@ -69,7 +69,7 @@ export const BlackOracleMobileApp = () => {
         event.stopPropagation();
       }}
     >
-      <BlackOracleMobileAppV8 />
+      <BlackOracleMobileAppV81 />
     </div>
   );
 };
