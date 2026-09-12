@@ -1,7 +1,8 @@
 {
-  "name": "react-example",
+  "name": "black-oracle",
   "private": true,
   "version": "0.0.0",
+  "description": "Auditable AI investment operating system with evidence-driven decision lineage, Paper execution, and replay.",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
