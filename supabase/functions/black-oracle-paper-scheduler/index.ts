@@ -36,7 +36,7 @@ type ControlPlaneResponse = { data: any; error: any };
 
 const withControlPlaneRetry = async (
   operation: string,
-  call: () => PromiseLike<ControlPlaneResponse>,
+  call: () => any,
 ): Promise<{ data: any; error: any; attempts: number }> => {
   let last: ControlPlaneResponse = { data: null, error: new Error(`${operation} was not attempted.`) };
   const maxAttempts = CONTROL_PLANE_RETRY_DELAYS_MS.length + 1;
@@ -80,14 +80,13 @@ const readMode = async (req: Request): Promise<RequestMode> => {
   }
 };
 
-const safeStartupLeaseFailure = (status: number | null, body: unknown) => {
+const safeStartupTransientFailure = (status: number | null, body: unknown) => {
   if (status !== 500 || !body || typeof body !== "object") return false;
   const record = body as Record<string, unknown>;
   const phase = String(record.phase ?? "").toLowerCase();
   const error = String(record.error ?? "").toLowerCase();
   return phase === "startup"
-    && /lease/.test(error)
-    && /gateway timeout|timeout|timed out|502|503|504/.test(error);
+    && /gateway timeout|timeout|timed out|502|503|504|fetch failed|connection/.test(error);
 };
 
 Deno.serve(async (req: Request) => {
@@ -178,8 +177,8 @@ Deno.serve(async (req: Request) => {
   };
 
   await callDownstream();
-  if (mode.action === "cycle" && safeStartupLeaseFailure(downstreamStatus, downstreamBody)) {
-    console.warn("Black Oracle scheduler retrying safe startup lease failure", JSON.stringify({
+  if (mode.action === "cycle" && safeStartupTransientFailure(downstreamStatus, downstreamBody)) {
+    console.warn("Black Oracle scheduler retrying explicit startup-phase transient failure", JSON.stringify({
       runtimeId,
       downstreamStatus,
       downstreamAttempts,
