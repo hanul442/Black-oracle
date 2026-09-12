@@ -1,1111 +1,315 @@
-BLACK ORACLE
+# BLACK ORACLE
 
+**An auditable AI investment operating system.**
 
+BLACK ORACLE is an experimental investment engine designed to connect market state, evidence, strategy selection, multi-agent review, deterministic risk, Paper execution, and realized outcomes through replayable decision lineage.
 
+> **Evidence → Strategy Factory → Router → AI Council → Red Team → Arbiter → Risk → Execution → Outcome**
+>
+> Every important decision should be explainable after the fact from the information available at the time.
 
-A mobile-first intelligence analysis terminal for signal detection, scenario forecasting, and strategic decision support.
+**Current stage:** active development · PAPER qualification · AI Council remains shadow-only · no claim of production-live autonomous capital authority.
 
+---
 
+## Why BLACK ORACLE exists
 
+Most trading systems show the result of a decision. BLACK ORACLE is being built to preserve the **decision itself**.
 
-BLACK ORACLE is an experimental intelligence-analysis platform designed to transform scattered signals into structured questions, hypotheses, scenarios, evidence trails, and decision maps.
+For each meaningful candidate, the target system records:
 
+- what the market looked like,
+- which evidence was available,
+- which strategies were eligible or rejected,
+- why the Router selected a strategy or `NO_TRADE`,
+- what independent Council agents believed before debate,
+- what the Red Team challenged,
+- what the Arbiter concluded,
+- what deterministic Risk allowed or rejected,
+- what order/fill actually occurred,
+- and what happened afterward.
 
-It combines AI-assisted reasoning, evidence gathering, risk scoring, and visual scenario exploration into a dark, premium, mobile-first interface inspired by intelligence terminals, strategic dashboards, and scenario command systems.
+The goal is not an AI that merely says **BUY** or **SELL**. The goal is an investment operating system that can answer:
 
+> **Why did you take this risk, what information did you use, what could have invalidated the decision, and which layer added or destroyed value?**
 
+---
 
-Overview
+## Core architecture
 
+```mermaid
+flowchart TD
+    M[Market State] --> E[NARS / Evidence Fabric]
+    M --> F[Strategy Factory]
+    E --> F
+    F --> R[Strategy Router]
+    R --> C[AI Council - Round 0]
+    C --> RT[Independent Red Team]
+    RT --> RV[Revisions]
+    RV --> A[Evidence-Gated Arbiter]
+    A --> K[Deterministic Risk]
+    K --> X[Paper Execution]
+    X --> O[Outcome]
 
-BLACK ORACLE is built around one core idea:
+    E --> L[Canonical Event Ledger]
+    F --> L
+    R --> L
+    C --> L
+    RT --> L
+    A --> L
+    K --> L
+    X --> L
+    O --> L
 
+    L --> D[Decision Replay]
+    O --> CAL[Calibration / Attribution]
+    D --> CAL
+```
 
+`LONG`, `SHORT`, and `NO_TRADE` are first-class decisions. Missing evidence is represented as a data gap rather than silently fabricated.
 
+---
 
-The future does not appear suddenly. It leaks through signals.
+## What is implemented now
 
+### Strategy intelligence
 
+- Strategy Factory and strategy candidate lifecycle
+- Strategy Router
+- Challenger / Shadow concepts with hard-gated promotion direction
+- Monte Carlo and validation utilities
+- crypto PAPER runtime
+- KRX equity PAPER path
 
+### AI Council v3
 
-The system helps users collect weak signals, classify them, generate analytical questions, build competing hypotheses, and explore possible future scenarios through an interactive intelligence interface.
+The Council is structured as a **Primary Team + Independent Red Team + Evidence-Gated Arbiter**, not a simple majority vote.
 
+Core roles include:
 
-Rather than simply summarizing news or producing static reports, BLACK ORACLE is designed as a layered intelligence workflow:
+- Chief Market Strategist
+- Evidence Intelligence Officer
+- Quant & Model Validation Lead
+- Trade Architect
+- Director of Adversarial Research — independent Red Team
+- dynamic specialists for macro, fundamentals, microstructure, derivatives, and portfolio context
 
+The Council separates `FACT`, `INFERENCE`, `ASSUMPTION`, `COUNTEREVIDENCE`, and `DATA_GAP`. Its current authority is deliberately **shadow-only** so it can be evaluated against outcomes without silently gaining execution authority.
 
-Signal Collection
-        ↓
-Question Generation
-        ↓
-Hypothesis Formation
-        ↓
-Evidence Gathering
-        ↓
-Scenario Projection
-        ↓
-Decision Mapping
-        ↓
-Deep Dive Reporting
+### Canonical Event Ledger
 
+Paper observations and execution history are projected into an append-oriented canonical audit layer, including:
 
+- `EVIDENCE`
+- `STRATEGY`
+- `RISK`
+- `ORDER`
+- `TRADE`
+- `OUTCOME`
+- `SYSTEM`
 
+The design separates recovery state from long-lived audit history so a runtime checkpoint does not need to be the only source of truth.
 
-Core Concept
+### Decision Replay v2
 
+Decision Replay reconstructs the path around a decision and its outcome. Current calibration primitives include:
 
-BLACK ORACLE is not a simple news dashboard.
+- source-backed directional forecast extraction,
+- outcome-linked Brier score,
+- absolute probability error,
+- directional correctness,
+- empirical return distributions for sufficiently sampled probability buckets,
+- explicit sample gates that return unavailable values instead of inventing statistics.
 
+### Runtime integrity
 
-It is designed as a multi-layer intelligence operating interface where the user can:
+The runtime is being hardened around:
 
+- process liveness separated from deep trading health,
+- durable Paper checkpoints,
+- bounded persistence retries,
+- atomic in-memory rollback when a checkpoint cannot commit,
+- scheduler and persistence latency telemetry,
+- canonical event retry windows,
+- frozen qualification-cohort protection.
 
+---
 
+## Safety and authority model
 
-Track geopolitical, market, technology, and social signals
+BLACK ORACLE treats authority as something that must be **earned by evidence**.
 
+1. New intelligence layers begin in `SHADOW`.
+2. AI Council does not override deterministic Risk.
+3. Strategy, risk, sizing, or execution semantics are never silently changed inside an existing qualification cohort.
+4. Missing data is displayed as missing.
+5. Promotion is hard-gated by prospective evidence, not by a polished UI or a single profitable period.
+6. Historical decisions are not retrospectively rewritten as if a newer policy had existed.
+7. PAPER → Canary Live requires explicit validation and operational gates.
 
-Generate questions from uncertain or fragmented events
+The monthly performance objective used internally is a target, **not proof of edge and not a substitute for risk/validation gates**.
 
+---
 
-Build multiple hypotheses from the same signal set
+## Qualification philosophy
 
+A strategy or full-system candidate should not reach higher authority only because win rate looks good.
 
-Compare base, positive, alternative, and risk scenarios
+The validation model is designed to consider, where available:
 
+- out-of-sample / walk-forward performance,
+- expectancy and payoff ratio,
+- max drawdown,
+- Sharpe / Sortino,
+- Monte Carlo survival,
+- regime stability,
+- parameter robustness,
+- sample size,
+- evidence quality,
+- reproducibility,
+- execution sensitivity,
+- calibration,
+- and operational reliability.
 
-Gather and verify supporting evidence
+BLACK ORACLE uses a credit-style grade vocabulary (`AAA+` through `F-`) as a common language, but grades are intended to remain **composite and hard-gated**, never cosmetic conversions of win rate.
 
+---
 
-Visualize relationships between signals, actors, scenarios, and decisions
+## Product surface
 
+The current mobile operating surface follows an `Oracle → Decision → Replay → Outcome` flow and consumes real read-only runtime contracts where available.
 
-Produce strategic intelligence briefings and deep dive reports
+| Surface | Purpose |
+| --- | --- |
+| **Oracle** | market state, current decisions, trade map, system state |
+| **Decision** | Router, Council, Red Team/Arbiter, deterministic Risk |
+| **Replay / Traces** | canonical event lineage and historical reconstruction |
+| **Portfolio** | Paper equity, active risk, positions, realized outcomes |
+| **System** | runtime, persistence, scheduler, ledger, data and qualification health |
+| **Strategy Vault** | experiments, candidates, challengers, grades and lifecycle |
 
+Design direction: **institutional data discipline with consumer-grade clarity**. The interface should never hide missing data behind decorative certainty.
 
+---
 
+## Quick start
 
-The long-term goal is to create a system that feels less like a search engine and more like a strategic analysis room.
+### Requirements
 
+- Node.js 22+
+- npm
 
+### Install
 
-Key Features
-
-
-1. Oracle Feed
-
-
-A mobile-first intelligence feed that displays live analytical cards.
-
-
-Each card can represent a topic, event, sector, company, country, or emerging signal.
-
-
-Example indicators:
-
-
-
-
-Valuation
-
-
-Momentum
-
-
-Flow
-
-
-Risk
-
-
-Signal strength
-
-
-Evidence status
-
-
-Scenario probability
-
-
-
-
-
-2. Command Bar
-
-
-A fixed bottom command interface that allows the user to initiate analysis quickly.
-
-
-Example commands:
-
-
-Analyze semiconductor supply chain risk
-Track signals around Korean financial markets
-Generate scenarios for a Taiwan Strait crisis
-Build a decision map for AI infrastructure investment
-
-
-
-The command bar is designed to feel like the entry point of an intelligence terminal.
-
-
-
-3. Signal Classification
-
-
-Incoming data can be classified into structured signal types.
-
-
-Example categories:
-
-
-
-
-Signal Type
-Description
-
-
-
-
-Market Signal
-Price, volume, valuation, liquidity, fund flow
-
-
-Political Signal
-Election, regulation, policy, diplomacy
-
-
-Geopolitical Signal
-Conflict, alliance, sanctions, military posture
-
-
-Technology Signal
-AI, semiconductor, energy, infrastructure
-
-
-Social Signal
-Public sentiment, demographic shifts, cultural movement
-
-
-Risk Signal
-Instability, crisis trigger, systemic vulnerability
-
-
-
-
-
-4. Question Generation
-
-
-BLACK ORACLE converts raw signals into analytical questions.
-
-
-Example:
-
-
-Signal:
-Foreign investors are rapidly increasing exposure to Korean semiconductor stocks.
-
-Generated Questions:
-1. Is this a short-term momentum trade or a structural allocation shift?
-2. Which macro variables are supporting the inflow?
-3. Is the movement concentrated in specific firms or broad across the sector?
-4. What risks could reverse the trend?
-
-
-
-
-5. Hypothesis Engine
-
-
-The system generates multiple competing hypotheses instead of one fixed answer.
-
-
-Example structure:
-
-
-
-
-Hypothesis Type
-Purpose
-
-
-
-
-Base Case
-Most likely current path
-
-
-Positive Case
-Upside scenario
-
-
-Alternative Case
-Non-consensus interpretation
-
-
-Risk Case
-Downside or crisis scenario
-
-
-
-
-This allows users to compare possible futures rather than accept a single narrative.
-
-
-
-6. Scenario Projection
-
-
-BLACK ORACLE is designed to support scenario-based forecasting.
-
-
-Each scenario can include:
-
-
-
-
-Probability
-
-
-Key drivers
-
-
-Trigger events
-
-
-Supporting evidence
-
-
-Counter-evidence
-
-
-Expected timeline
-
-
-Strategic implications
-
-
-
-
-Example:
-
-
-Scenario A: Controlled Stabilization
-Probability: 46%
-
-Scenario B: Delayed Policy Shock
-Probability: 31%
-
-Scenario C: Market Reversal
-Probability: 18%
-
-Scenario D: Systemic Escalation
-Probability: 5%
-
-
-
-
-7. Evidence Gathering Status
-
-
-The platform tracks the evidence-gathering process as a visible workflow.
-
-
-Example stages:
-
-
-[1] Collecting open-source signals
-[2] Extracting relevant claims
-[3] Matching evidence to hypotheses
-[4] Checking source reliability
-[5] Updating scenario probability
-[6] Generating final briefing
-
-
-
-Each stage can be displayed with progress indicators, status labels, and completion states.
-
-
-
-8. Analyst Council
-
-
-The Analyst Council is a planned interface layer where different analytical perspectives can be compared.
-
-
-Example analyst roles:
-
-
-
-
-Analyst
-Focus
-
-
-
-
-Macro Analyst
-Interest rates, inflation, liquidity, currency
-
-
-Market Analyst
-Valuation, price action, fund flow
-
-
-Geopolitical Analyst
-Security, diplomacy, sanctions, regional risk
-
-
-Technology Analyst
-AI, semiconductor, energy, platform shifts
-
-
-Risk Analyst
-Tail risk, weak signals, scenario stress
-
-
-Strategy Director
-Final synthesis and decision recommendation
-
-
-
-
-The goal is to make analysis feel like a structured intelligence briefing rather than a single AI response.
-
-
-
-Visual Design Direction
-
-
-BLACK ORACLE uses a dark, premium, intelligence-terminal interface.
-
-
-Design Keywords
-
-
-
-
-Dark intelligence terminal
-
-
-Mobile-first command system
-
-
-Minimal but cinematic dashboard
-
-
-Radial relationship diagram
-
-
-Scenario probability ring
-
-
-Signal tracing interface
-
-
-Evidence ledger
-
-
-Strategic briefing studio
-
-
-
-
-Visual Language
-
-
-
-
-Element
-Direction
-
-
-
-
-Background
-Deep charcoal / black technical canvas
-
-
-Typography
-Display-focused, modern, precise
-
-
-Accent Colors
-Cyan, purple, red, muted white
-
-
-Layout
-One-page, layered, mobile-first
-
-
-Motion
-Subtle pulse, rotation, fade, zoom, trace lines
-
-
-Data Display
-Rings, radial diagrams, progress cards, evidence lists
-
-
-
-
-
-Main Interface Modules
-
-
-Oracle Feed
-
-
-A scannable feed of active intelligence items.
-
-
-Analysis Ring
-
-
-A visual ring-based module for displaying active scenario probability, signal intensity, or analytical progress.
-
-
-Trace View
-
-
-A layered view showing how signals connect to questions, evidence, hypotheses, and scenarios.
-
-
-Radial Relationship Diagram
-
-
-A relationship map connecting:
-
-
-
-
-Signals
-
-
-Actors
-
-
-Events
-
-
-Evidence
-
-
-Hypotheses
-
-
-Scenarios
-
-
-Decisions
-
-
-
-
-Evidence Ledger
-
-
-A structured evidence table for tracking source material and reliability.
-
-
-Oracle Briefing Studio
-
-
-A report-generation interface for turning analysis into polished briefings.
-
-
-Deep Dive Report
-
-
-A full analytical report generated from the accumulated case structure.
-
-
-Decision Web
-
-
-A strategic decision graph showing possible choices, consequences, and scenario branches.
-
-
-
-System Architecture
-
-
-BLACK ORACLE is currently designed around a frontend, backend, AI analysis layer, and database layer.
-
-
-User Input
-   ↓
-Frontend Interface
-   ↓
-Backend API
-   ↓
-AI Analysis Engine
-   ↓
-Evidence / Search / Data Processing
-   ↓
-Firestore Database
-   ↓
-Scenario + Report Output
-
-
-
-
-Suggested Tech Stack
-
-
-
-
-Layer
-Technology
-
-
-
-
-Frontend
-React / TypeScript
-
-
-Styling
-Tailwind CSS
-
-
-Backend
-Node.js
-
-
-Database
-Firebase Firestore
-
-
-AI Model
-Gemini 2.5 Flash
-
-
-Search Grounding
-Google Search Grounding
-
-
-Hosting
-Firebase Hosting / Vercel / Replit
-
-
-Visualization
-Custom SVG / Canvas / React components
-
-
-
-
-
-Data Model Draft
-
-
-Oracle Case
-
-
-type OracleCase = {
-  id: string;
-  title: string;
-  query: string;
-  status: "draft" | "gathering" | "analyzing" | "completed";
-  createdAt: string;
-  updatedAt: string;
-
-  signals: Signal[];
-  questions: OracleQuestion[];
-  hypotheses: Hypothesis[];
-  scenarios: Scenario[];
-  evidence: EvidenceItem[];
-  briefing?: OracleBriefing;
-};
-
-
-
-Signal
-
-
-type Signal = {
-  id: string;
-  title: string;
-  summary: string;
-  category: string;
-  strength: number;
-  source?: string;
-  timestamp: string;
-};
-
-
-
-Hypothesis
-
-
-type Hypothesis = {
-  id: string;
-  title: string;
-  type: "base" | "positive" | "alternative" | "risk";
-  probability: number;
-  rationale: string;
-  supportingEvidenceIds: string[];
-  opposingEvidenceIds: string[];
-};
-
-
-
-Scenario
-
-
-type Scenario = {
-  id: string;
-  title: string;
-  probability: number;
-  summary: string;
-  drivers: string[];
-  triggers: string[];
-  implications: string[];
-};
-
-
-
-Evidence Item
-
-
-type EvidenceItem = {
-  id: string;
-  title: string;
-  source: string;
-  url?: string;
-  reliabilityScore: number;
-  relevanceScore: number;
-  linkedHypothesisIds: string[];
-  collectedAt: string;
-};
-
-
-
-
-Development Roadmap
-
-
-Phase 1 — Stabilize Core Execution
-
-
-
-
-Fix runtime errors
-
-
-Stabilize frontend/backend communication
-
-
-Improve API response handling
-
-
-Add error states and loading states
-
-
-
-
-Phase 2 — Oracle Case Structure
-
-
-
-
-Define stable case schema
-
-
-Connect signals, questions, hypotheses, scenarios, and evidence
-
-
-Store case data in Firestore
-
-
-Enable case retrieval and editing
-
-
-
-
-Phase 3 — Evidence Gathering Status
-
-
-
-
-Add step-by-step collection workflow
-
-
-Display progress indicators
-
-
-Separate evidence gathering from final analysis
-
-
-Add evidence reliability scoring
-
-
-
-
-Phase 4 — Analyst Council
-
-
-
-
-Add analyst perspective cards
-
-
-Support expand/collapse interactions
-
-
-Compare different analytical viewpoints
-
-
-Generate final synthesis from multiple perspectives
-
-
-
-
-Phase 5 — Oracle Briefing Studio
-
-
-
-
-Generate structured intelligence briefings
-
-
-Add export-ready briefing format
-
-
-Support daily, weekly, and deep dive reports
-
-
-
-
-Phase 6 — Evidence Ledger
-
-
-
-
-Build source table
-
-
-Track claim-to-evidence relationships
-
-
-Add reliability and relevance scoring
-
-
-Support filtering by source, hypothesis, and scenario
-
-
-
-
-Phase 7 — Deep Dive Report
-
-
-
-
-Generate long-form intelligence reports
-
-
-Include scenario tables, evidence summaries, and decision implications
-
-
-Support markdown or PDF export
-
-
-
-
-Phase 8 — Decision Web / Graph
-
-
-
-
-Visualize decision branches
-
-
-Connect choices to scenario outcomes
-
-
-Add probability-based path emphasis
-
-
-Support user-driven scenario exploration
-
-
-
-
-Phase 9 — Case Watch / Watch Trigger
-
-
-
-
-Monitor selected cases over time
-
-
-Detect new signals
-
-
-Trigger alerts when assumptions change
-
-
-Update scenario probabilities
-
-
-
-
-Phase 10 — Monetization / Credit Structure
-
-
-
-
-Define credit usage for analysis runs
-
-
-Add user accounts
-
-
-Add saved cases
-
-
-Prepare subscription-based intelligence features
-
-
-
-
-
-Current Status
-
-
-BLACK ORACLE is in early active development.
-
-
-Current focus:
-
-
-
-
-Fixing execution errors
-
-
-Stabilizing Oracle Case data structure
-
-
-Improving mobile-first interface
-
-
-Building the evidence gathering workflow
-
-
-Preparing the Analyst Council and briefing modules
-
-
-
-
-
-Installation
-
-
-
-
-The exact commands may vary depending on the repository structure.
-
-
-
-
-git clone https://github.com/your-username/black-oracle.git
-cd black-oracle
+```bash
+git clone https://github.com/hanul442/Black-oracle.git
+cd Black-oracle
 npm install
+cp .env.example .env
+```
 
+Use placeholder/local-safe values in `.env`. Never commit API keys or Supabase service-role credentials.
 
+### Development
 
-
-Environment Variables
-
-
-Create a .env file in the project root.
-
-
-GEMINI_API_KEY=your_gemini_api_key
-FIREBASE_API_KEY=your_firebase_api_key
-FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
-FIREBASE_PROJECT_ID=your_firebase_project_id
-FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
-FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-FIREBASE_APP_ID=your_app_id
-
-
-
-Do not commit .env files to GitHub.
-
-
-
-Running the Project
-
-
+```bash
 npm run dev
+```
 
+Trading development entrypoint:
 
+```bash
+npm run dev:trading
+```
 
-For production build:
+### Validation
 
-
+```bash
+npm run lint
+npm run test:trading
+npm run smoke:trading
 npm run build
+```
 
+---
 
+## Technology
 
+Current repository dependencies and runtime include:
 
-Suggested Folder Structure
+- React 19 + TypeScript
+- Vite
+- Tailwind CSS
+- Node.js / Express
+- Supabase-backed durable trading state and canonical event storage
+- OpenAI server-side model routing for AI analysis layers
+- D3 / Recharts / custom visualizations
+- Railway-oriented production packaging
 
+Some older Firebase-era code/dependencies may still exist while legacy surfaces are being retired. The canonical product direction is defined in the governance documents below.
 
-black-oracle/
-├── src/
-│   ├── components/
-│   │   ├── oracle/
-│   │   ├── analysis/
-│   │   ├── evidence/
-│   │   └── briefing/
-│   ├── pages/
-│   ├── hooks/
-│   ├── lib/
-│   │   ├── firebase/
-│   │   ├── gemini/
-│   │   └── utils/
-│   ├── types/
-│   └── styles/
-├── public/
-├── docs/
-├── .env.example
-├── package.json
-└── README.md
+---
 
+## Governance and architecture
 
+- [`docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md`](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md) — product and authority principles
+- [`docs/BLACK_ORACLE_MASTER_PLAN_V2.md`](docs/BLACK_ORACLE_MASTER_PLAN_V2.md) — canonical development program
+- [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md) — public project vs private Alpha boundary
+- [`docs/GITHUB_LAUNCH_PLAYBOOK.md`](docs/GITHUB_LAUNCH_PLAYBOOK.md) — public launch playbook
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow and safety constraints
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting
 
+---
 
-Design Principles
+## Open-core direction
 
+The public repository exposes the **auditable investment-system architecture** without requiring future proprietary Alpha to be published.
 
-1. Mobile First
+Public/open-core candidates include UI and observability surfaces, canonical lineage contracts, Decision Replay, Council / Red Team framework, Paper-trading framework, sample strategies, research interfaces, and safety architecture where disclosure is appropriate.
 
+Private/proprietary candidates include production credentials, private data contracts, live capital configuration, proprietary strategy parameters/weights, non-public Alpha models, and sensitive production-only controls.
 
-BLACK ORACLE is designed primarily for mobile use.
+See [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md).
 
+---
 
-The interface should feel like a compact intelligence terminal rather than a traditional desktop dashboard.
+## Roadmap
 
+- **S0 — Runtime Integrity**
+- **S1 — Canonical Architecture**
+- **S2 — Decision Engine Completion**
+- **S3 — Strategy Intelligence**
+- **S4 — Decision Replay, Attribution & Learning**
+- **S5 — High-End Product Surface**
+- **S6 — PAPER Qualification**
+- **S7 — Canary Live**
 
-2. One-Page Intelligence Flow
+The project advances only when the current layer produces enough evidence for the next authority level.
 
+---
 
-The main experience should remain focused and continuous.
+## Contributing
 
+BLACK ORACLE is especially interested in contributions around quantitative validation, event lineage, calibration, market microstructure, multi-agent decision systems, deterministic risk, mobile financial-data UX, and runtime reliability.
 
-Users should not feel like they are jumping between disconnected pages.
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR. Changes affecting Paper qualification, strategy semantics, risk, sizing, or execution must preserve cohort integrity and explicitly describe authority impact.
 
+---
 
-3. Visual Hierarchy Over Text Density
+## Important disclaimer
 
+BLACK ORACLE is experimental research and software infrastructure. It is **not financial advice**, does not guarantee profitability, and should not be treated as evidence that any strategy will perform similarly in live markets.
 
-The system should reduce unnecessary text and use visual structure to communicate state, progress, and probability.
+Current public development is centered on PAPER qualification, traceability, validation, and runtime safety. Any future live-capital authority should require separate credentials, policies, capital limits, validation gates, and rollback procedures.
 
+---
 
-4. Scenario Thinking Over Single Answers
+## License
 
+Licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
 
-BLACK ORACLE should avoid pretending that one prediction is absolute.
+The license applies to code and documentation published in this repository. Private Alpha, credentials, private datasets, and non-public production configuration are outside this repository and are not made public by this license.
 
+---
 
-The core experience is comparing multiple plausible futures.
-
-
-5. Evidence Before Conclusion
-
-
-Every final briefing should be connected to visible evidence, assumptions, and confidence levels.
-
-
-
-Example Use Case
-
-
-User Query:
-"Analyze the current risk around AI semiconductor supply chains."
-
-BLACK ORACLE Process:
-1. Collects signals from market, technology, and geopolitical sources
-2. Generates key analytical questions
-3. Creates competing hypotheses
-4. Searches for supporting and opposing evidence
-5. Builds multiple future scenarios
-6. Displays probability and risk levels
-7. Produces an intelligence briefing
-
-
-
-
-Planned Output Types
-
-
-
-
-Oracle Briefing
-
-
-Deep Dive Report
-
-
-Evidence Ledger
-
-
-Scenario Projection
-
-
-Decision Web
-
-
-Watch Trigger Alert
-
-
-Weekly Intelligence Summary
-
-
-Monthly Strategic Outlook
-
-
-
-
-
-Disclaimer
-
-
-BLACK ORACLE is an experimental analysis and decision-support system.
-
-
-It does not provide financial, legal, military, or political advice.
-
-All outputs should be reviewed critically and verified with reliable sources before being used for real-world decisions.
-
-
-
-License
-
-
-This project is currently private and under active development.
-
-
-License information will be updated later.
-
-
-
-Project Identity
-
-
-BLACK ORACLE
-
-Signal Intelligence. Scenario Forecasting. Strategic Decision Support.
-
-
-
-
-Built for people who do not just want to know what happened.
-
-Built for people who want to understand what may happen next.
-
-
-
+<p align="center"><strong>BLACK ORACLE</strong><br/>Evidence in. Decisions traced. Outcomes learned.</p>
