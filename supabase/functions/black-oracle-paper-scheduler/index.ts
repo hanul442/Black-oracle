@@ -57,7 +57,9 @@ const controlPlaneRequest = async (
       if (response.ok) {
         return { ok: true, status: response.status, data: lastData, error: null, attempts: attempt + 1 };
       }
-      lastError = typeof lastData === "string" ? lastData : JSON.stringify(lastData ?? {});
+      lastError = typeof lastData === "string"
+        ? lastData
+        : (JSON.stringify(lastData ?? {}) ?? "Unknown control-plane HTTP error.");
       if (!retryableStatus(response.status) || attempt === maxAttempts - 1) {
         return { ok: false, status: response.status, data: lastData, error: lastError, attempts: attempt + 1 };
       }
