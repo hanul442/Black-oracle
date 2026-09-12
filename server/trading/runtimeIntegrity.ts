@@ -67,6 +67,23 @@ type RuntimeHealthLike = {
     lastCycleErrors?: number;
     stale?: boolean;
   };
+  marketData?: {
+    status?: 'NO_SAMPLE' | 'PARTIAL' | 'FRESH' | 'STALE' | 'CRITICAL';
+    checkedAt?: number;
+    cycleFinishedAt?: number | null;
+    observedMarketCount?: number;
+    timestampedMarketCount?: number;
+    coverage?: number | null;
+    newestTimestamp?: number | null;
+    oldestTimestamp?: number | null;
+    maxAgeMs?: number | null;
+    warnAfterMs?: number;
+    criticalAfterMs?: number;
+    futureTimestampCount?: number;
+    historicalTimeframesObserved?: boolean;
+    unobservedTimeframes?: string[];
+    reason?: string;
+  };
 };
 
 type LedgerHealthLike = {
@@ -157,6 +174,31 @@ const persistenceStressReason = (persistence: RuntimeHealthLike['persistence']) 
   return reasons.length ? reasons.join('; ') : 'recent persistence stress was detected';
 };
 
+const classifyMarketData = (marketData: RuntimeHealthLike['marketData']): { status: RuntimeIntegrityStatus; reason: string } => {
+  if (!marketData || marketData.status === 'NO_SAMPLE' || !marketData.status) {
+    return {
+      status: 'UNKNOWN',
+      reason: 'No completed decision trace currently exposes an independent live-liquidity source timestamp.',
+    };
+  }
+  if (marketData.status === 'CRITICAL') {
+    return {
+      status: 'CRITICAL',
+      reason: `${marketData.reason ?? 'Live-liquidity source timestamps are critically stale'} 15m/1h/4h candle-source freshness remains independently unproven.`,
+    };
+  }
+  if (marketData.status === 'STALE' || marketData.status === 'PARTIAL') {
+    return {
+      status: 'DEGRADED',
+      reason: `${marketData.reason ?? 'Live-liquidity timestamp coverage/freshness is incomplete'} 15m/1h/4h candle-source freshness remains independently unproven.`,
+    };
+  }
+  return {
+    status: 'DEGRADED',
+    reason: `${marketData.reason ?? 'Latest live-liquidity timestamps are fresh'} This proves the live snapshot path only; 15m/1h/4h candle-source freshness is still not separately instrumented, so Market Data cannot be green yet.`,
+  };
+};
+
 export const buildRuntimeIntegrityReadModel = ({
   runtimeHealth,
   ledgerHealth,
@@ -179,6 +221,7 @@ export const buildRuntimeIntegrityReadModel = ({
   const ledgerStatus = mapHealthStatus(ledgerHealth?.status);
   const gatewayStatus: RuntimeIntegrityStatus = gatewayObserved ? 'OK' : 'UNKNOWN';
   const deploymentStatus: RuntimeIntegrityStatus = deploymentRevision ? 'OK' : 'UNKNOWN';
+  const marketDataAssessment = classifyMarketData(runtimeHealth.marketData);
 
   const narsBridge = producer(ledgerHealth, 'nars_bridge');
   const narsImpact = producer(ledgerHealth, 'nars_impact_analysis');
@@ -303,14 +346,25 @@ export const buildRuntimeIntegrityReadModel = ({
     {
       id: 'MARKET_DATA',
       label: 'Market Data',
-      status: 'UNKNOWN',
+      status: marketDataAssessment.status,
       authoritative: false,
-      source: 'standalone freshness probe not yet wired',
-      reason: 'Runtime cycle freshness is not equivalent to market-data freshness; 15m/1h/4h source ages remain an explicit observability gap.',
-      observedAt: null,
+      source: runtimeHealth.marketData ? 'latest-cycle preserved live-liquidity source timestamps' : 'market-data freshness probe unavailable',
+      reason: marketDataAssessment.reason,
+      observedAt: runtimeHealth.marketData?.newestTimestamp ?? null,
       details: {
-        loopLastCycleFinishedAt: runtimeHealth.loop?.lastCycleFinishedAt ?? null,
-        loopStale: runtimeHealth.loop?.stale ?? null,
+        liveLiquidityStatus: runtimeHealth.marketData?.status ?? null,
+        cycleFinishedAt: runtimeHealth.marketData?.cycleFinishedAt ?? runtimeHealth.loop?.lastCycleFinishedAt ?? null,
+        observedMarketCount: runtimeHealth.marketData?.observedMarketCount ?? 0,
+        timestampedMarketCount: runtimeHealth.marketData?.timestampedMarketCount ?? 0,
+        coverage: runtimeHealth.marketData?.coverage ?? null,
+        newestTimestamp: runtimeHealth.marketData?.newestTimestamp ?? null,
+        oldestTimestamp: runtimeHealth.marketData?.oldestTimestamp ?? null,
+        maxAgeMs: runtimeHealth.marketData?.maxAgeMs ?? null,
+        warnAfterMs: runtimeHealth.marketData?.warnAfterMs ?? null,
+        criticalAfterMs: runtimeHealth.marketData?.criticalAfterMs ?? null,
+        futureTimestampCount: runtimeHealth.marketData?.futureTimestampCount ?? 0,
+        historicalTimeframesObserved: runtimeHealth.marketData?.historicalTimeframesObserved ?? false,
+        unobservedTimeframes: runtimeHealth.marketData?.unobservedTimeframes ?? ['15m', '1h', '4h'],
       },
     },
     {
