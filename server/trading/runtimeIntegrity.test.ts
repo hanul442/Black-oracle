@@ -9,6 +9,12 @@ const baseRuntimeHealth = {
     configured: true,
     lastError: null,
     fault: false,
+    lastSavedAt: 995_000,
+    lastWriteDurationMs: 250,
+    lastPayloadBytes: 100_000,
+    lastRequestAttempts: 1,
+    totalRetries: 0,
+    lastHttpStatus: 201,
     profile: {
       qualificationMode: false,
       compatibility: null,
@@ -33,7 +39,9 @@ const baseLedgerHealth = {
     lastInvokedAt: 990_000,
     lastHttpStatus: 200,
     lastOk: true,
+    lastError: null,
     ageMs: 10_000,
+    controlPlaneDrift: false,
     reason: 'scheduler healthy',
   },
   producers: [
@@ -92,6 +100,59 @@ test('persistence fault is critical even when runtime status was otherwise green
   assert.equal(model.status, 'CRITICAL');
   assert.ok(model.criticalSubsystems.includes('PERSISTENCE'));
   assert.match(model.subsystems.find((item) => item.id === 'PERSISTENCE')?.reason ?? '', /checkpoint write failed/);
+});
+
+test('recovered persistence request remains degraded when latest write required retries', () => {
+  const model = buildRuntimeIntegrityReadModel({
+    runtimeHealth: {
+      ...baseRuntimeHealth,
+      persistence: {
+        ...baseRuntimeHealth.persistence,
+        lastError: null,
+        fault: false,
+        lastRequestAttempts: 3,
+        totalRetries: 2,
+        lastHttpStatus: 201,
+      },
+    },
+    ledgerHealth: baseLedgerHealth,
+    profile: baseProfile,
+    gatewayObserved: true,
+    deploymentRevision: 'abc123',
+    now: 1_000_000,
+  });
+
+  const persistence = model.subsystems.find((item) => item.id === 'PERSISTENCE');
+  assert.equal(persistence?.status, 'DEGRADED');
+  assert.ok(model.degradedSubsystems.includes('PERSISTENCE'));
+  assert.match(persistence?.reason ?? '', /3 attempts/);
+});
+
+test('scheduler control-plane drift is preserved in runtime integrity details', () => {
+  const model = buildRuntimeIntegrityReadModel({
+    runtimeHealth: baseRuntimeHealth,
+    ledgerHealth: {
+      ...baseLedgerHealth,
+      status: 'DEGRADED',
+      scheduler: {
+        ...baseLedgerHealth.scheduler,
+        status: 'DEGRADED',
+        lastError: 'CONTROLLED_SINGLE_CYCLE_COMPLETE: recurring S2 scheduler remains intentionally disabled.',
+        controlPlaneDrift: true,
+        reason: 'Scheduler control-plane drift detected.',
+      },
+      reasons: ['Scheduler control-plane drift detected.'],
+    },
+    profile: baseProfile,
+    gatewayObserved: true,
+    deploymentRevision: 'abc123',
+    now: 1_000_000,
+  });
+
+  const scheduler = model.subsystems.find((item) => item.id === 'SCHEDULER');
+  assert.equal(scheduler?.status, 'DEGRADED');
+  assert.equal(scheduler?.details?.controlPlaneDrift, true);
+  assert.ok(model.degradedSubsystems.includes('SCHEDULER'));
 });
 
 test('armed qualification is green only after checkpoint identity is positively matched', () => {
