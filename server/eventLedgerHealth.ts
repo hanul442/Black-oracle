@@ -12,20 +12,24 @@ export type LedgerProducerHealth = {
   reason: string;
 };
 
+export type SchedulerHealth = {
+  enabled: boolean | null;
+  lastInvokedAt: number | null;
+  lastHttpStatus: number | null;
+  lastOk: boolean | null;
+  lastError: string | null;
+  targetBaseUrl: string | null;
+  ageMs: number | null;
+  controlPlaneDrift: boolean;
+  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN';
+  reason: string;
+};
+
 export type CanonicalLedgerHealth = {
   status: LedgerHealthStatus;
   checkedAt: number;
   runtimeId: string;
-  scheduler: {
-    enabled: boolean | null;
-    lastInvokedAt: number | null;
-    lastHttpStatus: number | null;
-    lastOk: boolean | null;
-    targetBaseUrl: string | null;
-    ageMs: number | null;
-    status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN';
-    reason: string;
-  };
+  scheduler: SchedulerHealth;
   producers: LedgerProducerHealth[];
   reasons: string[];
 };
@@ -147,6 +151,71 @@ export const classifyProducerHealth = (
   };
 };
 
+const schedulerControlPlaneDrift = (enabled: boolean | null, lastOk: boolean | null, lastError: string | null) =>
+  enabled === true
+  && lastOk === true
+  && Boolean(lastError && /(CONTROLLED_SINGLE_CYCLE_COMPLETE|intentionally\s+disabled|recurring[^.]{0,80}disabled)/i.test(lastError));
+
+export const classifySchedulerHealth = (schedulerRow: any, now = Date.now()): SchedulerHealth => {
+  if (!schedulerRow) {
+    return {
+      enabled: null,
+      lastInvokedAt: null,
+      lastHttpStatus: null,
+      lastOk: null,
+      lastError: null,
+      targetBaseUrl: null,
+      ageMs: null,
+      controlPlaneDrift: false,
+      status: 'CRITICAL',
+      reason: 'Scheduler configuration row is missing.',
+    };
+  }
+
+  const enabled = schedulerRow.enabled == null ? null : Boolean(schedulerRow.enabled);
+  const lastInvokedAt = parseTimestamp(schedulerRow.last_invoked_at);
+  const lastHttpStatus = schedulerRow.last_http_status == null ? null : Number(schedulerRow.last_http_status);
+  const lastOk = schedulerRow.last_ok == null ? null : Boolean(schedulerRow.last_ok);
+  const lastError = schedulerRow.last_error == null || String(schedulerRow.last_error).trim() === ''
+    ? null
+    : String(schedulerRow.last_error).slice(0, 500);
+  const targetBaseUrl = schedulerRow.target_base_url == null ? null : String(schedulerRow.target_base_url);
+  const ageMs = lastInvokedAt == null ? null : Math.max(0, now - lastInvokedAt);
+  const controlPlaneDrift = schedulerControlPlaneDrift(enabled, lastOk, lastError);
+
+  let status: SchedulerHealth['status'] = 'HEALTHY';
+  let reason = 'Railway Paper scheduler is enabled, recent, and last downstream invocation was accepted.';
+  if (enabled !== true) {
+    status = 'CRITICAL';
+    reason = 'Canonical Paper scheduler is disabled.';
+  } else if (lastOk === false) {
+    status = 'CRITICAL';
+    reason = `Last scheduler invocation failed${lastError ? `: ${lastError.slice(0, 240)}` : '.'}`;
+  } else if (ageMs == null || ageMs > 60 * MINUTE) {
+    status = 'CRITICAL';
+    reason = 'No successful scheduler heartbeat has been recorded within 60 minutes.';
+  } else if (ageMs > 35 * MINUTE) {
+    status = 'DEGRADED';
+    reason = 'Scheduler heartbeat is older than the expected 15-minute cadence window.';
+  } else if (controlPlaneDrift) {
+    status = 'DEGRADED';
+    reason = 'Scheduler control-plane drift detected: source-of-truth says enabled while its preserved control marker says recurring execution is intentionally disabled.';
+  }
+
+  return {
+    enabled,
+    lastInvokedAt,
+    lastHttpStatus,
+    lastOk,
+    lastError,
+    targetBaseUrl,
+    ageMs,
+    controlPlaneDrift,
+    status,
+    reason,
+  };
+};
+
 export const readCanonicalLedgerHealth = async (runtimeId = 'black-oracle-paper', now = Date.now()): Promise<CanonicalLedgerHealth> => {
   const db = dbConfig();
   if (!db) {
@@ -159,8 +228,10 @@ export const readCanonicalLedgerHealth = async (runtimeId = 'black-oracle-paper'
         lastInvokedAt: null,
         lastHttpStatus: null,
         lastOk: null,
+        lastError: null,
         targetBaseUrl: null,
         ageMs: null,
+        controlPlaneDrift: false,
         status: 'UNKNOWN',
         reason: 'Supabase credentials are unavailable to audit canonical ledger health.',
       },
@@ -174,29 +245,10 @@ export const readCanonicalLedgerHealth = async (runtimeId = 'black-oracle-paper'
     ...producerPolicies.map((policy) => loadLatestSource(policy.source)),
   ]);
   const producers = producerPolicies.map((policy, index) => classifyProducerHealth(policy, lastSeen[index] ?? null, now));
-  const schedulerLast = parseTimestamp(schedulerRow?.last_invoked_at);
-  const schedulerAge = schedulerLast == null ? null : Math.max(0, now - schedulerLast);
-  let schedulerStatus: CanonicalLedgerHealth['scheduler']['status'] = 'HEALTHY';
-  let schedulerReason = 'Railway Paper scheduler is enabled, recent, and last downstream invocation was accepted.';
-  if (!schedulerRow) {
-    schedulerStatus = 'CRITICAL';
-    schedulerReason = 'Scheduler configuration row is missing.';
-  } else if (schedulerRow.enabled !== true) {
-    schedulerStatus = 'CRITICAL';
-    schedulerReason = 'Canonical Paper scheduler is disabled.';
-  } else if (schedulerRow.last_ok === false) {
-    schedulerStatus = 'CRITICAL';
-    schedulerReason = `Last scheduler invocation failed${schedulerRow.last_error ? `: ${String(schedulerRow.last_error).slice(0, 240)}` : '.'}`;
-  } else if (schedulerAge == null || schedulerAge > 60 * MINUTE) {
-    schedulerStatus = 'CRITICAL';
-    schedulerReason = 'No successful scheduler heartbeat has been recorded within 60 minutes.';
-  } else if (schedulerAge > 35 * MINUTE) {
-    schedulerStatus = 'DEGRADED';
-    schedulerReason = 'Scheduler heartbeat is older than the expected 15-minute cadence window.';
-  }
+  const scheduler = classifySchedulerHealth(schedulerRow, now);
 
   const reasons: string[] = [];
-  if (schedulerStatus !== 'HEALTHY') reasons.push(schedulerReason);
+  if (scheduler.status !== 'HEALTHY') reasons.push(scheduler.reason);
   for (const producer of producers) {
     if (producer.mode === 'CONDITIONAL') continue;
     if (producer.status === 'NEVER_SEEN') reasons.push(`${producer.source}: never seen since cutover.`);
@@ -209,9 +261,9 @@ export const readCanonicalLedgerHealth = async (runtimeId = 'black-oracle-paper'
       || (producer.status === 'STALE' && producer.criticalAfterMs != null && producer.ageMs != null && producer.ageMs > producer.criticalAfterMs)),
   );
   const degradedProducer = producers.some((producer) => producer.mode !== 'CONDITIONAL' && producer.status === 'STALE');
-  const status: LedgerHealthStatus = schedulerStatus === 'CRITICAL' || criticalProducer
+  const status: LedgerHealthStatus = scheduler.status === 'CRITICAL' || criticalProducer
     ? 'CRITICAL'
-    : schedulerStatus === 'DEGRADED' || degradedProducer
+    : scheduler.status === 'DEGRADED' || degradedProducer
       ? 'DEGRADED'
       : 'HEALTHY';
 
@@ -219,16 +271,7 @@ export const readCanonicalLedgerHealth = async (runtimeId = 'black-oracle-paper'
     status,
     checkedAt: now,
     runtimeId,
-    scheduler: {
-      enabled: schedulerRow?.enabled == null ? null : Boolean(schedulerRow.enabled),
-      lastInvokedAt: schedulerLast,
-      lastHttpStatus: schedulerRow?.last_http_status == null ? null : Number(schedulerRow.last_http_status),
-      lastOk: schedulerRow?.last_ok == null ? null : Boolean(schedulerRow.last_ok),
-      targetBaseUrl: schedulerRow?.target_base_url == null ? null : String(schedulerRow.target_base_url),
-      ageMs: schedulerAge,
-      status: schedulerStatus,
-      reason: schedulerReason,
-    },
+    scheduler,
     producers,
     reasons,
   };

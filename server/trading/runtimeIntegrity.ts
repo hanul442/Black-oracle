@@ -44,6 +44,12 @@ type RuntimeHealthLike = {
     configured?: boolean;
     lastError?: string | null;
     fault?: boolean;
+    lastSavedAt?: number | null;
+    lastWriteDurationMs?: number | null;
+    lastPayloadBytes?: number | null;
+    lastRequestAttempts?: number | null;
+    totalRetries?: number;
+    lastHttpStatus?: number | null;
     profile?: {
       qualificationMode?: boolean;
       compatibility?: {
@@ -72,7 +78,9 @@ type LedgerHealthLike = {
     lastInvokedAt?: number | null;
     lastHttpStatus?: number | null;
     lastOk?: boolean | null;
+    lastError?: string | null;
     ageMs?: number | null;
+    controlPlaneDrift?: boolean;
     reason?: string;
   };
   producers?: Array<{
@@ -128,6 +136,27 @@ const producer = (ledger: LedgerHealthLike | null, source: string) =>
 const statusReason = (status: RuntimeIntegrityStatus, ok: string, degraded: string, critical: string, unknown: string) =>
   status === 'OK' ? ok : status === 'DEGRADED' ? degraded : status === 'CRITICAL' ? critical : unknown;
 
+const persistenceStress = (persistence: RuntimeHealthLike['persistence']) => {
+  if (!persistence) return false;
+  const attempts = Number(persistence.lastRequestAttempts ?? 0);
+  const writeDuration = Number(persistence.lastWriteDurationMs ?? 0);
+  const httpStatus = Number(persistence.lastHttpStatus ?? 0);
+  return attempts > 1
+    || writeDuration >= 12_000
+    || httpStatus >= 500;
+};
+
+const persistenceStressReason = (persistence: RuntimeHealthLike['persistence']) => {
+  const reasons: string[] = [];
+  const attempts = Number(persistence?.lastRequestAttempts ?? 0);
+  const writeDuration = Number(persistence?.lastWriteDurationMs ?? 0);
+  const httpStatus = Number(persistence?.lastHttpStatus ?? 0);
+  if (attempts > 1) reasons.push(`last checkpoint request required ${attempts} attempts`);
+  if (writeDuration >= 12_000) reasons.push(`last checkpoint write took ${Math.round(writeDuration)}ms`);
+  if (httpStatus >= 500) reasons.push(`last checkpoint HTTP status was ${httpStatus}`);
+  return reasons.length ? reasons.join('; ') : 'recent persistence stress was detected';
+};
+
 export const buildRuntimeIntegrityReadModel = ({
   runtimeHealth,
   ledgerHealth,
@@ -138,12 +167,13 @@ export const buildRuntimeIntegrityReadModel = ({
   now = Date.now(),
 }: RuntimeIntegrityInput): RuntimeIntegrityReadModel => {
   const runtimeStatus = mapHealthStatus(runtimeHealth.status);
-  const persistenceStatus: RuntimeIntegrityStatus = runtimeHealth.persistence?.fault === true
+  const persistenceHardFault = runtimeHealth.persistence?.fault === true
     || runtimeHealth.persistence?.configured === false
-    || Boolean(runtimeHealth.persistence?.lastError)
+    || Boolean(runtimeHealth.persistence?.lastError);
+  const persistenceStatus: RuntimeIntegrityStatus = persistenceHardFault
     ? 'CRITICAL'
     : runtimeHealth.persistence?.configured === true
-      ? 'OK'
+      ? persistenceStress(runtimeHealth.persistence) ? 'DEGRADED' : 'OK'
       : 'UNKNOWN';
   const schedulerStatus = mapHealthStatus(ledgerHealth?.scheduler?.status);
   const ledgerStatus = mapHealthStatus(ledgerHealth?.status);
@@ -224,11 +254,21 @@ export const buildRuntimeIntegrityReadModel = ({
       authoritative: true,
       source: 'runtime checkpoint store status',
       reason: persistenceStatus === 'OK'
-        ? 'Checkpoint persistence is configured and has no reported fault.'
-        : persistenceStatus === 'CRITICAL'
-          ? `Checkpoint persistence is faulted${runtimeHealth.persistence?.lastError ? `: ${runtimeHealth.persistence.lastError}` : '.'}`
-          : 'Checkpoint persistence configuration could not be established.',
-      observedAt: runtimeHealth.now ?? now,
+        ? 'Checkpoint persistence is configured and the latest request shows no retry/latency stress.'
+        : persistenceStatus === 'DEGRADED'
+          ? `Checkpoint persistence recovered but the latest request is stressed: ${persistenceStressReason(runtimeHealth.persistence)}.`
+          : persistenceStatus === 'CRITICAL'
+            ? `Checkpoint persistence is faulted${runtimeHealth.persistence?.lastError ? `: ${runtimeHealth.persistence.lastError}` : '.'}`
+            : 'Checkpoint persistence configuration could not be established.',
+      observedAt: runtimeHealth.persistence?.lastSavedAt ?? runtimeHealth.now ?? now,
+      details: {
+        lastSavedAt: runtimeHealth.persistence?.lastSavedAt ?? null,
+        lastWriteDurationMs: runtimeHealth.persistence?.lastWriteDurationMs ?? null,
+        lastPayloadBytes: runtimeHealth.persistence?.lastPayloadBytes ?? null,
+        lastRequestAttempts: runtimeHealth.persistence?.lastRequestAttempts ?? null,
+        totalRetries: runtimeHealth.persistence?.totalRetries ?? null,
+        lastHttpStatus: runtimeHealth.persistence?.lastHttpStatus ?? null,
+      },
     },
     {
       id: 'SCHEDULER',
@@ -242,7 +282,9 @@ export const buildRuntimeIntegrityReadModel = ({
         enabled: ledgerHealth?.scheduler?.enabled ?? null,
         lastHttpStatus: ledgerHealth?.scheduler?.lastHttpStatus ?? null,
         lastOk: ledgerHealth?.scheduler?.lastOk ?? null,
+        lastError: ledgerHealth?.scheduler?.lastError ?? null,
         ageMs: ledgerHealth?.scheduler?.ageMs ?? null,
+        controlPlaneDrift: ledgerHealth?.scheduler?.controlPlaneDrift ?? false,
       },
     },
     {
