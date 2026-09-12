@@ -1,11 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DEFAULT_RUNTIME_ID = "black-oracle-paper";
 const CONFIG_TABLE = "black_oracle_trading_scheduler_config";
 const AUTH_TABLE = "black_oracle_scheduler_auth";
 const STATUS_TIMEOUT_MS = 15_000;
 const CYCLE_TIMEOUT_MS = 120_000;
+const CONTROL_PLANE_TIMEOUT_MS = 12_000;
 const CONTROL_PLANE_RETRY_DELAYS_MS = [300, 900];
 const DOWNSTREAM_STARTUP_RETRY_DELAY_MS = 600;
 const APPROVED_TARGETS: Record<string, string> = {
@@ -21,40 +21,68 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
 });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const retryableStatus = (status: number) => status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 
-const transientControlPlaneError = (error: unknown) => {
-  const candidate = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown } | null;
-  const text = [candidate?.message, candidate?.code, candidate?.details, candidate?.hint]
-    .filter((value) => value != null)
-    .map(String)
-    .join(" ")
-    .toLowerCase();
-  return /gateway timeout|timed? out|timeout|fetch failed|connection|econnreset|etimedout|502|503|504|pgrst/.test(text);
+const readBody = async (response: Response): Promise<unknown> => {
+  const text = await response.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return text; }
 };
 
-type ControlPlaneResponse = { data: any; error: any };
+type ControlPlaneResult = {
+  ok: boolean;
+  status: number | null;
+  data: unknown;
+  error: string | null;
+  attempts: number;
+};
 
-const withControlPlaneRetry = async (
+const controlPlaneRequest = async (
   operation: string,
-  call: () => any,
-): Promise<{ data: any; error: any; attempts: number }> => {
-  let last: ControlPlaneResponse = { data: null, error: new Error(`${operation} was not attempted.`) };
+  url: string,
+  init: RequestInit,
+): Promise<ControlPlaneResult> => {
   const maxAttempts = CONTROL_PLANE_RETRY_DELAYS_MS.length + 1;
+  let lastStatus: number | null = null;
+  let lastData: unknown = null;
+  let lastError: string | null = null;
+
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    last = await call();
-    if (!last.error) return { data: last.data ?? null, error: null, attempts: attempt + 1 };
-    if (!transientControlPlaneError(last.error) || attempt === maxAttempts - 1) {
-      return { data: last.data ?? null, error: last.error, attempts: attempt + 1 };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONTROL_PLANE_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      lastStatus = response.status;
+      lastData = await readBody(response);
+      if (response.ok) {
+        return { ok: true, status: response.status, data: lastData, error: null, attempts: attempt + 1 };
+      }
+      lastError = typeof lastData === "string" ? lastData : JSON.stringify(lastData ?? {});
+      if (!retryableStatus(response.status) || attempt === maxAttempts - 1) {
+        return { ok: false, status: response.status, data: lastData, error: lastError, attempts: attempt + 1 };
+      }
+    } catch (error) {
+      lastStatus = null;
+      lastData = null;
+      lastError = error instanceof Error ? error.message : "Unknown control-plane request error.";
+      if (attempt === maxAttempts - 1) {
+        return { ok: false, status: null, data: null, error: lastError, attempts: attempt + 1 };
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-    console.warn("Black Oracle scheduler transient control-plane error", JSON.stringify({
+
+    console.warn("Black Oracle scheduler transient control-plane failure", JSON.stringify({
       operation,
       attempt: attempt + 1,
       maxAttempts,
-      error: String(last.error?.message ?? last.error).slice(0, 300),
+      status: lastStatus,
+      error: lastError?.slice(0, 300) ?? null,
     }));
     await sleep(CONTROL_PLANE_RETRY_DELAYS_MS[attempt] ?? 0);
   }
-  return { data: last.data ?? null, error: last.error ?? new Error(`${operation} failed.`), attempts: maxAttempts };
+
+  return { ok: false, status: lastStatus, data: lastData, error: lastError, attempts: maxAttempts };
 };
 
 type RequestMode = { action: "cycle" | "status"; runtimeId: string; targetBaseUrl?: string };
@@ -97,27 +125,36 @@ Deno.serve(async (req: Request) => {
   const approvedTarget = APPROVED_TARGETS[runtimeId];
   if (!approvedTarget) return json({ success: false, runtimeId, error: "Unsupported Black Oracle Paper runtime." }, 400);
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) return json({ success: false, runtimeId, error: "Supabase server credentials are unavailable." }, 500);
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const configRead = await withControlPlaneRetry("scheduler_config_read", () => admin.from(CONFIG_TABLE)
-    .select("runtime_id, enabled, target_base_url").eq("runtime_id", runtimeId).single());
-  const config = configRead.data;
-  if (configRead.error || !config) {
+  const controlHeaders = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    Accept: "application/json",
+  };
+  const runtimeFilter = encodeURIComponent(`eq.${runtimeId}`);
+  const configUrl = `${supabaseUrl}/rest/v1/${CONFIG_TABLE}?runtime_id=${runtimeFilter}&select=runtime_id,enabled,target_base_url&limit=1`;
+  const configRead = await controlPlaneRequest("scheduler_config_read", configUrl, { method: "GET", headers: controlHeaders });
+  const configRows = Array.isArray(configRead.data) ? configRead.data as Array<Record<string, unknown>> : [];
+  const config = configRows[0] ?? null;
+  if (!configRead.ok || !config) {
     return json({
       success: false,
       runtimeId,
       controlPlaneAttempts: { config: configRead.attempts },
-      error: `Scheduler config read failed: ${String(configRead.error?.message ?? "row unavailable")}`,
+      error: `Scheduler config read failed${configRead.error ? `: ${configRead.error.slice(0, 500)}` : "."}`,
     }, 500);
   }
-  if (mode.action === "cycle" && (!config.enabled || !config.target_base_url)) {
+
+  const enabled = config.enabled === true;
+  const configuredTarget = typeof config.target_base_url === "string" ? config.target_base_url : "";
+  if (mode.action === "cycle" && (!enabled || !configuredTarget)) {
     return json({ success: true, runtimeId, skipped: true, reason: "Scheduler is disabled or target URL is unset." });
   }
 
-  const baseUrl = mode.action === "status" ? (mode.targetBaseUrl || config.target_base_url) : config.target_base_url;
+  const baseUrl = mode.action === "status" ? (mode.targetBaseUrl || configuredTarget) : configuredTarget;
   if (!baseUrl) return json({ success: false, runtimeId, error: "Target URL is unset." }, 500);
 
   let target: URL;
@@ -127,18 +164,18 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, runtimeId, error: "Configured target does not match the approved Railway deployment for this runtime." }, 500);
   }
 
-  const authRead = await withControlPlaneRetry("scheduler_auth_read", () => admin.from(AUTH_TABLE)
-    .select("scheduler_token").eq("runtime_id", runtimeId).single());
-  const auth = authRead.data;
-  if (authRead.error || !auth?.scheduler_token) {
+  const authUrl = `${supabaseUrl}/rest/v1/${AUTH_TABLE}?runtime_id=${runtimeFilter}&select=scheduler_token&limit=1`;
+  const authRead = await controlPlaneRequest("scheduler_auth_read", authUrl, { method: "GET", headers: controlHeaders });
+  const authRows = Array.isArray(authRead.data) ? authRead.data as Array<Record<string, unknown>> : [];
+  const schedulerToken = typeof authRows[0]?.scheduler_token === "string" ? authRows[0].scheduler_token : "";
+  if (!authRead.ok || !schedulerToken) {
     return json({
       success: false,
       runtimeId,
       controlPlaneAttempts: { config: configRead.attempts, auth: authRead.attempts },
-      error: `Railway scheduler auth token is unavailable${authRead.error?.message ? `: ${String(authRead.error.message)}` : "."}`,
+      error: `Railway scheduler auth token is unavailable${authRead.error ? `: ${authRead.error.slice(0, 500)}` : "."}`,
     }, 500);
   }
-  const bearer = String(auth.scheduler_token);
 
   target.pathname = mode.action === "status" ? "/api/trading-status" : "/api/trading-paper-cycle";
   target.search = "";
@@ -159,8 +196,11 @@ Deno.serve(async (req: Request) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), remainingBudgetMs);
     try {
-      const headers: Record<string, string> = { accept: "application/json", authorization: `Bearer ${bearer}` };
-      const response = await fetch(target.toString(), { method: "GET", headers, signal: controller.signal });
+      const response = await fetch(target.toString(), {
+        method: "GET",
+        headers: { accept: "application/json", authorization: `Bearer ${schedulerToken}` },
+        signal: controller.signal,
+      });
       downstreamStatus = response.status;
       const bodyText = await response.text();
       downstreamOk = mode.action === "cycle" ? response.ok || response.status === 409 : response.ok;
@@ -209,21 +249,27 @@ Deno.serve(async (req: Request) => {
   }
 
   const now = new Date().toISOString();
-  const telemetryWrite = await withControlPlaneRetry("scheduler_telemetry_write", () => admin.from(CONFIG_TABLE).update({
-    last_invoked_at: now,
-    last_http_status: downstreamStatus,
-    last_ok: downstreamOk,
-    last_error: downstreamError,
-    updated_at: now,
-  }).eq("runtime_id", runtimeId));
-  const telemetryPersisted = !telemetryWrite.error;
+  const telemetryUrl = `${supabaseUrl}/rest/v1/${CONFIG_TABLE}?runtime_id=${runtimeFilter}`;
+  const telemetryWrite = await controlPlaneRequest("scheduler_telemetry_write", telemetryUrl, {
+    method: "PATCH",
+    headers: { ...controlHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({
+      last_invoked_at: now,
+      last_http_status: downstreamStatus,
+      last_ok: downstreamOk,
+      last_error: downstreamError,
+      updated_at: now,
+    }),
+  });
+  const telemetryPersisted = telemetryWrite.ok;
   if (!telemetryPersisted) {
     console.error("Black Oracle scheduler telemetry persistence failed after downstream result", JSON.stringify({
       runtimeId,
       downstreamOk,
       downstreamStatus,
       telemetryAttempts: telemetryWrite.attempts,
-      error: String(telemetryWrite.error?.message ?? telemetryWrite.error).slice(0, 300),
+      status: telemetryWrite.status,
+      error: telemetryWrite.error?.slice(0, 300) ?? null,
     }));
   }
 
