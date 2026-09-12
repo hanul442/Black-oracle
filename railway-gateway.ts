@@ -6,6 +6,7 @@ import tradingStatusHandler from './api/trading-status';
 import tradingPaperCycleHandler from './api/trading-paper-cycle';
 import narsShadowConsumeHandler from './api/nars-shadow-consume';
 import strategyFactoryCycleHandler from './api/strategy-factory-cycle';
+import strategyFactoryStatusHandler from './api/strategy-factory-status';
 import strategyShadowPoolHandler from './api/strategy-shadow-pool';
 import councilCounterfactualHandler from './api/council-counterfactual';
 import activityBriefHandler from './api/activity-brief';
@@ -220,6 +221,11 @@ app.get('/api/trading-status', (req, res, next) => {
   void tradingStatusHandler(req, res);
 });
 
+app.get('/api/strategy-factory-status', (req, res, next) => {
+  if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
+  void strategyFactoryStatusHandler(req, res);
+});
+
 app.get('/api/strategy-shadow-pool', (req, res, next) => {
   if (!schedulerBearerAuthorized(req.headers.authorization)) return next();
   void strategyShadowPoolHandler(req, res);
@@ -278,6 +284,10 @@ app.use((req, res, next) => {
 
 app.get('/api/trading-status', (req, res) => {
   void tradingStatusHandler(req, res);
+});
+
+app.get('/api/strategy-factory-status', (req, res) => {
+  void strategyFactoryStatusHandler(req, res);
 });
 
 app.get('/api/strategy-shadow-pool', (req, res) => {
