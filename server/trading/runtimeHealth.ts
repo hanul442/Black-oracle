@@ -1,4 +1,5 @@
 import { DEFAULT_RISK_LIMITS, TRADING_STRATEGY_VERSION } from '../../src/trading/config';
+import { buildMarketDataFreshness } from './marketDataFreshness';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
 import { runtimePersistenceStatus } from './runtimeState';
@@ -23,6 +24,7 @@ export const buildRuntimeHealth = () => {
     session.portfolio.dailyPnlPct <= -DEFAULT_RISK_LIMITS.maxDailyLossPct ||
     session.portfolio.drawdownPct >= DEFAULT_RISK_LIMITS.maxTotalDrawdownPct;
   const healthy = !loopStale && !persistenceFault;
+  const marketData = buildMarketDataFreshness(loop.lastCycle, loop.config.intervalMs, now);
 
   return {
     success: healthy,
@@ -45,6 +47,7 @@ export const buildRuntimeHealth = () => {
       lastCycleErrors,
       stale: loopStale,
     },
+    marketData,
     portfolio: {
       equity: session.portfolio.equity,
       cash: session.portfolio.cash,
