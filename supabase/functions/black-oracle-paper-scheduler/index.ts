@@ -21,6 +21,7 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
 });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const previewText = (value: unknown, max = 300) => typeof value === "string" ? value.slice(0, max) : null;
 const retryableStatus = (status: number) => status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 
 const readBody = async (response: Response): Promise<unknown> => {
@@ -79,7 +80,7 @@ const controlPlaneRequest = async (
       attempt: attempt + 1,
       maxAttempts,
       status: lastStatus,
-      error: lastError?.slice(0, 300) ?? null,
+      error: previewText(lastError),
     }));
     await sleep(CONTROL_PLANE_RETRY_DELAYS_MS[attempt] ?? 0);
   }
@@ -224,7 +225,7 @@ Deno.serve(async (req: Request) => {
       runtimeId,
       downstreamStatus,
       downstreamAttempts,
-      error: downstreamError?.slice(0, 300) ?? null,
+      error: previewText(downstreamError),
     }));
     await sleep(DOWNSTREAM_STARTUP_RETRY_DELAY_MS);
     await callDownstream();
