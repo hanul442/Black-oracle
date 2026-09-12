@@ -1,6 +1,7 @@
 import {
   readCouncilCounterfactualReport,
 } from '../server/trading/councilCounterfactual';
+import { buildCouncilProspectiveEvaluation } from '../server/trading/councilProspectiveEvaluation';
 import { S2_STRATEGY_RESEARCH_RUNTIME_ID } from '../server/trading/strategyShadowPool';
 
 const json = (response: any, status: number, body: Record<string, unknown>) => response.status(status).json(body);
@@ -24,10 +25,12 @@ export default async function handler(request: any, response: any) {
 
   try {
     const report = await readCouncilCounterfactualReport(runtimeId, limit);
+    const prospectiveEvaluation = buildCouncilProspectiveEvaluation(report);
     return json(response, 200, {
       success: true,
       researchOnly: true,
       ...report,
+      prospectiveEvaluation,
     });
   } catch (error) {
     return json(response, 500, {
