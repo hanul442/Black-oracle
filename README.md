@@ -2,7 +2,7 @@
 
 **An auditable AI investment operating system.**
 
-BLACK ORACLE is an experimental, evidence-driven investment engine that connects market state, evidence, strategy selection, multi-agent review, deterministic risk, Paper execution, and realized outcomes through a replayable decision lineage.
+BLACK ORACLE is an experimental investment engine designed to connect market state, evidence, strategy selection, multi-agent review, deterministic risk, Paper execution, and realized outcomes through replayable decision lineage.
 
 > **Evidence → Strategy Factory → Router → AI Council → Red Team → Arbiter → Risk → Execution → Outcome**
 >
@@ -16,7 +16,7 @@ BLACK ORACLE is an experimental, evidence-driven investment engine that connects
 
 Most trading systems show the result of a decision. BLACK ORACLE is being built to preserve the **decision itself**.
 
-For every meaningful trade candidate, the target system records:
+For each meaningful candidate, the target system records:
 
 - what the market looked like,
 - which evidence was available,
@@ -29,7 +29,7 @@ For every meaningful trade candidate, the target system records:
 - what order/fill actually occurred,
 - and what happened afterward.
 
-The goal is not to make an AI that merely says **BUY** or **SELL**. The goal is to build an investment operating system that can answer:
+The goal is not an AI that merely says **BUY** or **SELL**. The goal is an investment operating system that can answer:
 
 > **Why did you take this risk, what information did you use, what could have invalidated the decision, and which layer added or destroyed value?**
 
@@ -66,39 +66,11 @@ flowchart TD
     D --> CAL
 ```
 
-### Canonical decision path
-
-```text
-Market / Evidence
-      ↓
-Strategy Candidates
-      ↓
-Strategy Router
-      ↓
-Council Round 0
-      ↓
-Independent Red Team
-      ↓
-Agent Revisions
-      ↓
-Decision Arbiter
-      ↓
-Deterministic Risk
-      ↓
-Paper Order / Fill
-      ↓
-Outcome
-      ↓
-Calibration + Decision Replay
-```
-
 `LONG`, `SHORT`, and `NO_TRADE` are first-class decisions. Missing evidence is represented as a data gap rather than silently fabricated.
 
 ---
 
 ## What is implemented now
-
-BLACK ORACLE is no longer the earlier scenario-dashboard prototype described by older documentation. The current codebase includes major parts of an auditable autonomous-investment architecture:
 
 ### Strategy intelligence
 
@@ -122,11 +94,11 @@ Core roles include:
 - Director of Adversarial Research — independent Red Team
 - dynamic specialists for macro, fundamentals, microstructure, derivatives, and portfolio context
 
-The Council separates `FACT`, `INFERENCE`, `ASSUMPTION`, `COUNTEREVIDENCE`, and `DATA_GAP`. Its current authority is deliberately **shadow-only**: it can be evaluated against outcomes without silently gaining execution authority.
+The Council separates `FACT`, `INFERENCE`, `ASSUMPTION`, `COUNTEREVIDENCE`, and `DATA_GAP`. Its current authority is deliberately **shadow-only** so it can be evaluated against outcomes without silently gaining execution authority.
 
 ### Canonical Event Ledger
 
-Paper-market observations and execution history are projected into an append-oriented canonical audit layer, including:
+Paper observations and execution history are projected into an append-oriented canonical audit layer, including:
 
 - `EVIDENCE`
 - `STRATEGY`
@@ -163,11 +135,9 @@ The runtime is being hardened around:
 
 ---
 
-## The safety model
+## Safety and authority model
 
 BLACK ORACLE treats authority as something that must be **earned by evidence**.
-
-Key rules:
 
 1. New intelligence layers begin in `SHADOW`.
 2. AI Council does not override deterministic Risk.
@@ -208,8 +178,6 @@ BLACK ORACLE uses a credit-style grade vocabulary (`AAA+` through `F-`) as a com
 ## Product surface
 
 The current mobile operating surface follows an `Oracle → Decision → Replay → Outcome` flow and consumes real read-only runtime contracts where available.
-
-Target information architecture:
 
 | Surface | Purpose |
 | --- | --- |
@@ -282,49 +250,30 @@ Some older Firebase-era code/dependencies may still exist while legacy surfaces 
 
 ---
 
-## Governance and architecture documents
-
-Start here if you want the deeper system model:
+## Governance and architecture
 
 - [`docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md`](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md) — product and authority principles
 - [`docs/BLACK_ORACLE_MASTER_PLAN_V2.md`](docs/BLACK_ORACLE_MASTER_PLAN_V2.md) — canonical development program
-- [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md) — what belongs in the public project vs private Alpha
+- [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md) — public project vs private Alpha boundary
+- [`docs/GITHUB_LAUNCH_PLAYBOOK.md`](docs/GITHUB_LAUNCH_PLAYBOOK.md) — public launch playbook
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow and safety constraints
-- [`SECURITY.md`](SECURITY.md) — responsible vulnerability reporting
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting
 
 ---
 
 ## Open-core direction
 
-The public repository is intended to expose the **auditable investment-system architecture** without requiring future proprietary Alpha to be published.
+The public repository exposes the **auditable investment-system architecture** without requiring future proprietary Alpha to be published.
 
-Public/open-core candidates include:
+Public/open-core candidates include UI and observability surfaces, canonical lineage contracts, Decision Replay, Council / Red Team framework, Paper-trading framework, sample strategies, research interfaces, and safety architecture where disclosure is appropriate.
 
-- UI and observability surfaces
-- canonical lineage contracts
-- Decision Replay
-- Council / Red Team framework
-- Paper-trading framework
-- sample and baseline strategies
-- research/validation interfaces
-- risk and safety architecture where disclosure is safe
-
-Private/proprietary candidates include:
-
-- production credentials and broker secrets
-- private data contracts
-- live capital configuration
-- proprietary strategy parameters / weights
-- non-public Alpha models
-- production-only thresholds or operational controls that would create security risk
+Private/proprietary candidates include production credentials, private data contracts, live capital configuration, proprietary strategy parameters/weights, non-public Alpha models, and sensitive production-only controls.
 
 See [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md).
 
 ---
 
 ## Roadmap
-
-The current approved program is organized around:
 
 - **S0 — Runtime Integrity**
 - **S1 — Canonical Architecture**
@@ -341,26 +290,9 @@ The project advances only when the current layer produces enough evidence for th
 
 ## Contributing
 
-BLACK ORACLE is especially interested in contributions around:
-
-- quantitative validation and backtesting methodology,
-- event lineage / observability,
-- calibration and uncertainty measurement,
-- market microstructure and data quality,
-- multi-agent decision systems,
-- deterministic risk controls,
-- mobile financial-data UX,
-- runtime reliability and fault containment.
+BLACK ORACLE is especially interested in contributions around quantitative validation, event lineage, calibration, market microstructure, multi-agent decision systems, deterministic risk, mobile financial-data UX, and runtime reliability.
 
 Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR. Changes affecting Paper qualification, strategy semantics, risk, sizing, or execution must preserve cohort integrity and explicitly describe authority impact.
-
----
-
-## Repository discovery topics
-
-Recommended GitHub topics for the repository settings:
-
-`algorithmic-trading` · `quantitative-finance` · `ai-agents` · `multi-agent-systems` · `fintech` · `trading-system` · `risk-management` · `backtesting` · `decision-intelligence` · `portfolio-management` · `llm` · `typescript` · `react` · `supabase`
 
 ---
 
@@ -374,7 +306,9 @@ Current public development is centered on PAPER qualification, traceability, val
 
 ## License
 
-The repository is being prepared for an open-core public launch. **The final public-code license is a launch blocker that must be explicitly selected before the launch campaign.** Until a license is added, do not assume permission to reuse, redistribute, or commercialize the code.
+Licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
+
+The license applies to code and documentation published in this repository. Private Alpha, credentials, private datasets, and non-public production configuration are outside this repository and are not made public by this license.
 
 ---
 
