@@ -18,6 +18,8 @@ export {
   strategyFactoryRunnerStatus,
 } from './strategyFactoryRunner';
 export { consumeNarsEvidencePackets } from './narsConsumer';
+export { readKisPaperReadiness } from './kisReadiness';
+export type { KisPaperReadiness, KisPaperReadinessStatus, KisMarketDataEnvironment } from './kisReadiness';
 export { buildRuntimeIntegrityReadModel } from './runtimeIntegrity';
 export type {
   RuntimeIntegrityInput,
