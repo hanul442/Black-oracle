@@ -32,19 +32,17 @@ const transientControlPlaneError = (error: unknown) => {
   return /gateway timeout|timed? out|timeout|fetch failed|connection|econnreset|etimedout|502|503|504|pgrst/.test(text);
 };
 
-type ControlPlaneResult<T> = { data: T | null; error: any; attempts: number };
-
-const withControlPlaneRetry = async <T>(
+const withControlPlaneRetry = async (
   operation: string,
-  call: () => PromiseLike<{ data: T | null; error: any }>,
-): Promise<ControlPlaneResult<T>> => {
-  let last: { data: T | null; error: any } = { data: null, error: new Error(`${operation} was not attempted.`) };
+  call: () => PromiseLike<any>,
+): Promise<{ data: any; error: any; attempts: number }> => {
+  let last: any = { data: null, error: new Error(`${operation} was not attempted.`) };
   const maxAttempts = CONTROL_PLANE_RETRY_DELAYS_MS.length + 1;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     last = await call();
-    if (!last.error) return { ...last, attempts: attempt + 1 };
+    if (!last?.error) return { data: last?.data ?? null, error: null, attempts: attempt + 1 };
     if (!transientControlPlaneError(last.error) || attempt === maxAttempts - 1) {
-      return { ...last, attempts: attempt + 1 };
+      return { data: last?.data ?? null, error: last.error, attempts: attempt + 1 };
     }
     console.warn("Black Oracle scheduler transient control-plane error", JSON.stringify({
       operation,
@@ -54,7 +52,7 @@ const withControlPlaneRetry = async <T>(
     }));
     await sleep(CONTROL_PLANE_RETRY_DELAYS_MS[attempt] ?? 0);
   }
-  return { ...last, attempts: maxAttempts };
+  return { data: last?.data ?? null, error: last?.error ?? new Error(`${operation} failed.`), attempts: maxAttempts };
 };
 
 type RequestMode = { action: "cycle" | "status"; runtimeId: string; targetBaseUrl?: string };
@@ -103,7 +101,7 @@ Deno.serve(async (req: Request) => {
   if (!supabaseUrl || !serviceRoleKey) return json({ success: false, runtimeId, error: "Supabase server credentials are unavailable." }, 500);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const configRead = await withControlPlaneRetry<any>("scheduler_config_read", () => admin.from(CONFIG_TABLE)
+  const configRead = await withControlPlaneRetry("scheduler_config_read", () => admin.from(CONFIG_TABLE)
     .select("runtime_id, enabled, target_base_url").eq("runtime_id", runtimeId).single());
   const config = configRead.data;
   if (configRead.error || !config) {
@@ -128,7 +126,7 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, runtimeId, error: "Configured target does not match the approved Railway deployment for this runtime." }, 500);
   }
 
-  const authRead = await withControlPlaneRetry<any>("scheduler_auth_read", () => admin.from(AUTH_TABLE)
+  const authRead = await withControlPlaneRetry("scheduler_auth_read", () => admin.from(AUTH_TABLE)
     .select("scheduler_token").eq("runtime_id", runtimeId).single());
   const auth = authRead.data;
   if (authRead.error || !auth?.scheduler_token) {
@@ -210,7 +208,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const now = new Date().toISOString();
-  const telemetryWrite = await withControlPlaneRetry<any>("scheduler_telemetry_write", () => admin.from(CONFIG_TABLE).update({
+  const telemetryWrite = await withControlPlaneRetry("scheduler_telemetry_write", () => admin.from(CONFIG_TABLE).update({
     last_invoked_at: now,
     last_http_status: downstreamStatus,
     last_ok: downstreamOk,
