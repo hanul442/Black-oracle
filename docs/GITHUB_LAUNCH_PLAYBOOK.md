@@ -5,9 +5,7 @@ Goal: maximize qualified discovery, stars, forks, discussion, and contributor co
 
 ## Positioning
 
-Primary category:
-
-**AI Investment Operating System**
+Primary category: **AI Investment Operating System**
 
 Primary one-liner:
 
@@ -17,40 +15,33 @@ Short social version:
 
 > Evidence → Strategies → AI Council → Risk → Execution → Outcome. Every important decision is replayable.
 
-Avoid leading with:
+Avoid leading with guaranteed profitability, unqualified return claims, or live-capital autonomy that does not exist yet.
 
-- “guaranteed profitable AI trader”,
-- “AI hedge fund beating the market”,
-- unqualified monthly-return claims,
-- live-capital autonomy that does not exist yet.
+## Launch readiness checklist
 
-## Launch blockers
+Do not start the external launch burst until these are resolved.
 
-Do not start the external launch burst until all items below are resolved.
-
-- [ ] Public-code license selected and added
-- [ ] README merged to `main`
+- [x] Apache-2.0 public-code license selected and added
+- [ ] README launch PR merged to `main`
 - [ ] GitHub repository description updated
 - [ ] GitHub Topics applied
-- [ ] Social Preview uploaded
-- [ ] public demo URL stable enough for strangers
+- [ ] 1280×640 Social Preview uploaded
+- [ ] public read-only demo URL stable enough for strangers
 - [ ] demo contains no private credentials/data
-- [ ] README screenshots/GIF added
-- [ ] `npm install` + documented quick start verified on a clean environment
+- [ ] README product GIF/video added
+- [ ] clean-environment quick start verified
 - [ ] CI/build green on launch commit
-- [ ] no secrets detected in repository history/current tree
+- [ ] no secrets detected in current tree/history used for launch
 - [ ] private Alpha boundary reviewed
-- [ ] release/tag prepared
+- [ ] `v0.1 — Public Preview` release/tag prepared
 
-## Recommended repository description
+## Repository metadata
+
+Recommended description:
 
 `Auditable AI investment operating system — evidence, strategy routing, multi-agent Council, deterministic risk, Paper execution and Decision Replay.`
 
-Keep the description focused on what exists rather than future promises.
-
-## Recommended Topics
-
-GitHub supports repository topics for discovery. Suggested initial set:
+Recommended Topics:
 
 - `algorithmic-trading`
 - `quantitative-finance`
@@ -69,11 +60,11 @@ GitHub supports repository topics for discovery. Suggested initial set:
 
 Do not use irrelevant high-volume topics merely for reach.
 
-## Social Preview specification
+## Social Preview
 
-Recommended canvas: **1280 × 640**.
+Canvas: **1280 × 640**.
 
-Content hierarchy:
+Suggested hierarchy:
 
 ```text
 BLACK ORACLE
@@ -85,45 +76,24 @@ Evidence → Strategy → Council → Risk → Execution → Outcome
 Every decision. Replayable.
 ```
 
-Visual direction:
-
-- high-end institutional fintech,
-- dark or near-black neutral background,
-- real BLACK ORACLE interface crop or restrained abstract lineage graphic,
-- no fake PnL numbers,
-- no candlestick “get rich” visual language,
-- readable at small social-card size,
-- one focal message only.
+Visual direction: high-end institutional fintech, near-black neutral background, real interface crop or restrained lineage graphic, no fake PnL, no “get rich” imagery, and one focal message.
 
 ## README media
 
-The README should eventually include two media assets near the top:
+Near the top of the README, add a 15–25 second product GIF/video showing:
 
-1. **15–25 second product GIF/video**
-   - Oracle market state
-   - open Decision
-   - show Council / Arbiter / Risk
-   - open Replay
-   - show Outcome linkage
-
-2. **architecture graphic**
-   - Evidence/NARS
-   - Strategy Factory
-   - Router
-   - Council / Red Team
-   - Arbiter
-   - Risk
-   - Paper execution
-   - Outcome
-   - Canonical Ledger / Replay
+1. Oracle market state
+2. Decision
+3. Council / Red Team / Arbiter
+4. deterministic Risk
+5. Replay
+6. Outcome linkage
 
 The demo should prove the product faster than paragraphs can explain it.
 
 ## Public demo path
 
-A first-time visitor should be able to understand the unique value in under 60 seconds.
-
-Preferred demo flow:
+Preferred first-time visitor flow:
 
 ```text
 Open demo
@@ -145,11 +115,9 @@ See realized outcome / calibration when available
 
 A recorded/read-only showcase is acceptable for launch and safer than exposing operational controls.
 
-## v0.1 Public Preview release
+## v0.1 Public Preview
 
-Suggested release title:
-
-**BLACK ORACLE v0.1 — Public Preview**
+Suggested release title: **BLACK ORACLE v0.1 — Public Preview**
 
 Suggested release note:
 
@@ -159,7 +127,7 @@ Suggested release note:
 >
 > Current development remains centered on PAPER qualification, runtime integrity, calibration, and prospective evaluation. AI Council authority remains shadow-only.
 
-Key highlights:
+Highlights:
 
 - Decision Replay v2
 - Canonical Event Ledger
@@ -168,100 +136,56 @@ Key highlights:
 - evidence-gated Arbiter
 - deterministic Risk sovereignty
 - crypto PAPER + KRX PAPER paths
-- runtime integrity and qualification-cohort safeguards
+- runtime-integrity and qualification-cohort safeguards
 - mobile Oracle / Decision / Replay / Outcome surface
 
 ## Seven-day launch burst
 
-The goal is not to spam every channel. The goal is to create a concentrated window in which technically relevant people discover the same coherent story.
-
 ### D-2 to D-1 — readiness
 
-- merge launch PR
-- verify clean install
-- verify demo
-- upload Social Preview
-- apply Topics
-- prepare release
-- prepare 20-second demo media
-- prepare launch posts
-- verify no sensitive Alpha/secrets are public
+Merge the launch PR, verify clean install and demo, upload Social Preview, apply Topics, prepare release, prepare demo media, and verify no sensitive Alpha or secrets are public.
 
 ### D0 — GitHub launch
 
-Publish release and update repository home.
+Publish the release and update repository home.
 
 Primary CTA:
 
 > Explore the architecture, replay a decision, and tell me where the audit chain can be broken.
 
-This is stronger than asking strangers only for stars.
-
 ### D0/D1 — technical launch channels
 
-Post to a small number of relevant places with channel-native framing:
+Use a small number of relevant channels with native framing:
 
 - Hacker News / Show HN — engineering and system-design story
-- Reddit quant/algotrading/LocalLLaMA-style relevant communities — methodology and multi-agent evaluation angle
+- Reddit quant/algotrading/AI-agent communities — methodology and multi-agent evaluation
 - X — visual demo + architecture
 - LinkedIn — product/research build narrative
-- Korean developer/quant communities — Korean summary with technical link
+- Korean developer/quant communities — Korean technical summary
 
-Follow each community's self-promotion rules. Do not coordinate fake engagement or ask people to manipulate Trending.
+Follow each community's self-promotion rules. Do not coordinate fake engagement or manipulate Trending.
 
-### D2 — technical deep dive
-
-Publish one strong engineering article:
+### D2 — Decision Replay deep dive
 
 **“Why an AI trading system needs Decision Replay more than another agent.”**
 
-Cover lineage, shadow authority, deterministic Risk, missing-data semantics, and outcome calibration.
-
-### D3 — Council / Red Team deep dive
-
-Publish:
+### D3 — Council deep dive
 
 **“We removed majority voting from our AI investment Council.”**
 
-Explain Round 0 independence, Red Team, revisions, Arbiter, and why confidence averaging is dangerous.
-
-### D4 — reliability deep dive
-
-Publish:
+### D4 — runtime reliability deep dive
 
 **“A trading engine should survive its database failing.”**
 
-Explain atomic checkpoint rollback, scheduler/persistence telemetry, fail-closed new risk, and audit preservation.
-
 ### D5 — contributor invitation
 
-Open 5–10 sharply scoped `good first issue` / `research` issues.
-
-Good examples:
-
-- calibration chart for probability buckets,
-- synthetic Decision Replay fixture,
-- runtime-integrity UI projection,
-- baseline strategy plugin example,
-- Council disagreement visualization,
-- documentation for local Paper-only setup.
+Open 5–10 sharply scoped `good first issue` / `research` issues, such as calibration charts, synthetic Decision Replay fixtures, runtime-integrity UI, a baseline strategy plugin, Council disagreement visualization, and local Paper-only setup docs.
 
 ### D6/D7 — evidence-based follow-up
 
-Share actual launch learnings:
-
-- stars/forks/views if available,
-- issues opened,
-- contributor feedback,
-- most-requested feature,
-- what was confusing,
-- what will change next.
-
-Do not fabricate social proof.
+Share actual launch learnings: stars/forks/views when available, issues opened, contributor feedback, confusion points, and the next changes. Do not fabricate social proof.
 
 ## Conversion funnel
-
-Optimize for this sequence:
 
 ```text
 Impression
@@ -277,40 +201,35 @@ Impression
 
 Stars are an output of comprehension and credibility, not the product itself.
 
-## Metrics to track
+## Metrics
 
-For the launch window, record daily:
+Track daily during launch:
 
-- total stars and net new stars,
-- forks,
-- unique visitors / clones if available,
-- release views/downloads if applicable,
-- demo sessions,
-- issue/discussion count,
-- external referral source,
-- contributor conversion,
-- README-to-demo click-through if measurable.
+- total and net-new stars
+- forks
+- unique visitors / clones when available
+- demo sessions
+- issues/discussions
+- external referrals
+- contributor conversion
+- README-to-demo click-through when measurable
 
-Do not optimize blindly for raw stars if they do not convert into users, technical feedback, or contributors.
+## Trending principles
 
-## Trending strategy principles
-
-GitHub does not publish a simple guaranteed formula for Trending. Treat Trending as a possible consequence of concentrated authentic interest, not something that can be directly configured.
+GitHub does not publish a guaranteed formula for Trending. Treat it as a possible consequence of concentrated authentic interest.
 
 Therefore:
 
-- create a polished public surface before the burst,
-- concentrate the launch instead of leaking the announcement over many weeks,
+- polish the public surface before the burst,
+- concentrate launch timing instead of leaking the announcement over weeks,
 - give people a demoable technical idea worth sharing,
 - make the repository easy to understand and run,
-- create legitimate reasons to star/fork/contribute,
-- avoid fake stars, paid manipulation, bot engagement, or coordinated abuse.
+- create legitimate reasons to star, fork, and contribute,
+- avoid fake stars, paid manipulation, bots, or coordinated abuse.
 
-## Post-launch roadmap
+## Post-launch public milestones
 
-After the initial launch, maintain momentum with meaningful releases rather than promotional noise.
-
-Candidate public milestones:
+Candidate follow-up releases:
 
 - Decision Replay fixture/demo pack
 - Strategy plugin SDK/interface
