@@ -18,3 +18,11 @@ export {
   strategyFactoryRunnerStatus,
 } from './strategyFactoryRunner';
 export { consumeNarsEvidencePackets } from './narsConsumer';
+export { buildRuntimeIntegrityReadModel } from './runtimeIntegrity';
+export type {
+  RuntimeIntegrityInput,
+  RuntimeIntegrityReadModel,
+  RuntimeIntegrityStatus,
+  RuntimeIntegritySubsystem,
+  RuntimeIntegritySubsystemId,
+} from './runtimeIntegrity';
