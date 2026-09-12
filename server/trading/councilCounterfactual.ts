@@ -12,9 +12,10 @@ export type CouncilCounterfactualObservation = {
   netPnl: number;
   returnPct: number;
   deterministicVerdict: string | null;
+  redTeamResult: string | null;
   aiStance: string | null;
   shadowBlockSignal: boolean;
-  blockSignalSources: Array<'DETERMINISTIC_COUNCIL_REJECT' | 'AI_COUNCIL_DISSENT'>;
+  blockSignalSources: Array<'DETERMINISTIC_COUNCIL_REJECT' | 'DETERMINISTIC_RED_TEAM_INVALIDATED' | 'AI_COUNCIL_DISSENT'>;
   classification: CouncilCounterfactualClassification;
   candidateAvoidedLossKrw: number;
   candidateFalseBlockCostKrw: number;
@@ -101,9 +102,11 @@ export const buildCouncilCounterfactualReport = (
     }
 
     const deterministicVerdict = council?.trace?.verdict == null ? null : String(council.trace.verdict).toUpperCase();
+    const redTeamResult = council?.trace?.redTeamResult == null ? null : String(council.trace.redTeamResult).toUpperCase();
     const aiStance = ai?.ai_stance == null ? null : String(ai.ai_stance).toUpperCase();
     const blockSignalSources: CouncilCounterfactualObservation['blockSignalSources'] = [];
     if (deterministicVerdict === 'REJECT') blockSignalSources.push('DETERMINISTIC_COUNCIL_REJECT');
+    if (redTeamResult === 'INVALIDATED') blockSignalSources.push('DETERMINISTIC_RED_TEAM_INVALIDATED');
     if (aiStance === 'DISSENT') blockSignalSources.push('AI_COUNCIL_DISSENT');
     const shadowBlockSignal = blockSignalSources.length > 0;
 
@@ -128,6 +131,7 @@ export const buildCouncilCounterfactualReport = (
       netPnl,
       returnPct,
       deterministicVerdict,
+      redTeamResult,
       aiStance,
       shadowBlockSignal,
       blockSignalSources,
@@ -157,7 +161,7 @@ export const buildCouncilCounterfactualReport = (
     policyChangeAuthority: false,
     executionAuthority: false,
     note: observations.length
-      ? 'Counterfactual values assume a shadow REJECT/DISSENT would have blocked the entry and therefore produced zero trade P&L. They are diagnostic candidates, not causal avoided-loss claims.'
+      ? 'Counterfactual values assume a shadow Council REJECT, Red Team INVALIDATED, or AI DISSENT would have blocked the entry and therefore produced zero trade P&L. They are diagnostic candidates, not causal avoided-loss claims.'
       : 'No closed trade currently has both preserved entry lineage and a preserved entry-time Council/AI shadow review. No counterfactual claim is produced.',
   };
 };

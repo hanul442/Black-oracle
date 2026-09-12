@@ -19,12 +19,12 @@ const outcome = (entryTraceId: string | null, tradeId: string, netPnl: number) =
   links: entryTraceId ? { entryTraceId, tradeId } : { tradeId },
 });
 
-const council = (traceId: string, verdict: string) => ({
+const council = (traceId: string, verdict: string, redTeamResult: string | null = null) => ({
   runtime_id: runtimeId,
   event_type: 'COUNCIL',
   event_name: 'DETERMINISTIC_COUNCIL_REVIEWED',
   execution_authority: false,
-  trace: { traceId, verdict },
+  trace: { traceId, verdict, redTeamResult },
 });
 
 const ai = (reviewKey: string, stance: string) => ({
@@ -46,9 +46,9 @@ test('counts hypothetical avoided loss and false-block opportunity only when ent
       outcome(null, 'missing-lineage', -40),
     ],
     [
-      council('trace-loss', 'REJECT'),
-      council('trace-win', 'APPROVE'),
-      council('trace-agree', 'APPROVE'),
+      council('trace-loss', 'APPROVE', 'INVALIDATED'),
+      council('trace-win', 'APPROVE', 'SURVIVED'),
+      council('trace-agree', 'APPROVE', 'PARTIALLY_SURVIVED'),
     ],
     [
       ai('trace-win', 'DISSENT'),
@@ -70,6 +70,8 @@ test('counts hypothetical avoided loss and false-block opportunity only when ent
 
   const loss = report.observations.find((item) => item.tradeId === 'loss');
   assert.equal(loss?.classification, 'CANDIDATE_AVOIDED_LOSS');
+  assert.equal(loss?.redTeamResult, 'INVALIDATED');
+  assert.deepEqual(loss?.blockSignalSources, ['DETERMINISTIC_RED_TEAM_INVALIDATED']);
   const win = report.observations.find((item) => item.tradeId === 'win');
   assert.equal(win?.classification, 'CANDIDATE_FALSE_BLOCK_COST');
   const agree = report.observations.find((item) => item.tradeId === 'agree');

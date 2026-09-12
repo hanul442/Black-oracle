@@ -17,25 +17,25 @@ const report = (overrides: Partial<CouncilCounterfactualReport> = {}): CouncilCo
   observations: [
     {
       tradeId: 'loss-reject-dissent', market: 'KRW-BTC', entryTraceId: 't1', outcomeTraceId: 'o1',
-      netPnl: -200_000, returnPct: -0.02, deterministicVerdict: 'REJECT', aiStance: 'DISSENT',
-      shadowBlockSignal: true, blockSignalSources: ['DETERMINISTIC_COUNCIL_REJECT', 'AI_COUNCIL_DISSENT'],
+      netPnl: -200_000, returnPct: -0.02, deterministicVerdict: 'REJECT', redTeamResult: 'INVALIDATED', aiStance: 'DISSENT',
+      shadowBlockSignal: true, blockSignalSources: ['DETERMINISTIC_COUNCIL_REJECT', 'DETERMINISTIC_RED_TEAM_INVALIDATED', 'AI_COUNCIL_DISSENT'],
       classification: 'CANDIDATE_AVOIDED_LOSS', candidateAvoidedLossKrw: 200_000, candidateFalseBlockCostKrw: 0,
     },
     {
       tradeId: 'win-reject-agree', market: 'KRW-ETH', entryTraceId: 't2', outcomeTraceId: 'o2',
-      netPnl: 120_000, returnPct: 0.012, deterministicVerdict: 'REJECT', aiStance: 'AGREE',
-      shadowBlockSignal: true, blockSignalSources: ['DETERMINISTIC_COUNCIL_REJECT'],
+      netPnl: 120_000, returnPct: 0.012, deterministicVerdict: 'REJECT', redTeamResult: 'INVALIDATED', aiStance: 'AGREE',
+      shadowBlockSignal: true, blockSignalSources: ['DETERMINISTIC_COUNCIL_REJECT', 'DETERMINISTIC_RED_TEAM_INVALIDATED'],
       classification: 'CANDIDATE_FALSE_BLOCK_COST', candidateAvoidedLossKrw: 0, candidateFalseBlockCostKrw: 120_000,
     },
     {
       tradeId: 'loss-approve-dissent', market: 'KRW-XRP', entryTraceId: 't3', outcomeTraceId: 'o3',
-      netPnl: -100_000, returnPct: -0.01, deterministicVerdict: 'APPROVE', aiStance: 'DISSENT',
+      netPnl: -100_000, returnPct: -0.01, deterministicVerdict: 'APPROVE', redTeamResult: 'SERIOUSLY_CHALLENGED', aiStance: 'DISSENT',
       shadowBlockSignal: true, blockSignalSources: ['AI_COUNCIL_DISSENT'],
       classification: 'CANDIDATE_AVOIDED_LOSS', candidateAvoidedLossKrw: 100_000, candidateFalseBlockCostKrw: 0,
     },
     {
       tradeId: 'win-approve-agree', market: 'KRW-SOL', entryTraceId: 't4', outcomeTraceId: 'o4',
-      netPnl: 80_000, returnPct: 0.008, deterministicVerdict: 'APPROVE', aiStance: 'AGREE',
+      netPnl: 80_000, returnPct: 0.008, deterministicVerdict: 'APPROVE', redTeamResult: 'SURVIVED', aiStance: 'AGREE',
       shadowBlockSignal: false, blockSignalSources: [],
       classification: 'NO_SHADOW_BLOCK_SIGNAL', candidateAvoidedLossKrw: 0, candidateFalseBlockCostKrw: 0,
     },
@@ -47,7 +47,7 @@ const report = (overrides: Partial<CouncilCounterfactualReport> = {}): CouncilCo
   ...overrides,
 });
 
-test('prospective evaluation exposes outcome-linked shadow metrics without granting authority', () => {
+test('prospective evaluation exposes outcome-linked Council and Red Team metrics without granting authority', () => {
   const evaluation = buildCouncilProspectiveEvaluation(report());
 
   assert.equal(evaluation.status, 'OBSERVING');
@@ -56,6 +56,11 @@ test('prospective evaluation exposes outcome-linked shadow metrics without grant
   assert.equal(evaluation.metrics.candidateAvoidedLossShare.value, 2 / 3);
   assert.equal(evaluation.metrics.candidateFalseBlockShare.value, 1 / 3);
   assert.equal(evaluation.metrics.deterministicRejectLossShare.value, 0.5);
+  assert.equal(evaluation.metrics.redTeamOutcomeCoverage.value, 1);
+  assert.equal(evaluation.metrics.redTeamInvalidationRate.value, 0.5);
+  assert.equal(evaluation.metrics.redTeamInvalidatedLossShare.value, 0.5);
+  assert.equal(evaluation.metrics.redTeamSeriousChallengeLossShare.value, 1);
+  assert.equal(evaluation.metrics.redTeamCandidateNetBenefitKrw.value, 80_000);
   assert.equal(evaluation.metrics.aiDissentLossShare.value, 1);
   assert.equal(evaluation.metrics.hardCouncilAiDisagreementRate.value, 0.5);
   assert.equal(evaluation.metrics.candidateNetBenefitKrw.value, 180_000);
@@ -63,6 +68,17 @@ test('prospective evaluation exposes outcome-linked shadow metrics without grant
   assert.equal(evaluation.policyChangeAuthority, false);
   assert.equal(evaluation.executionAuthority, false);
   assert.ok(evaluation.missingProspectiveMetrics.some((item) => item.id === 'ROUND0_CALIBRATION'));
+  assert.equal(evaluation.missingProspectiveMetrics.some((item) => item.id === 'RED_TEAM_INVALIDATION'), false);
+});
+
+test('legacy outcome rows without Red Team result keep invalidation metric explicitly unavailable', () => {
+  const legacy = report({
+    observations: report().observations.map((item) => ({ ...item, redTeamResult: null })),
+  });
+  const evaluation = buildCouncilProspectiveEvaluation(legacy);
+
+  assert.equal(evaluation.metrics.redTeamOutcomeCoverage.value, 0);
+  assert.equal(evaluation.metrics.redTeamInvalidationRate.available, false);
   assert.ok(evaluation.missingProspectiveMetrics.some((item) => item.id === 'RED_TEAM_INVALIDATION'));
 });
 
@@ -81,6 +97,8 @@ test('prospective evaluation reports unavailable ratios instead of inventing val
   assert.equal(evaluation.status, 'NO_ELIGIBLE_OUTCOMES');
   assert.equal(evaluation.metrics.lineageCoverage.available, false);
   assert.equal(evaluation.metrics.lineageCoverage.value, null);
+  assert.equal(evaluation.metrics.redTeamOutcomeCoverage.available, false);
+  assert.equal(evaluation.metrics.redTeamCandidateNetBenefitKrw.available, false);
   assert.equal(evaluation.metrics.candidateNetBenefitKrw.available, false);
   assert.equal(evaluation.metrics.candidateNetBenefitKrw.value, null);
 });
