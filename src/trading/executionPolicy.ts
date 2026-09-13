@@ -99,9 +99,6 @@ const resolveMarketDataAgeMs = (input: ExecutionPolicyInput) => {
   const liveTimestamp = input.liquidity.marketDataTimestamp;
   if (Number.isFinite(liveTimestamp) && Number(liveTimestamp) > 0) {
     const now = Date.now();
-    // Small exchange/local clock skew is tolerated, but a materially future timestamp
-    // must never turn into an artificial age of zero. Fall back to the caller's
-    // candle-derived age so the deterministic risk gate remains fail-closed.
     if (Number(liveTimestamp) <= now + 5_000) {
       return Math.max(0, now - Number(liveTimestamp));
     }
@@ -114,8 +111,8 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
   const currentPrice = liquidity.tradePrice;
   const assetPolicy = getAssetDecisionPolicy(oneHour.market);
 
-  // Existing-risk protection always has priority over evidence acquisition and
-  // never waits for a Council/Risk approval round trip before an exit can execute.
+  // Existing-risk protection has priority. Protective exits never wait for a
+  // new-entry safety approval round trip.
   if (position) {
     if (position.stopLossPrice && currentPrice <= position.stopLossPrice) {
       return noRiskCandidate(withoutRiskEvaluation({
@@ -194,8 +191,6 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     }), input);
   }
 
-  // Crypto is technical-first and may open Paper risk without news/evidence.
-  // Equities remain evidence-first and must wait for source-backed context.
   if (assetPolicy.evidenceRequiredForNewRisk && input.newRiskEvidenceAllowed === false) {
     return noRiskCandidate(withoutRiskEvaluation({
       action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: multiTimeframe.confidence,
@@ -207,6 +202,8 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     }), input);
   }
 
+  // Protection is candidate-specific: current structure + ATR define the stop;
+  // regime and structure define TP1/TP2. Position size is then derived from that stop distance.
   const protection = buildProtectionPlan(oneHour, currentPrice);
   const sizing = buildPositionSizingDecision({
     equity: portfolio.equity,
@@ -223,6 +220,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     : input.newRiskEvidenceAllowed === false
       ? 'Crypto technical-first policy allows Paper entry without external evidence; evidence remains supplementary.'
       : 'External evidence is available as supplementary context under the crypto technical-first policy.';
+
   const riskInput: RiskCheckInput = {
     equity: portfolio.equity,
     requestedNotional: sizing.requestedNotional,
@@ -233,6 +231,11 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     feedConnected: input.feedConnected ?? true,
     ledgerInSync: input.ledgerInSync ?? true,
     duplicateOrderDetected: input.duplicateOrderDetected ?? false,
+    entryPrice: currentPrice,
+    stopLossPrice: protection.stopLossPrice,
+    takeProfit1Price: protection.takeProfit1Price,
+    takeProfit2Price: protection.takeProfit2Price,
+    expectedLossAtStop: sizing.expectedLossAtStop,
   };
 
   const decision = withPreRiskContext(withoutRiskEvaluation({
@@ -250,7 +253,7 @@ export const buildPreRiskExecutionCandidate = (input: ExecutionPolicyInput): Pre
     positionSizingMode: sizing.mode,
     expectedLossAtStop: sizing.expectedLossAtStop,
     reasons: [
-      'Liquidity and multi-timeframe technical consensus passed; candidate awaits deterministic risk evaluation.',
+      'Liquidity and multi-timeframe technical consensus passed; candidate awaits new-entry safety validation.',
       evidenceReason,
       ...sizing.reasons,
       ...protection.reasons,
@@ -276,21 +279,36 @@ export const applyDeterministicRiskToCandidate = (candidate: PreRiskExecutionCan
   const risk = evaluateRisk(candidate.riskInput);
   if (risk.status === 'REJECT') {
     return {
-      action: 'HOLD', side: null, notional: 0, quantity: 0, confidence: candidate.decision.confidence,
-      stopLossPrice: null, takeProfitPrice: null,
+      action: 'HOLD',
+      side: null,
+      notional: 0,
+      quantity: 0,
+      confidence: candidate.decision.confidence,
+      stopLossPrice: candidate.decision.stopLossPrice,
+      takeProfitPrice: candidate.decision.takeProfitPrice,
+      takeProfit1Price: candidate.decision.takeProfit1Price,
+      takeProfit2Price: candidate.decision.takeProfit2Price,
+      takeProfit1Fraction: candidate.decision.takeProfit1Fraction,
+      protectionBasis: candidate.decision.protectionBasis,
+      positionSizingMode: candidate.decision.positionSizingMode,
+      expectedLossAtStop: candidate.decision.expectedLossAtStop,
+      riskNotionalScale: 0,
       preRiskContext: candidate.decision.preRiskContext,
-      riskDisposition: 'REJECT', riskReasons: risk.reasons.slice(),
-      reasons: ['Deterministic risk gate rejected the candidate.', ...risk.reasons],
+      riskDisposition: 'REJECT',
+      riskReasons: risk.reasons.slice(),
+      reasons: ['New-entry safety blocked the candidate.', ...risk.reasons],
     };
   }
 
   return {
     ...candidate.decision,
     notional: risk.approvedNotional,
+    riskNotionalScale: risk.notionalScale,
     riskDisposition: 'APPROVE',
     riskReasons: risk.reasons.slice(),
     reasons: [
-      'Liquidity, multi-timeframe technical consensus and deterministic risk gates passed.',
+      'Dynamic protection and new-entry safety checks passed.',
+      ...risk.reasons,
       ...candidate.passReasons,
     ],
   };
