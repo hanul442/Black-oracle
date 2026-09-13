@@ -28,7 +28,12 @@ const multiTimeframe = {
   positionRiskMultiplier: 1,
   frames: {
     fourHour: { regime: { regime: 'UPTREND', confidence: 0.8 } },
-    oneHour: { regime: { regime: 'UPTREND', confidence: 0.8 } },
+    oneHour: {
+      regime: { regime: 'UPTREND', confidence: 0.8 },
+      trend: { action: 'BUY', confidence: 0.8 },
+      momentum: { action: 'BUY', confidence: 0.75 },
+      meanReversion: { action: 'WAIT', confidence: 0.4 },
+    },
     fifteenMinute: { regime: { regime: 'UPTREND', confidence: 0.8 } },
   },
   reasons: [],
