@@ -13,6 +13,7 @@ export * from './indicatorCatalog';
 export * from './indicators';
 export * from './investmentCommittee';
 export * from './investmentCycle';
+export * from './investmentCycleReadModel';
 export * from './largeParticipantFootprint';
 export * from './ledger';
 export * from './liquidity';

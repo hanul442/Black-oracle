@@ -11,6 +11,10 @@ const requestKeyFromReasons = (reasons: unknown) => {
 };
 
 const asArray = <T = any>(value: unknown): T[] => Array.isArray(value) ? value as T[] : [];
+const finiteNumber = (value: unknown) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 
 export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: string): CanonicalEventInput[] => {
   const occurredAt = Number(cycle?.finishedAt ?? Date.now());
@@ -85,6 +89,15 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
     const timestamp = Number(equityCycle?.finishedAt ?? occurredAt);
     const evidenceIds = asArray(item?.evidenceIds).map(String);
     const action = String(item?.action ?? 'RESEARCH_ONLY');
+    const reasons = asArray(item?.reasons).map(String);
+    const relativeVolume = finiteNumber(item?.relativeVolume);
+    const volumeAbsorptionScore = finiteNumber(item?.volumeAbsorptionScore);
+    const priceVsVwapPct = finiteNumber(item?.priceVsVwapPct);
+    const hasFootprintObservation = relativeVolume != null
+      || volumeAbsorptionScore != null
+      || priceVsVwapPct != null
+      || item?.absorptionCandidate != null;
+
     events.push({
       eventKey: `${runtimeId}:${market}:${timestamp}:equity-decision:${action}`,
       occurredAt: timestamp,
@@ -94,7 +107,7 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
       market,
       action,
       summary: `${market} equity research decision ${action}; execution remains disabled until equity-specific cutover gates pass.`,
-      reason: asArray(item?.reasons).map(String)[0] ?? 'Equity research cycle recorded no primary rationale.',
+      reason: reasons[0] ?? 'Equity research cycle recorded no primary rationale.',
       severity: 'INFO',
       authority: 'research_only',
       executionAuthority: false,
@@ -106,13 +119,73 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
         evidenceScore: item?.evidenceScore ?? null,
         waveScore: item?.waveScore ?? null,
         intradayAction: item?.intradayAction ?? null,
-        relativeVolume: item?.relativeVolume ?? null,
-        priceVsVwapPct: item?.priceVsVwapPct ?? null,
-        volumeAbsorptionScore: item?.volumeAbsorptionScore ?? null,
+        relativeVolume,
+        priceVsVwapPct,
+        volumeAbsorptionScore,
         absorptionCandidate: item?.absorptionCandidate ?? null,
       },
       links: { evidenceIds },
     });
+
+    // V10 projection records that the equity runtime observed a candidate. It does not
+    // claim the hard universe gate passed unless the dedicated gate producer proves it.
+    events.push({
+      eventKey: `${runtimeId}:${market}:${timestamp}:v10-universe-candidate-observed`,
+      occurredAt: timestamp,
+      runtimeId,
+      eventType: 'SYSTEM',
+      eventName: 'V10_UNIVERSE_CANDIDATE_OBSERVED',
+      market,
+      action: 'OBSERVED',
+      summary: `${market} appeared in the KRX equity research cycle and is visible to the V10 operational read model.`,
+      reason: reasons[0] ?? 'Candidate observation is research-only and does not imply that all V10 universe hard gates passed.',
+      severity: 'INFO',
+      authority: 'research_shadow',
+      executionAuthority: false,
+      source: 'equity_paper_runtime',
+      trace: {
+        stage: 'UNIVERSE_GATE',
+        gateDisposition: 'OBSERVED_NOT_QUALIFIED',
+        name: item?.name ?? null,
+        price: item?.price ?? null,
+        technicalScore: item?.technicalScore ?? null,
+        evidenceScore: item?.evidenceScore ?? null,
+        evidenceCount: evidenceIds.length,
+        relativeVolume,
+        priceVsVwapPct,
+        volumeAbsorptionScore,
+        dataGaps: ['Dedicated V10 hard-universe qualification event is not emitted by this legacy equity research path.'],
+      },
+      links: { evidenceIds },
+    });
+
+    if (hasFootprintObservation) {
+      events.push({
+        eventKey: `${runtimeId}:${market}:${timestamp}:v10-large-participant-footprint-observed`,
+        occurredAt: timestamp,
+        runtimeId,
+        eventType: 'EVIDENCE',
+        eventName: 'V10_LARGE_PARTICIPANT_FOOTPRINT_OBSERVED',
+        market,
+        action: 'BEHAVIOR_PROXY',
+        summary: `${market} large-participant footprint inputs were observed from price/volume behavior; no actor identity or manipulation claim is made.`,
+        reason: 'Relative volume, VWAP location and absorption-like behavior are behavioral proxies only; named participants require independently verified flow/ownership data.',
+        severity: 'INFO',
+        authority: 'evidence_only',
+        executionAuthority: false,
+        source: 'equity_paper_runtime',
+        trace: {
+          stage: 'LARGE_PARTICIPANT_FOOTPRINT',
+          relativeVolume,
+          priceVsVwapPct,
+          volumeAbsorptionScore,
+          absorptionCandidate: item?.absorptionCandidate ?? null,
+          actorIdentityVerified: false,
+        },
+        links: { evidenceIds },
+      });
+    }
+
     if (evidenceIds.length) {
       events.push({
         eventKey: `${runtimeId}:${market}:${timestamp}:equity-evidence`,
