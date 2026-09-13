@@ -76,7 +76,7 @@ test('official KRX EOD provider stays fail-closed when exposure and current-sess
 });
 
 test('blocked account-free Committee readiness is visible without inventing a nomination', () => {
-  const cycle = {
+  const cycle: KrxShadowResearchCycleResult = {
     startedAt: AS_OF,
     finishedAt: AS_OF + 1_000,
     tradingDate: '20260911',
@@ -100,15 +100,17 @@ test('blocked account-free Committee readiness is visible without inventing a no
       asOf: AS_OF,
       horizon: 'SHORT',
       marketRuntime: {
-        asOf: AS_OF,
+        mode: 'SHADOW',
+        executionAuthority: false,
         marketStates: {
           SHORT: {
+            id: `market-state::SHORT::${AS_OF}`,
             horizon: 'SHORT',
             asOf: AS_OF,
             score: 65,
             confidence: 0.55,
-            stance: 'BULLISH',
-            riskMultiplier: 1,
+            stance: 'RISK_ON',
+            riskMultiplier: 0.9,
             indexTrendScore: 65,
             breadthScore: 60,
             turnoverScore: 50,
@@ -120,6 +122,7 @@ test('blocked account-free Committee readiness is visible without inventing a no
           },
         },
         sectorPackets: [],
+        blockers: [],
       },
       sectorScores: [{
         sector: '전기전자',
@@ -167,7 +170,7 @@ test('blocked account-free Committee readiness is visible without inventing a no
     nominationReadyCount: 0,
     blockers: ['Crypto-linked equity classification is UNKNOWN; source-backed exposure classification is required before nomination.'],
     sourceIds: ['KRX:MDCSTAT01501:20260911'],
-  } satisfies KrxShadowResearchCycleResult;
+  };
 
   const events = buildKrxShadowResearchCanonicalEvents(cycle, 'black-oracle-paper-s2-shadow');
   assert.equal(events.every((item) => item.executionAuthority === false), true);
