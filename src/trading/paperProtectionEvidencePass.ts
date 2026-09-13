@@ -104,15 +104,22 @@ export const parsePaperProtectionEvidenceBaseline = (
   const sourceCandidate = source as Record<string, unknown>;
   if (sourceCandidate.kind === 'exact-snapshot') {
     const sourceRuntimeId = sourceCandidate.runtimeId;
-    const snapshotRecordedAt = sourceCandidate.snapshotRecordedAt;
+    const rawSnapshotRecordedAt = sourceCandidate.snapshotRecordedAt;
     const snapshotFingerprint = sourceCandidate.snapshotFingerprint;
 
     if (typeof sourceRuntimeId !== 'string' || !sourceRuntimeId.trim()) {
       throw new Error('Exact-snapshot baseline requires runtimeId.');
     }
-    if (snapshotRecordedAt !== null && typeof snapshotRecordedAt !== 'string') {
+
+    let snapshotRecordedAt: string | null;
+    if (rawSnapshotRecordedAt === null) {
+      snapshotRecordedAt = null;
+    } else if (typeof rawSnapshotRecordedAt === 'string') {
+      snapshotRecordedAt = rawSnapshotRecordedAt;
+    } else {
       throw new Error('Exact-snapshot baseline snapshotRecordedAt must be a string or null.');
     }
+
     if (!isSnapshotFingerprint(snapshotFingerprint)) {
       throw new Error('Exact-snapshot baseline requires a canonical sha256 snapshotFingerprint.');
     }
