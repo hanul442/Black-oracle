@@ -65,11 +65,8 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0;
 
-const assertFingerprint = (value: unknown): asserts value is string => {
-  if (typeof value !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value)) {
-    throw new Error('Exact-snapshot baseline requires a canonical sha256 snapshotFingerprint.');
-  }
-};
+const isSnapshotFingerprint = (value: unknown): value is string =>
+  typeof value === 'string' && /^sha256:[0-9a-f]{64}$/.test(value);
 
 /**
  * Validates JSON-loaded evidence baselines before they can influence a comparison.
@@ -116,7 +113,9 @@ export const parsePaperProtectionEvidenceBaseline = (
     if (snapshotRecordedAt !== null && typeof snapshotRecordedAt !== 'string') {
       throw new Error('Exact-snapshot baseline snapshotRecordedAt must be a string or null.');
     }
-    assertFingerprint(snapshotFingerprint);
+    if (!isSnapshotFingerprint(snapshotFingerprint)) {
+      throw new Error('Exact-snapshot baseline requires a canonical sha256 snapshotFingerprint.');
+    }
 
     return {
       source: {
