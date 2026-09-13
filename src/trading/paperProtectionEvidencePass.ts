@@ -30,6 +30,7 @@ export interface PaperProtectionEvidencePassResult {
     pages: number;
     pageSize: number;
     truncated: false;
+    snapshotRecordedAt: string | null;
   };
   diagnostic: PaperProtectionDiagnostic;
   baseline: PaperProtectionEvidenceBaseline | null;
@@ -43,9 +44,9 @@ export interface PaperProtectionEvidencePassOptions
 }
 
 /**
- * Executes one read-only evidence pass from canonical Paper events to the
- * protection diagnostic. A capped/truncated export is rejected rather than
- * being presented as complete qualification evidence.
+ * Executes one read-only evidence pass from a frozen canonical Paper snapshot
+ * to the protection diagnostic. A capped/truncated export is rejected rather
+ * than being presented as complete qualification evidence.
  */
 export const runPaperProtectionEvidencePass = async (
   options: PaperProtectionEvidencePassOptions,
@@ -78,6 +79,7 @@ export const runPaperProtectionEvidencePass = async (
       pages: exported.pages,
       pageSize: exported.pageSize,
       truncated: false,
+      snapshotRecordedAt: exported.snapshotRecordedAt,
     },
     diagnostic,
     baseline,
