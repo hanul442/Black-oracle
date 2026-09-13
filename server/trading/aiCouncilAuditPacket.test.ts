@@ -39,16 +39,56 @@ test('includes structured shadow inputs and reports missing execution arithmetic
     riskReasons: ['All deterministic risk gates passed.'],
   });
 
+  assert.equal(packet.identity.decisionContext, 'NEW_RISK_OR_NO_POSITION');
   assert.equal(packet.arbiter?.recommendation, 'REVIEW');
   assert.equal(packet.microstructure?.pressureScore, -31);
   assert.equal(packet.challenger?.alignment, 'CONFLICTS');
   assert.equal(packet.tradeMap?.stopLossPrice, 3355779);
+  assert.equal(packet.candidateTradeMap, null);
   assert.equal(packet.dataCompleteness.tradeMapProvided, true);
   assert.equal(packet.dataCompleteness.microstructureProvided, true);
   assert.equal(packet.dataCompleteness.portfolioExposureProvided, false);
   assert.equal(packet.dataCompleteness.feeSlippageBreakdownProvided, false);
   assert.equal(packet.dataCompleteness.requiredShadowInputsComplete, false);
   assert.deepEqual(packet.dataCompleteness.missingInputs, ['liquidity', 'portfolioRisk', 'positionSizing', 'executionCosts']);
+});
+
+test('uses governing execution targets for an existing-position exit and keeps fresh candidate map non-governing', () => {
+  const packet = buildAiCouncilAuditPacket({
+    timestamp: 2_000,
+    market: 'KRW-STEEM',
+    action: 'EXIT',
+    tradeMap: {
+      status: 'CANDIDATE',
+      direction: 'LONG',
+      entryPrice: 109,
+      stopLossPrice: 99,
+      takeProfit1Price: 118.22024,
+      takeProfit2Price: 136.44048,
+      reasons: ['Fresh candidate map.'],
+    },
+    positionSizing: {
+      mode: null,
+      requestedNotional: 4_000_000,
+      requestedQuantity: 40_000,
+      expectedLossAtStop: null,
+      stopLossPrice: 99.77976,
+      takeProfit1Price: 105.43275,
+      takeProfit2Price: 111.664,
+      takeProfit1Fraction: 0.4,
+      protectionBasis: 'STRUCTURE_ATR',
+    },
+    riskDisposition: 'NOT_EVALUATED',
+    riskReasons: [],
+  });
+
+  assert.equal(packet.identity.decisionContext, 'EXISTING_POSITION_MANAGEMENT');
+  assert.equal(packet.tradeMap?.source, 'GOVERNING_EXECUTION_DECISION');
+  assert.equal(packet.tradeMap?.takeProfit1Price, 105.43275);
+  assert.equal(packet.tradeMap?.takeProfit2Price, 111.664);
+  assert.equal(packet.candidateTradeMap?.takeProfit1Price, 118.22024);
+  assert.equal(packet.candidateTradeMap?.takeProfit2Price, 136.44048);
+  assert.equal(packet.dataCompleteness.tradeMapProvided, true);
 });
 
 test('preserves missing facts as null instead of fabricating zero values', () => {
