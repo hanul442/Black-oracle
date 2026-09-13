@@ -39,6 +39,7 @@ if (!runtimeId) {
     pageSize: result.pageSize,
     truncated: result.truncated,
     snapshotRecordedAt: result.snapshotRecordedAt,
+    snapshotFingerprint: result.snapshotFingerprint,
     rows: result.rows,
   }, null, 2);
 
@@ -46,6 +47,6 @@ if (!runtimeId) {
     process.stdout.write(`${payload}\n`);
   } else {
     await writeFile(outputPath, `${payload}\n`, 'utf8');
-    console.error(`Exported ${result.rows.length} canonical rows for ${runtimeId} at snapshot ${result.snapshotRecordedAt ?? 'empty'} to ${outputPath}${result.truncated ? ' (TRUNCATED)' : ''}.`);
+    console.error(`Exported ${result.rows.length} canonical rows for ${runtimeId} at snapshot ${result.snapshotRecordedAt ?? 'empty'} (${result.snapshotFingerprint}) to ${outputPath}${result.truncated ? ' (TRUNCATED)' : ''}.`);
   }
 }
