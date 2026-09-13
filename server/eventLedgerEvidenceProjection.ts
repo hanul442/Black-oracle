@@ -115,6 +115,13 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
       trace: {
         name: item?.name ?? null,
         price: item?.price ?? null,
+        sector: item?.sector ?? null,
+        marketCapKrw: item?.marketCapKrw ?? null,
+        dailyVolume: item?.dailyVolume ?? null,
+        volumeTurnoverRate: item?.volumeTurnoverRate ?? null,
+        foreignNetBuyQty: item?.foreignNetBuyQty ?? null,
+        programNetBuyQty: item?.programNetBuyQty ?? null,
+        marketWarning: item?.marketWarning ?? false,
         technicalScore: item?.technicalScore ?? null,
         evidenceScore: item?.evidenceScore ?? null,
         waveScore: item?.waveScore ?? null,
@@ -148,9 +155,16 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
         gateDisposition: 'OBSERVED_NOT_QUALIFIED',
         name: item?.name ?? null,
         price: item?.price ?? null,
+        sector: item?.sector ?? null,
+        marketCapKrw: item?.marketCapKrw ?? null,
+        dailyVolume: item?.dailyVolume ?? null,
+        volumeTurnoverRate: item?.volumeTurnoverRate ?? null,
+        foreignNetBuyQty: item?.foreignNetBuyQty ?? null,
+        programNetBuyQty: item?.programNetBuyQty ?? null,
+        marketWarning: item?.marketWarning ?? false,
         technicalScore: item?.technicalScore ?? null,
         evidenceScore: item?.evidenceScore ?? null,
-        evidenceCount: evidenceIds.length,
+        evidenceCount: item?.evidenceCount ?? evidenceIds.length,
         relativeVolume,
         priceVsVwapPct,
         volumeAbsorptionScore,
@@ -180,6 +194,8 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
           priceVsVwapPct,
           volumeAbsorptionScore,
           absorptionCandidate: item?.absorptionCandidate ?? null,
+          foreignNetBuyQty: item?.foreignNetBuyQty ?? null,
+          programNetBuyQty: item?.programNetBuyQty ?? null,
           actorIdentityVerified: false,
         },
         links: { evidenceIds },
@@ -204,6 +220,86 @@ export const buildEvidenceAndEquityCanonicalEvents = (cycle: any, runtimeId: str
         links: { evidenceIds },
       });
     }
+  }
+
+  const marketSector = equityCycle?.marketSector;
+  const marketStates = marketSector?.marketRuntime?.marketStates && typeof marketSector.marketRuntime.marketStates === 'object'
+    ? Object.values(marketSector.marketRuntime.marketStates)
+    : [];
+  for (const rawState of marketStates as any[]) {
+    if (!rawState) continue;
+    const horizon = String(rawState.horizon ?? 'SHORT');
+    const timestamp = Number(rawState.asOf ?? marketSector?.asOf ?? equityCycle?.finishedAt ?? occurredAt);
+    const dataGaps = asArray(rawState.dataGaps).map(String);
+    const sourceIds = asArray(rawState.sourceIds).map(String);
+    events.push({
+      eventKey: `${runtimeId}:KRX:${timestamp}:v10-market-state:${horizon}`,
+      occurredAt: timestamp,
+      runtimeId,
+      eventType: 'SYSTEM',
+      eventName: 'V10_MARKET_STATE_OBSERVED',
+      market: 'KRX',
+      action: String(rawState.stance ?? 'NEUTRAL'),
+      summary: `KRX ${horizon} Market State ${String(rawState.stance ?? 'NEUTRAL')} · score ${Number(rawState.score ?? 0).toFixed(1)} · confidence ${(Number(rawState.confidence ?? 0) * 100).toFixed(0)}%.`,
+      reason: dataGaps[0] ?? asArray(rawState.reasons).map(String)[0] ?? 'Official KIS index state was observed for V10 shadow research.',
+      severity: dataGaps.length ? 'WARN' : 'INFO',
+      authority: 'research_shadow',
+      executionAuthority: false,
+      source: 'krx_market_sector_shadow',
+      trace: {
+        stage: 'MARKET_STATE',
+        horizon,
+        score: rawState.score ?? null,
+        confidence: rawState.confidence ?? null,
+        stance: rawState.stance ?? null,
+        riskMultiplier: rawState.riskMultiplier ?? null,
+        indexTrendScore: rawState.indexTrendScore ?? null,
+        breadthScore: rawState.breadthScore ?? null,
+        turnoverScore: rawState.turnoverScore ?? null,
+        volatilityScore: rawState.volatilityScore ?? null,
+        evidenceScore: rawState.evidenceScore ?? null,
+        dataGaps,
+        sourceIds,
+      },
+      links: { sourceIds },
+    });
+  }
+
+  for (const sector of asArray(marketSector?.sectorScores)) {
+    const score = sector?.score ?? {};
+    const horizon = String(score?.horizon ?? marketSector?.horizon ?? 'SHORT');
+    const sectorName = String(sector?.sector ?? score?.sector ?? 'UNKNOWN');
+    const timestamp = Number(marketSector?.asOf ?? equityCycle?.finishedAt ?? occurredAt);
+    const dataGaps = asArray(sector?.dataGaps).map(String);
+    events.push({
+      eventKey: `${runtimeId}:KRX:${timestamp}:v10-sector-state:${horizon}:${sectorName}`,
+      occurredAt: timestamp,
+      runtimeId,
+      eventType: 'SYSTEM',
+      eventName: 'V10_SECTOR_STATE_OBSERVED',
+      action: String(score?.stance ?? 'NEUTRAL'),
+      summary: `${sectorName} ${horizon} Sector Strength ${String(score?.stance ?? 'NEUTRAL')} · score ${Number(score?.score ?? 0).toFixed(1)} · breadth ${Number(sector?.breadthPct ?? 0).toFixed(0)}%.`,
+      reason: dataGaps[0] ?? 'Sector state is a shadow research ranking from KIS sector tags, relative strength, breadth, volume participation and source-backed Evidence.',
+      severity: dataGaps.length ? 'WARN' : 'INFO',
+      authority: 'research_shadow',
+      executionAuthority: false,
+      source: 'krx_market_sector_shadow',
+      trace: {
+        stage: 'SECTOR_STATE',
+        horizon,
+        sector: sectorName,
+        score: score?.score ?? null,
+        stance: score?.stance ?? null,
+        constituentCount: sector?.constituentCount ?? null,
+        positiveCount: sector?.positiveCount ?? null,
+        breadthPct: sector?.breadthPct ?? null,
+        relativeStrength: score?.relativeStrength ?? null,
+        volumeParticipation: score?.volumeParticipation ?? null,
+        evidenceScore: score?.evidenceScore ?? null,
+        riskPenalty: score?.riskPenalty ?? null,
+        dataGaps,
+      },
+    });
   }
 
   return events;

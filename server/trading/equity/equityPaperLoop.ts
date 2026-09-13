@@ -1,6 +1,7 @@
 import { getAssetDecisionPolicy } from '../../../src/trading/assetPolicy';
 import { buildEquityIntradayTiming, type EquityIntradayTimingSnapshot } from '../../../src/trading/equityIntradayTiming';
 import { buildEvidenceCoverageRequest, evidenceSupportsNewLongRisk } from '../../../src/trading/evidenceCoverage';
+import { buildKrxShortHorizonMarketSectorSnapshot, type KrxShortHorizonMarketSectorSnapshot } from '../../../src/trading/krxMarketSectorObservation';
 import { buildPositionSizingDecision } from '../../../src/trading/positionSizing';
 import { buildProtectionPlan } from '../../../src/trading/protectionPlan';
 import { buildDynamicProtectionUpdate } from '../../../src/trading/protectionManager';
@@ -13,7 +14,7 @@ import type { Candle, TradingSnapshot } from '../../../src/trading/types';
 import { evidenceCoverageRequestStore } from '../evidenceCoverageQueue';
 import { tradingEvidenceStore } from '../evidenceStore';
 import { paperTradingSession } from '../paperSession';
-import { createKisDomesticStockMarketDataFromEnv, type KisDomesticStockMarketData, type KisRankedStock } from './kisMarketData';
+import { createKisDomesticStockMarketDataFromEnv, type KisDomesticStockMarketData, type KisRankedStock, type KisStockProfile } from './kisMarketData';
 
 export type EquityPaperAction = 'ENTER' | 'EXIT' | 'PARTIAL_EXIT' | 'HOLD' | 'NO_TRADE' | 'EVIDENCE_REQUESTED' | 'ERROR';
 
@@ -23,6 +24,13 @@ export interface EquityPaperDecision {
   name: string;
   action: EquityPaperAction;
   price: number;
+  sector: string | null;
+  marketCapKrw: number | null;
+  dailyVolume: number | null;
+  volumeTurnoverRate: number | null;
+  foreignNetBuyQty: number | null;
+  programNetBuyQty: number | null;
+  marketWarning: boolean;
   technicalScore: number | null;
   technicalAction: 'BUY' | 'SELL' | 'WAIT' | null;
   evidenceScore: number;
@@ -57,6 +65,7 @@ export interface EquityPaperCycleResult {
   evidenceRequested: number;
   errors: number;
   decisions: EquityPaperDecision[];
+  marketSector: KrxShortHorizonMarketSectorSnapshot | null;
 }
 
 const MAX_CANDIDATES = 6;
@@ -73,6 +82,20 @@ const isKrxSessionOpen = (now = Date.now()) => {
 
 const evidenceFor = (market: string): EvidenceAggregate => tradingEvidenceStore.aggregate(market);
 
+const meaningfulWarningCode = (value: string | null) => {
+  if (!value) return false;
+  const normalized = value.trim().toUpperCase();
+  return !['0', '00', '000', 'NONE', 'N'].includes(normalized);
+};
+
+const profileWarning = (profile: KisStockProfile) => Boolean(
+  profile.investmentCaution
+  || profile.shortTermOverheat
+  || profile.liquidationTrading
+  || meaningfulWarningCode(profile.marketWarningCode)
+  || meaningfulWarningCode(profile.managementIssueCode),
+);
+
 const decisionBase = (
   stock: Pick<KisRankedStock, 'symbol' | 'name' | 'price'>,
   action: EquityPaperAction,
@@ -83,6 +106,13 @@ const decisionBase = (
   name: stock.name,
   action,
   price: stock.price,
+  sector: null,
+  marketCapKrw: null,
+  dailyVolume: null,
+  volumeTurnoverRate: null,
+  foreignNetBuyQty: null,
+  programNetBuyQty: null,
+  marketWarning: false,
   technicalScore: null,
   technicalAction: null,
   evidenceScore: evidence.score,
@@ -104,6 +134,16 @@ const decisionBase = (
   coverageRequestKey: null,
   reasons: [],
 });
+
+const attachProfile = (decision: EquityPaperDecision, profile: KisStockProfile) => {
+  decision.sector = profile.sectorName;
+  decision.marketCapKrw = profile.marketCapKrw;
+  decision.dailyVolume = profile.volume;
+  decision.volumeTurnoverRate = profile.volumeTurnoverRate;
+  decision.foreignNetBuyQty = profile.foreignNetBuyQty;
+  decision.programNetBuyQty = profile.programNetBuyQty;
+  decision.marketWarning = profileWarning(profile);
+};
 
 const technicalComposite = (snapshot: TradingSnapshot, waveScore: number) => {
   const boundedWave = Math.max(-100, Math.min(100, waveScore));
@@ -395,6 +435,7 @@ export class EquityPaperLoop {
       evidenceRequested: 0,
       errors: 0,
       decisions: [],
+      marketSector: null,
     };
 
     try {
@@ -429,8 +470,14 @@ export class EquityPaperLoop {
         if (seen.has(market)) continue;
         seen.add(market);
         try {
-          const quote = await marketData.quote(stock.symbol);
-          const current: KisRankedStock = { ...stock, price: quote.price, volume: quote.volume ?? stock.volume, changeRate: quote.changeRate };
+          const profile = await marketData.stockProfile(stock.symbol);
+          const current: KisRankedStock = {
+            ...stock,
+            price: profile.price,
+            volume: profile.volume ?? stock.volume,
+            changeRate: profile.changeRate,
+            marketName: profile.marketName ?? stock.marketName,
+          };
           const evidence = evidenceFor(market);
           const dailyCandles = await marketData.dailyCandles(stock.symbol, 240);
           if (dailyCandles.length < 200) throw new Error(`Insufficient daily history (${dailyCandles.length}) for ${stock.symbol}.`);
@@ -440,6 +487,7 @@ export class EquityPaperLoop {
           const decision = position
             ? await reviewOpenPosition(current, snapshot, wave.score, evidence, marketData, dailyCandles)
             : await evaluateFlatCandidate(current, snapshot, wave.score, evidence, marketData, dailyCandles);
+          attachProfile(decision, profile);
           decision.wavePhase = wave.phase;
           decision.reasons.push(...wave.reasons.slice(0, 3));
           cycle.decisions.push(decision);
@@ -456,6 +504,31 @@ export class EquityPaperLoop {
           cycle.errors += 1;
         }
       }
+
+      // V10 market/sector research sidecar. It has no execution authority and must never
+      // alter the decisions above. Missing index inputs are converted into explicit DATA_GAPs.
+      const indexResults = await Promise.allSettled([
+        marketData.indexSnapshot('0001'),
+        marketData.indexSnapshot('1001'),
+      ]);
+      const indexes = indexResults.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+      const indexErrors = indexResults.flatMap((result) => result.status === 'rejected'
+        ? [result.reason instanceof Error ? result.reason.message : String(result.reason ?? 'Unknown KIS index error.')]
+        : []);
+      cycle.marketSector = buildKrxShortHorizonMarketSectorSnapshot({
+        asOf: Date.now(),
+        indexes,
+        indexErrors,
+        equities: cycle.decisions.map((decision) => ({
+          market: decision.market,
+          sector: decision.sector,
+          changeRate: ranked.find((item) => item.symbol === decision.symbol)?.changeRate ?? null,
+          volumeTurnoverRate: decision.volumeTurnoverRate,
+          evidenceScore: decision.evidenceScore,
+          evidenceCount: decision.evidenceCount,
+          warning: decision.marketWarning,
+        })),
+      });
 
       cycle.finishedAt = Date.now();
       this.lastCycle = cycle;

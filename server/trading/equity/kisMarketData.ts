@@ -47,6 +47,24 @@ export interface KisRankedStock {
   marketName: string | null;
 }
 
+export interface KisIndexSnapshot {
+  code: '0001' | '1001';
+  name: 'KOSPI' | 'KOSDAQ';
+  value: number;
+  changeRate: number | null;
+  volume: number | null;
+  previousVolume: number | null;
+  turnoverKrw: number | null;
+  previousTurnoverKrw: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  advancingIssues: number | null;
+  flatIssues: number | null;
+  decliningIssues: number | null;
+  asOf: number;
+}
+
 type KisEnvironment = 'demo' | 'real';
 type TokenState = { value: string; expiresAt: number } | null;
 
@@ -258,6 +276,39 @@ export class KisDomesticStockMarketData {
       shortTermOverheat: asYn(output.short_over_yn),
       liquidationTrading: asYn(output.sltr_yn),
       managementIssueCode: output.mang_issu_cls_code != null && String(output.mang_issu_cls_code).trim() ? String(output.mang_issu_cls_code).trim() : null,
+    };
+  }
+
+  /**
+   * Official KIS domestic-index snapshot. Codes: KOSPI 0001, KOSDAQ 1001.
+   * The response includes index change, breadth counts and current/prior turnover,
+   * which are used only for the V10 shadow Market State producer.
+   */
+  async indexSnapshot(code: '0001' | '1001'): Promise<KisIndexSnapshot> {
+    const payload = await this.get('/uapi/domestic-stock/v1/quotations/inquire-index-price', 'FHPUP02100000', {
+      FID_COND_MRKT_DIV_CODE: 'U',
+      FID_INPUT_ISCD: code,
+    });
+    const raw = Array.isArray(payload?.output) ? payload.output[0] : payload?.output;
+    const value = asNumber(raw?.bstp_nmix_prpr);
+    if (value == null || value <= 0) throw new Error(`KIS index snapshot did not return a valid value for ${code}.`);
+    const changeRateRaw = asNumber(raw?.bstp_nmix_prdy_ctrt);
+    return {
+      code,
+      name: code === '0001' ? 'KOSPI' : 'KOSDAQ',
+      value,
+      changeRate: changeRateRaw == null ? null : changeRateRaw / 100,
+      volume: asNumber(raw?.acml_vol),
+      previousVolume: asNumber(raw?.prdy_vol),
+      turnoverKrw: asNumber(raw?.acml_tr_pbmn),
+      previousTurnoverKrw: asNumber(raw?.prdy_tr_pbmn),
+      open: asNumber(raw?.bstp_nmix_oprc),
+      high: asNumber(raw?.bstp_nmix_hgpr),
+      low: asNumber(raw?.bstp_nmix_lwpr),
+      advancingIssues: asNumber(raw?.ascn_issu_cnt),
+      flatIssues: asNumber(raw?.stnr_issu_cnt),
+      decliningIssues: asNumber(raw?.down_issu_cnt),
+      asOf: Date.now(),
     };
   }
 
