@@ -193,7 +193,10 @@ export interface LiquiditySnapshot {
 
 export interface RiskLimits {
   maxPositionPct: number;
+  maxRiskPerTradePct: number;
+  dailyLossThrottleStartPct: number;
   maxDailyLossPct: number;
+  minDailyLossNotionalScale: number;
   maxTotalDrawdownPct: number;
   maxEstimatedSlippageBps: number;
   maxMarketDataAgeMs: number;
@@ -209,12 +212,18 @@ export interface RiskCheckInput {
   feedConnected: boolean;
   ledgerInSync: boolean;
   duplicateOrderDetected: boolean;
+  entryPrice: number;
+  stopLossPrice: number;
+  takeProfit1Price: number;
+  takeProfit2Price: number;
+  expectedLossAtStop: number;
 }
 
 export interface RiskDecision {
   status: 'PASS' | 'REJECT';
   approvedNotional: number;
   maxAllowedNotional: number;
+  notionalScale: number;
   reasons: string[];
 }
 
@@ -364,6 +373,7 @@ export interface ExecutionDecision {
   protectionBasis?: 'STRUCTURE_ATR' | 'ATR' | null;
   positionSizingMode?: 'EQUAL_NOTIONAL_RISK_CAPPED' | 'FIXED_RISK_AT_STOP';
   expectedLossAtStop?: number;
+  riskNotionalScale?: number;
   /** Immutable provenance captured before deterministic Risk evaluates this candidate. */
   preRiskContext?: ExecutionPreRiskContext;
   riskDisposition: RiskDisposition;
