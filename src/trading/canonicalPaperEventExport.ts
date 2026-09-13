@@ -15,6 +15,7 @@ export interface CanonicalPaperEventExportResult {
   pages: number;
   pageSize: number;
   truncated: boolean;
+  snapshotRecordedAt: string | null;
 }
 
 const boundedInteger = (value: unknown, fallback: number, min: number, max: number) => {
@@ -23,13 +24,54 @@ const boundedInteger = (value: unknown, fallback: number, min: number, max: numb
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 };
 
+const readSnapshotRecordedAt = async (
+  base: string,
+  runtimeId: string,
+  key: string,
+  fetchImpl: typeof fetch,
+): Promise<string | null> => {
+  const url = new URL(`${base}/rest/v1/black_oracle_events`);
+  url.searchParams.set('select', 'recorded_at');
+  url.searchParams.set('runtime_id', `eq.${runtimeId}`);
+  url.searchParams.set('order', 'recorded_at.desc');
+  url.searchParams.set('limit', '1');
+
+  const response = await fetchImpl(url, {
+    method: 'GET',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      Accept: 'application/json',
+    },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Canonical Paper event snapshot read failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+  }
+
+  const body = await response.json();
+  if (!Array.isArray(body)) throw new Error('Canonical Paper event snapshot read returned a non-array response.');
+  if (body.length === 0) return null;
+
+  const recordedAt = body[0]?.recorded_at;
+  if (typeof recordedAt !== 'string' || !recordedAt.trim()) {
+    throw new Error('Canonical Paper event snapshot read returned an invalid recorded_at watermark.');
+  }
+  return recordedAt;
+};
+
 /**
  * Read-only, runtime-scoped exporter for canonical Paper events.
  *
  * This intentionally does not share mutation helpers or instantiate any trading
- * runtime. It only issues GET requests against `black_oracle_events`, pages in
- * deterministic canonical order, and returns the raw snake_case rows expected
- * by the shadow replay adapter.
+ * runtime. It only issues GET requests against `black_oracle_events`.
+ *
+ * A `recorded_at` high-watermark is captured before paging begins and every
+ * subsequent page is constrained to that watermark. This prevents new events
+ * appended by the active Paper runtime from shifting offset pagination and
+ * contaminating a single evidence pass with a moving read boundary.
  */
 export const exportCanonicalPaperEvents = async (
   options: CanonicalPaperEventExportOptions,
@@ -44,6 +86,18 @@ export const exportCanonicalPaperEvents = async (
   const pageSize = boundedInteger(options.pageSize, 500, 1, 1_000);
   const maxRows = boundedInteger(options.maxRows, 50_000, 1, 100_000);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const snapshotRecordedAt = await readSnapshotRecordedAt(base, runtimeId, key, fetchImpl);
+  if (snapshotRecordedAt === null) {
+    return {
+      runtimeId,
+      rows: [],
+      pages: 0,
+      pageSize,
+      truncated: false,
+      snapshotRecordedAt: null,
+    };
+  }
+
   const rows: CanonicalPaperEventRow[] = [];
   let pages = 0;
   let offset = 0;
@@ -55,6 +109,7 @@ export const exportCanonicalPaperEvents = async (
     const url = new URL(`${base}/rest/v1/black_oracle_events`);
     url.searchParams.set('select', 'runtime_id,occurred_at,event_name,strategy_version,trace');
     url.searchParams.set('runtime_id', `eq.${runtimeId}`);
+    url.searchParams.set('recorded_at', `lte.${snapshotRecordedAt}`);
     url.searchParams.set('order', 'occurred_at.asc,recorded_at.asc,id.asc');
     url.searchParams.set('limit', String(limit));
     url.searchParams.set('offset', String(offset));
@@ -94,5 +149,6 @@ export const exportCanonicalPaperEvents = async (
     pages,
     pageSize,
     truncated: !exhausted && rows.length >= maxRows,
+    snapshotRecordedAt,
   };
 };
