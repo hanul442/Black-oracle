@@ -69,6 +69,7 @@ export interface DecisionTrace {
     mode: ExecutionDecision['positionSizingMode'] | null;
     requestedNotional: number;
     requestedQuantity: number;
+    quantityBasis?: 'DECISION' | 'REFERENCE_PRICE_ESTIMATE' | 'UNAVAILABLE';
     expectedLossAtStop: number | null;
     stopLossPrice: number | null;
     takeProfit1Price: number | null;
@@ -154,6 +155,26 @@ const clonePreTradeReview = (review: PreTradeShadowReview | null): PreTradeShado
   arbiter: { ...review.arbiter, reasons: review.arbiter.reasons.slice() },
 } : null;
 
+const resolveRequestedQuantity = (
+  decision: ExecutionDecision,
+  liquidity?: LiquiditySnapshot | null,
+): { quantity: number; basis: 'DECISION' | 'REFERENCE_PRICE_ESTIMATE' | 'UNAVAILABLE' } => {
+  if (Number.isFinite(decision.quantity) && decision.quantity > 0) {
+    return { quantity: decision.quantity, basis: 'DECISION' };
+  }
+  if (
+    decision.action === 'ENTER'
+    && Number.isFinite(decision.notional)
+    && decision.notional > 0
+    && liquidity
+    && Number.isFinite(liquidity.tradePrice)
+    && liquidity.tradePrice > 0
+  ) {
+    return { quantity: decision.notional / liquidity.tradePrice, basis: 'REFERENCE_PRICE_ESTIMATE' };
+  }
+  return { quantity: 0, basis: 'UNAVAILABLE' };
+};
+
 export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => {
   const { decision, multiTimeframe, evidence } = input;
   const action = classifyDecisionTraceAction(decision.action, input.hasOpenPositionAfterStep);
@@ -183,6 +204,7 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
   const grossExposurePct = portfolio && portfolio.equity > 0
     ? portfolio.marketValue / portfolio.equity
     : null;
+  const requestedQuantity = resolveRequestedQuantity(decision, input.liquidity);
 
   return {
     timestamp: input.timestamp ?? Date.now(),
@@ -233,7 +255,8 @@ export const buildDecisionTrace = (input: DecisionTraceInput): DecisionTrace => 
     positionSizing: {
       mode: decision.positionSizingMode ?? null,
       requestedNotional: decision.notional,
-      requestedQuantity: decision.quantity,
+      requestedQuantity: requestedQuantity.quantity,
+      quantityBasis: requestedQuantity.basis,
       expectedLossAtStop: decision.expectedLossAtStop ?? null,
       stopLossPrice: decision.stopLossPrice,
       takeProfit1Price: decision.takeProfit1Price ?? null,
