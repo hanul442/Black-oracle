@@ -133,7 +133,6 @@ const PriceTrack = ({ position, decision }: { position: OpenPosition; decision: 
 };
 
 const PositionCard = ({ position, operations }: { position: OpenPosition; operations: OperationsWithCheckpoint | null }) => {
-  const marked = position as MarkedOpenPosition;
   const financials = positionFinancials(position);
   const current = financials.markPrice;
   const decision = latestDecisionFor(operations, position.market);
@@ -142,6 +141,8 @@ const PositionCard = ({ position, operations }: { position: OpenPosition; operat
   const tp1 = position.takeProfit1Price ?? position.takeProfitPrice;
   const tp2 = position.takeProfit2Price;
   const checkpointAt = operations?.checkpoint?.savedAt ?? null;
+  const portfolioEquity = operations?.portfolio?.equity;
+  const portfolioWeight = finite(portfolioEquity) && portfolioEquity > 0 && financials.marketValue != null ? financials.marketValue / portfolioEquity : null;
   const pnlAccent = (financials.unrealizedPnl ?? 0) >= 0 ? green : red;
   const stopDistance = targetDistance(current, stop);
   const tp1Distance = targetDistance(current, tp1);
@@ -158,7 +159,7 @@ const PositionCard = ({ position, operations }: { position: OpenPosition; operat
 
       <div className="mt-5 flex items-end justify-between gap-4">
         <div>
-          <div className="text-[9px] font-medium text-[#969ca4]">현재 가격 · mark</div>
+          <div className="text-[9px] font-medium text-[#969ca4]">현재 가격 · Paper mark</div>
           <div className="mt-1 text-[30px] font-semibold tabular-nums tracking-[-0.045em] text-[#111318]">{formatKrw(current)}</div>
           <div className="mt-1 text-[9px] text-[#9ca1a8]">runtime snapshot {checkpointAt ? timeAgo(checkpointAt) : '시각 미확인'}</div>
         </div>
@@ -170,12 +171,15 @@ const PositionCard = ({ position, operations }: { position: OpenPosition; operat
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5 border-t border-[#eef0f2] pt-4">
+        <Metric label="투입원금 · Cost basis" value={formatKrw(financials.costBasis)} />
+        <Metric label="포트폴리오 비중" value={formatPercent(portfolioWeight)} />
+        <Metric label="현재 평가액" value={formatKrw(financials.marketValue)} />
+        <Metric label="보유수량" value={formatQuantity(financials.quantity)} />
         <Metric label="진입가" value={formatKrw(position.entryPrice)} />
         <Metric label="평균단가" value={formatKrw(position.averageCost)} />
         <Metric label="손절가" value={formatKrw(stop)} accent={red} note={stopDistance != null ? `현재가 대비 ${formatPercent(stopDistance, true)}` : undefined} />
         <Metric label="1차 익절가" value={formatKrw(tp1)} accent={green} note={tp1Distance != null ? `현재가 대비 ${formatPercent(tp1Distance, true)}` : undefined} />
         <Metric label="2차 익절가" value={formatKrw(tp2)} accent={green} />
-        <Metric label="보유수량" value={formatQuantity(financials.quantity)} />
       </div>
     </div>
 
@@ -226,6 +230,10 @@ export const PositionMonitor = () => {
 
   const positions = operations?.portfolio?.openPositions ?? [];
   const sorted = useMemo(() => [...positions].sort((a, b) => b.openedAt - a.openedAt), [positions]);
+  const openCost = positions.reduce((sum, position) => sum + (positionFinancials(position).costBasis ?? 0), 0);
+  const openValue = positions.reduce((sum, position) => sum + (positionFinancials(position).marketValue ?? 0), 0);
+  const portfolioEquity = operations?.portfolio?.equity;
+  const exposure = finite(portfolioEquity) && portfolioEquity > 0 ? openValue / portfolioEquity : null;
 
   return <>
     {!open && <button
@@ -243,24 +251,25 @@ export const PositionMonitor = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e4e7ea] bg-white" aria-label="포지션 모니터 닫기"><ArrowLeft className="h-4 w-4" /></button>
-            <div><div className="text-[9px] font-semibold tracking-[0.16em] text-[#9ba1a9]">POSITION CONTROL</div><div className="mt-0.5 text-[19px] font-semibold tracking-[-0.035em] text-[#15171c]">Open Positions</div></div>
+            <div><div className="text-[9px] font-semibold tracking-[0.16em] text-[#9ba1a9]">POSITION CONTROL</div><div className="mt-0.5 text-[19px] font-semibold tracking-[-0.035em] text-[#15171c]">Open Paper Positions</div></div>
           </div>
           <button type="button" onClick={() => void load()} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e4e7ea] bg-white" aria-label="포지션 새로고침"><RefreshCw className={cn('h-4 w-4 text-[#626871]', loading && 'animate-spin')} /></button>
         </div>
       </div>
 
       <main className="px-4 pb-16 pt-4">
-        <section className="grid grid-cols-3 gap-1.5 rounded-[20px] border border-[#e9eaed] bg-white p-2">
-          <div className="rounded-[14px] bg-[#f7f8fa] px-2 py-3"><div className="text-[8px] text-[#9ca1a8]">Open</div><div className="mt-1 text-[12px] font-semibold text-[#34383e]">{positions.length}</div></div>
-          <div className="rounded-[14px] bg-[#f7f8fa] px-2 py-3"><div className="text-[8px] text-[#9ca1a8]">Runtime</div><div className="mt-1 text-[10px] font-semibold text-[#34383e]">{operations?.status ?? 'UNKNOWN'}</div></div>
-          <div className="rounded-[14px] bg-[#f7f8fa] px-2 py-3"><div className="text-[8px] text-[#9ca1a8]">Snapshot</div><div className="mt-1 text-[10px] font-semibold text-[#34383e]">{operations?.checkpoint?.savedAt ? timeAgo(operations.checkpoint.savedAt) : '—'}</div></div>
+        <section className="grid grid-cols-2 gap-1.5 rounded-[20px] border border-[#e9eaed] bg-white p-2">
+          <div className="rounded-[14px] bg-[#f7f8fa] px-3 py-3"><div className="text-[8px] text-[#9ca1a8]">Open</div><div className="mt-1 text-[12px] font-semibold text-[#34383e]">{positions.length}</div></div>
+          <div className="rounded-[14px] bg-[#f7f8fa] px-3 py-3"><div className="text-[8px] text-[#9ca1a8]">Invested · Paper</div><div className="mt-1 truncate text-[11px] font-semibold text-[#34383e]">{positions.length ? formatKrw(openCost) : '—'}</div></div>
+          <div className="rounded-[14px] bg-[#f7f8fa] px-3 py-3"><div className="text-[8px] text-[#9ca1a8]">Exposure</div><div className="mt-1 text-[11px] font-semibold text-[#34383e]">{formatPercent(exposure)}</div></div>
+          <div className="rounded-[14px] bg-[#f7f8fa] px-3 py-3"><div className="text-[8px] text-[#9ca1a8]">Snapshot</div><div className="mt-1 text-[10px] font-semibold text-[#34383e]">{operations?.checkpoint?.savedAt ? timeAgo(operations.checkpoint.savedAt) : '—'}</div><div className="mt-1 text-[8px] text-[#9ca1a8]">{operations?.status ?? 'UNKNOWN'}</div></div>
         </section>
 
         {error && <section className="mt-3 flex gap-3 rounded-[20px] border border-[#f1d8da] bg-[#fff8f8] p-4"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#c75961]" /><div><div className="text-[11px] font-semibold text-[#9e333b]">Position data warning</div><div className="mt-1 text-[9px] leading-4 text-[#99686d]">{error}</div></div></section>}
 
         <section className="mt-6 space-y-3">
           {sorted.map((position) => <PositionCard key={`${position.market}-${position.openedAt}`} position={position} operations={operations} />)}
-          {!sorted.length && <div className={cn(card, 'p-6')}><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#6b747e]" /><div><div className="text-[12px] font-semibold text-[#30353c]">현재 열린 Paper 포지션이 없습니다.</div><div className="mt-1 text-[10px] leading-5 text-[#8a919a]">새 진입이 발생하면 현재가, 매수시각, 진입가, SL, TP1/TP2, 평가손익, Oracle 가격지도를 여기에서 바로 확인할 수 있습니다.</div></div></div></div>}
+          {!sorted.length && <div className={cn(card, 'p-6')}><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#6b747e]" /><div><div className="text-[12px] font-semibold text-[#30353c]">현재 열린 Paper 포지션이 없습니다.</div><div className="mt-1 text-[10px] leading-5 text-[#8a919a]">새 진입이 발생하면 투입원금, 포트폴리오 비중, 현재가, 매수시각, 진입가, SL, TP1/TP2, 평가손익, Oracle 가격지도를 여기에서 바로 확인할 수 있습니다.</div></div></div></div>}
         </section>
       </main>
     </div>}
