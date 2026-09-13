@@ -20,6 +20,8 @@ export {
 export { consumeNarsEvidencePackets } from './narsConsumer';
 export { readKisPaperReadiness } from './kisReadiness';
 export type { KisPaperReadiness, KisPaperReadinessStatus, KisMarketDataEnvironment } from './kisReadiness';
+export { krxShadowResearchScheduler } from './equity/krxShadowResearchScheduler';
+export { runKrxShadowResearchCycle, krxEquityExposureRegistry } from './equity/krxShadowResearchLoop';
 export { buildRuntimeIntegrityReadModel } from './runtimeIntegrity';
 export type {
   RuntimeIntegrityInput,
