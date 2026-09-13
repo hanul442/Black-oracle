@@ -7,9 +7,13 @@ import {
 import type { EquityExposureResolution } from '../../../src/trading/equityExposureRegistry';
 import type { KisRankedStock, KisStockProfile } from './kisMarketData';
 
+export type KrxUniverseSource = 'KIS' | 'KRX_OFFICIAL_EOD';
+
 export interface KrxUniverseMarketData {
+  readonly source?: KrxUniverseSource;
   volumeRank(limit?: number): Promise<KisRankedStock[]>;
   stockProfile(symbol: string): Promise<KisStockProfile>;
+  qualificationDataGaps?(symbol: string): Promise<string[]> | string[];
 }
 
 export interface KrxExposureResolver {
@@ -39,7 +43,7 @@ export interface KrxUniverseRow {
 
 export interface KrxUniversePacket {
   asOf: number;
-  source: 'KIS';
+  source: KrxUniverseSource;
   mode: 'SHADOW';
   executionAuthority: false;
   discovered: number;
@@ -66,6 +70,7 @@ const profileWarning = (profile: KisStockProfile) => Boolean(
 );
 
 const sleep = (ms: number) => ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
 
 export const buildKrxUniversePacket = async (
   marketData: KrxUniverseMarketData,
@@ -78,11 +83,13 @@ export const buildKrxUniversePacket = async (
   } = {},
 ): Promise<KrxUniversePacket> => {
   const asOf = options.asOf ?? Date.now();
+  const source = marketData.source ?? 'KIS';
   const discoveryLimit = Math.max(1, Math.min(100, Math.trunc(options.discoveryLimit ?? 100)));
   const maxProfiles = Math.max(1, Math.min(discoveryLimit, Math.trunc(options.maxProfiles ?? 60)));
   const profileDelayMs = Math.max(0, Math.trunc(options.profileDelayMs ?? 150));
   const ranked = await marketData.volumeRank(discoveryLimit);
-  const liquid = ranked.filter((stock) => stock.volume >= EQUITY_MIN_DAILY_VOLUME).slice(0, maxProfiles);
+  const volumePrefiltered = ranked.filter((stock) => stock.volume >= EQUITY_MIN_DAILY_VOLUME);
+  const liquid = volumePrefiltered.slice(0, maxProfiles);
   const rows: KrxUniverseRow[] = [];
 
   for (let index = 0; index < liquid.length; index += 1) {
@@ -94,7 +101,7 @@ export const buildKrxUniversePacket = async (
     try {
       profile = await marketData.stockProfile(stock.symbol);
     } catch (error) {
-      dataErrors.push(error instanceof Error ? error.message : 'Unknown KIS profile error.');
+      dataErrors.push(error instanceof Error ? error.message : `Unknown ${source} profile error.`);
     }
 
     const candidate: EquityUniverseCandidate = {
@@ -110,8 +117,25 @@ export const buildKrxUniversePacket = async (
       warning: profile ? profileWarning(profile) : false,
     };
     const decision = evaluateEquityUniverseCandidate(candidate);
-    if (!profile) decision.dataGaps.push('KIS stock profile is unavailable.');
+    if (!profile) {
+      decision.eligible = false;
+      decision.dataGaps.push(`${source} stock profile is unavailable.`);
+    }
     decision.dataGaps.push(...exposure.dataGaps);
+
+    if (marketData.qualificationDataGaps) {
+      try {
+        const qualificationGaps = await marketData.qualificationDataGaps(stock.symbol);
+        if (qualificationGaps.length) {
+          decision.eligible = false;
+          decision.dataGaps.push(...qualificationGaps);
+        }
+      } catch (error) {
+        decision.eligible = false;
+        decision.dataGaps.push(`Qualification metadata check failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    decision.dataGaps = unique(decision.dataGaps);
 
     rows.push({
       candidate,
@@ -138,21 +162,25 @@ export const buildKrxUniversePacket = async (
   }
 
   const eligible = rows.filter((row) => row.decision.eligible).length;
+  const sourceLabel = source === 'KIS' ? 'KIS realtime/current profile data' : 'official KRX end-of-day statistics';
   return {
     asOf,
-    source: 'KIS',
+    source,
     mode: 'SHADOW',
     executionAuthority: false,
     discovered: ranked.length,
-    volumePrefiltered: ranked.filter((stock) => stock.volume >= EQUITY_MIN_DAILY_VOLUME).length,
+    volumePrefiltered: volumePrefiltered.length,
     profiled: rows.length,
     eligible,
     blocked: rows.length - eligible,
     rows,
     reasons: [
-      `Discovered ${ranked.length} KRX-ranked stocks; ${ranked.filter((stock) => stock.volume >= EQUITY_MIN_DAILY_VOLUME).length} passed the 500,000-share prefilter.`,
-      `${rows.length} candidates were profiled with KIS before the market-cap, warning and crypto-exposure hard gates.`,
+      `Discovered ${ranked.length} KRX-ranked stocks from ${sourceLabel}; ${volumePrefiltered.length} passed the 500,000-share prefilter.`,
+      `${rows.length} candidates were profiled before the market-cap, warning/suspension and crypto-exposure hard gates.`,
       'Crypto exposure must resolve from source-backed registry records; UNKNOWN remains blocked.',
+      source === 'KRX_OFFICIAL_EOD'
+        ? 'Official KRX EOD data is research-only; missing current-session designation flags remain an explicit hard-gate DATA_GAP.'
+        : 'KIS current profile metadata is used when configured.',
     ],
   };
 };
