@@ -1,0 +1,61 @@
+NEWS / NARS / FILINGS / OFFICIAL DATA
+                |
+                v
+        MARKET STATE ENGINE
+   intraday / short / medium / long
+                |
+                v
+       SECTOR STRENGTH ENGINE
+ short / medium / medium-long / long
+                |
+                v
+          KRX HARD UNIVERSE
+ volume >= 500k shares
+ market cap >= KRW 100B
+ crypto-linked equity = excluded
+ missing data = DATA_GAP / blocked
+                |
+                v
+      24-MEMBER INVESTMENT COMMITTEE
+ each member nominates 20-100 names
+ persona + strategy + focused signals
+                |
+                v
+           CROSS VALIDATION
+ score / dissent / data gap / support
+                |
+                v
+               DEBATE
+                |
+                v
+              RED TEAM
+ counterevidence / hidden assumptions
+ hard veto when fatal contradiction exists
+                |
+                v
+            HEAD COUNCIL
+       retain top 30% / cut 70%
+                |
+                v
+         HORIZON TRADE PLANS
+ ULTRA_SHORT / SHORT / MEDIUM /
+ MEDIUM_LONG / LONG
+                |
+      1M 5M 15M 1H 4H 1D 1W 1MO
+                |
+                v
+ expected price / range / probabilities
+ entry / invalidation / SL / TP1 / TP2
+                |
+                v
+         RISK + PAPER EXECUTION
+     existing S1R2 preserved for now
+                |
+                v
+           OUTCOME REVIEW
+ success / failure / no-trade attribution
+                |
+                v
+      STRATEGY + MEMBER LEARNING
+                |
+                +---------------> repeat
