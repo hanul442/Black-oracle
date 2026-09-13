@@ -1,0 +1,1 @@
+This branch is ready for review after CI. It preserves shadow-only authority and does not alter S1R2 Paper execution.
