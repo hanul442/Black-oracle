@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Workflow } from 'lucide-react';
 import { BlackOracleMobileApp as BlackOracleMobileAppV9 } from './BlackOracleMobileAppV9';
 import { InvestmentCyclePanel } from './v10/InvestmentCyclePanel';
+import { V10ReadinessCard } from './v10/V10ReadinessCard';
 
 export const BlackOracleMobileApp = () => {
   const [cycleOpen, setCycleOpen] = useState(false);
@@ -26,6 +27,7 @@ export const BlackOracleMobileApp = () => {
           <div><div className="text-[9px] font-semibold tracking-[0.16em] text-[#9ba1a9]">DECISION SYSTEM</div><div className="mt-0.5 text-[19px] font-semibold tracking-[-0.035em] text-[#15171c]">Investment Cycle</div></div>
         </div>
       </div>
+      <div className="px-4"><V10ReadinessCard /></div>
       <InvestmentCyclePanel />
     </div>}
   </div>;
