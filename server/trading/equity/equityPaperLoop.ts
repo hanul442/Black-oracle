@@ -341,6 +341,11 @@ const evaluateFlatCandidate = async (
     feedConnected: true,
     ledgerInSync: true,
     duplicateOrderDetected: false,
+    entryPrice: stock.price,
+    stopLossPrice: protection.stopLossPrice,
+    takeProfit1Price: protection.takeProfit1Price,
+    takeProfit2Price: protection.takeProfit2Price,
+    expectedLossAtStop: sizing.expectedLossAtStop,
   });
   if (risk.status !== 'PASS') {
     result.reasons.push(...risk.reasons);
