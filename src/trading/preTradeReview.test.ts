@@ -138,6 +138,11 @@ test('records actual pre-risk liquidity, portfolio, sizing and a candidate-only 
         feedConnected: true,
         ledgerInSync: true,
         duplicateOrderDetected: false,
+        entryPrice: 100,
+        stopLossPrice: 99,
+        takeProfit1Price: 102,
+        takeProfit2Price: 104,
+        expectedLossAtStop: 100_000,
       },
     },
   };
