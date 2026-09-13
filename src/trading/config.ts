@@ -1,13 +1,17 @@
 import type { RiskLimits } from './types';
 
-export const TRADING_STRATEGY_VERSION = 'BO-UNIFIED-v0.2.0';
+export const TRADING_STRATEGY_VERSION = 'BO-UNIFIED-v0.3.0';
 export const UNIFIED_PAPER_INITIAL_EQUITY_KRW = 100_000_000;
 
 export const DEFAULT_RISK_LIMITS: RiskLimits = {
-  // Position sizing now targets 10% equal notional with a 15% hard cap;
-  // stop-distance risk is capped separately in positionSizing.ts.
+  // Capital stays bounded, but protection is defined per trade from structure + ATR.
   maxPositionPct: 0.15,
-  maxDailyLossPct: 0.01,
+  maxRiskPerTradePct: 0.005,
+  // Daily loss is no longer an immediate binary stop at -1%.
+  // New risk is progressively throttled from -1% and only hard-stops at -3%.
+  dailyLossThrottleStartPct: 0.01,
+  maxDailyLossPct: 0.03,
+  minDailyLossNotionalScale: 0.25,
   maxTotalDrawdownPct: 0.05,
   maxEstimatedSlippageBps: 30,
   maxMarketDataAgeMs: 90_000,
