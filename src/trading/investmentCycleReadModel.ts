@@ -96,7 +96,6 @@ export const stageForCanonicalCycleEvent = (event: CanonicalCycleEventLike): Inv
   if (name.includes('HEAD_COUNCIL')) return 'HEAD_COUNCIL';
   if (name.includes('HORIZON_PLAN') || name.includes('HORIZON_TRADE_PLAN')) return 'HORIZON_PLAN';
 
-  // Legacy deterministic Council is intentionally excluded from the V10 Investment Committee stages.
   if (type === 'RISK') return 'RISK';
   if (type === 'ORDER' || type === 'TRADE') return 'EXECUTION';
   if (type === 'OUTCOME') return 'OUTCOME';
@@ -125,6 +124,14 @@ const eventContainsDataGap = (event: CanonicalCycleEventLike) => {
   const summary = normalized(event.summary);
   const dataGaps = Array.isArray(event.trace?.dataGaps) ? event.trace?.dataGaps : [];
   return reason.includes('DATA_GAP') || summary.includes('DATA_GAP') || dataGaps.length > 0;
+};
+
+const isActualCommitteeNomination = (event: CanonicalCycleEventLike) => {
+  const name = normalized(event.eventName);
+  const action = normalized(event.action);
+  if (event.trace?.nominationReady === false) return false;
+  if (action.includes('BLOCK') || action.includes('WAIT')) return false;
+  return name.includes('COMMITTEE_NOMINATION') || action.includes('NOMINATED');
 };
 
 export const projectInvestmentCycleEvents = (
@@ -166,7 +173,7 @@ export const projectInvestmentCycleEvents = (
 
   const eventsFor = (stage: InvestmentCycleStageId) => stageEvents.get(stage) ?? [];
   const universeObserved = unique(eventsFor('UNIVERSE_GATE').map(candidateKey)).length;
-  const nominated = unique(eventsFor('NOMINATION').map(candidateKey)).length;
+  const nominated = unique(eventsFor('NOMINATION').filter(isActualCommitteeNomination).map(candidateKey)).length;
   const crossReviewed = unique(eventsFor('CROSS_REVIEW').map(candidateKey)).length;
   const survived = unique(eventsFor('HEAD_COUNCIL')
     .filter((event) => normalized(event.action).includes('SURVIV') || event.trace?.survived === true)
