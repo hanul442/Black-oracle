@@ -1,0 +1,1 @@
+Deterministic market/sector runtime slice is ready for CI and review.
