@@ -49,7 +49,7 @@ export const evaluateRisk = (
   ].every((value) => Number.isFinite(value));
 
   if (!protectionComplete) {
-    reasons.push('Dynamic protection data is incomplete; new risk fails closed until entry, stop, TP1, TP2, and expected stop-loss are supplied.');
+    reasons.push('Dynamic protection data is incomplete; new risk fails closed independently of the Daily loss limit until entry, stop, TP1, TP2, and expected stop-loss are supplied.');
   } else {
     const entryPrice = Number(input.entryPrice);
     const stopLossPrice = Number(input.stopLossPrice);
@@ -76,7 +76,7 @@ export const evaluateRisk = (
   }
 
   if (input.dailyPnlPct <= -limits.maxDailyLossPct) {
-    reasons.push(`Daily loss limit reached: emergency stop at ${(limits.maxDailyLossPct * 100).toFixed(2)}%.`);
+    reasons.push(`Daily loss limit reached: emergency daily loss stop of ${(limits.maxDailyLossPct * 100).toFixed(2)}% has been reached.`);
   }
   if (Math.max(0, input.totalDrawdownPct) >= limits.maxTotalDrawdownPct) {
     reasons.push(`Total drawdown emergency stop of ${(limits.maxTotalDrawdownPct * 100).toFixed(2)}% has been reached.`);
