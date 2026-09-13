@@ -114,7 +114,7 @@ test('skips discretionary exits and malformed SELL fills rather than inventing p
   assert.equal(result.skippedSellFills, 2);
 });
 
-test('uses the most recent dynamic protection snapshot for later exits', () => {
+test('uses the most recent full dynamic protection snapshot for later exits', () => {
   const ledger = [
     event(1, 'POSITION_UPDATED', { market: 'KRW-TEST', position: position() }),
     event(2, 'POSITION_UPDATED', {
@@ -122,6 +122,52 @@ test('uses the most recent dynamic protection snapshot for later exits', () => {
       position: position({ stopLossPrice: 101, takeProfit2Price: 125, takeProfitPrice: 125, protectionRevision: 2 }),
     }),
     sellFill(3, 100, 10, false),
+  ];
+
+  const result = extractLongProtectionHistoryObservations(ledger);
+  assert.equal(result.observations.length, 1);
+  assert.equal(result.observations[0]?.trigger, 'STOP_LOSS');
+  assert.equal(result.observations[0]?.triggerPrice, 101);
+});
+
+test('folds compact runtime dynamic-protection events into the preceding full position snapshot', () => {
+  const ledger = [
+    event(1, 'POSITION_UPDATED', { market: 'KRW-TEST', position: position() }),
+    event(2, 'POSITION_UPDATED', {
+      market: 'KRW-TEST',
+      currentPrice: 103,
+      stopLossPrice: 101,
+      takeProfit2Price: 125,
+      dynamicProtection: true,
+      protectionRevision: 2,
+    }),
+    sellFill(3, 100, 10, false),
+  ];
+
+  const result = extractLongProtectionHistoryObservations(ledger);
+  assert.equal(result.observations.length, 1);
+  assert.equal(result.observations[0]?.trigger, 'STOP_LOSS');
+  assert.equal(result.observations[0]?.triggerPrice, 101);
+});
+
+test('does not regress reconstructed protection when a stale compact revision appears later in sequence', () => {
+  const ledger = [
+    event(1, 'POSITION_UPDATED', { market: 'KRW-TEST', position: position() }),
+    event(2, 'POSITION_UPDATED', {
+      market: 'KRW-TEST',
+      stopLossPrice: 101,
+      takeProfit2Price: 125,
+      dynamicProtection: true,
+      protectionRevision: 2,
+    }),
+    event(3, 'POSITION_UPDATED', {
+      market: 'KRW-TEST',
+      stopLossPrice: 96,
+      takeProfit2Price: 121,
+      dynamicProtection: true,
+      protectionRevision: 1,
+    }),
+    sellFill(4, 100, 10, false),
   ];
 
   const result = extractLongProtectionHistoryObservations(ledger);
