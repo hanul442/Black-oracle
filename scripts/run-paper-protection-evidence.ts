@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import {
+  parsePaperProtectionEvidenceBaseline,
   runPaperProtectionEvidencePass,
-  type PaperProtectionEvidenceBaseline,
 } from '../src/trading/paperProtectionEvidencePass';
 
 const usage = () => {
@@ -28,7 +28,7 @@ if (!runtimeId) {
   throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for read-only canonical evidence.');
 } else {
   const baseline = baselinePath
-    ? JSON.parse(await readFile(baselinePath, 'utf8')) as PaperProtectionEvidenceBaseline
+    ? parsePaperProtectionEvidenceBaseline(JSON.parse(await readFile(baselinePath, 'utf8')))
     : null;
 
   const result = await runPaperProtectionEvidencePass({
