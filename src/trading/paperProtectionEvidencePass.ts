@@ -31,6 +31,7 @@ export interface PaperProtectionEvidencePassResult {
     pageSize: number;
     truncated: false;
     snapshotRecordedAt: string | null;
+    snapshotFingerprint: string;
   };
   diagnostic: PaperProtectionDiagnostic;
   baseline: PaperProtectionEvidenceBaseline | null;
@@ -80,6 +81,7 @@ export const runPaperProtectionEvidencePass = async (
       pageSize: exported.pageSize,
       truncated: false,
       snapshotRecordedAt: exported.snapshotRecordedAt,
+      snapshotFingerprint: exported.snapshotFingerprint,
     },
     diagnostic,
     baseline,
