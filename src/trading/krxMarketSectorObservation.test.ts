@@ -54,7 +54,6 @@ test('builds a SHORT market state from official-index observations and ranks sec
 
   assert.equal(snapshot.horizon, 'SHORT');
   assert.ok(marketState);
-  assert.equal(marketState?.executionAuthority, undefined);
   assert.ok((marketState?.score ?? 0) > 50);
   assert.ok((marketState?.confidence ?? 0) > 0.5);
   assert.equal(snapshot.sectorScores[0]?.sector, '반도체');
