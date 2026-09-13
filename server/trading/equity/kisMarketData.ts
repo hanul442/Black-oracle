@@ -11,6 +11,31 @@ export interface KisQuote {
   asOf: number;
 }
 
+export interface KisStockProfile extends KisQuote {
+  marketName: string | null;
+  sectorName: string | null;
+  listedShares: number | null;
+  /** Market capitalization in KRW, derived from current price × listed shares. */
+  marketCapKrw: number | null;
+  /** Raw KIS HTS market-cap field retained for audit only; unit semantics are provider-defined. */
+  htsMarketCapRaw: number | null;
+  foreignNetBuyQty: number | null;
+  programNetBuyQty: number | null;
+  foreignHoldingQty: number | null;
+  foreignExhaustionRate: number | null;
+  volumeTurnoverRate: number | null;
+  per: number | null;
+  pbr: number | null;
+  eps: number | null;
+  bps: number | null;
+  temporaryStop: boolean | null;
+  investmentCaution: boolean | null;
+  marketWarningCode: string | null;
+  shortTermOverheat: boolean | null;
+  liquidationTrading: boolean | null;
+  managementIssueCode: string | null;
+}
+
 export interface KisRankedStock {
   symbol: string;
   name: string;
@@ -28,6 +53,14 @@ type TokenState = { value: string; expiresAt: number } | null;
 const asNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const asYn = (value: unknown): boolean | null => {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === 'Y') return true;
+  if (normalized === 'N') return false;
+  return null;
 };
 
 const yyyymmdd = (timestamp: number) => {
@@ -160,13 +193,17 @@ export class KisDomesticStockMarketData {
       .slice(0, Math.max(1, Math.min(100, Math.trunc(limit))));
   }
 
-  async quote(symbol: string): Promise<KisQuote> {
+  private async priceOutput(symbol: string): Promise<any> {
     if (!/^\d{6}$/.test(symbol)) throw new Error('Korean equity symbol must be a six-digit code.');
     const payload = await this.get('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
       FID_COND_MRKT_DIV_CODE: 'J',
       FID_INPUT_ISCD: symbol,
     });
-    const output = payload?.output ?? {};
+    return payload?.output ?? {};
+  }
+
+  async quote(symbol: string): Promise<KisQuote> {
+    const output = await this.priceOutput(symbol);
     const price = asNumber(output.stck_prpr);
     if (price == null || price <= 0) throw new Error(`KIS quote did not return a valid price for ${symbol}.`);
     return {
@@ -178,6 +215,49 @@ export class KisDomesticStockMarketData {
       volume: asNumber(output.acml_vol),
       changeRate: asNumber(output.prdy_ctrt) == null ? null : Number(output.prdy_ctrt) / 100,
       asOf: Date.now(),
+    };
+  }
+
+  /**
+   * Loads a richer current-stock profile from the official KIS inquire-price response.
+   * Market cap is derived in KRW from current price × listed shares so the universe gate
+   * does not depend on undocumented display-unit assumptions in the HTS market-cap field.
+   */
+  async stockProfile(symbol: string): Promise<KisStockProfile> {
+    const output = await this.priceOutput(symbol);
+    const price = asNumber(output.stck_prpr);
+    if (price == null || price <= 0) throw new Error(`KIS profile did not return a valid price for ${symbol}.`);
+    const listedShares = asNumber(output.lstn_stcn);
+    const marketCapKrw = listedShares != null && listedShares > 0 ? price * listedShares : null;
+    return {
+      symbol,
+      price,
+      open: asNumber(output.stck_oprc),
+      high: asNumber(output.stck_hgpr),
+      low: asNumber(output.stck_lwpr),
+      volume: asNumber(output.acml_vol),
+      changeRate: asNumber(output.prdy_ctrt) == null ? null : Number(output.prdy_ctrt) / 100,
+      asOf: Date.now(),
+      marketName: output.rprs_mrkt_kor_name ? String(output.rprs_mrkt_kor_name) : null,
+      sectorName: output.bstp_kor_isnm ? String(output.bstp_kor_isnm) : null,
+      listedShares,
+      marketCapKrw,
+      htsMarketCapRaw: asNumber(output.hts_avls),
+      foreignNetBuyQty: asNumber(output.frgn_ntby_qty),
+      programNetBuyQty: asNumber(output.pgtr_ntby_qty),
+      foreignHoldingQty: asNumber(output.frgn_hldn_qty),
+      foreignExhaustionRate: asNumber(output.hts_frgn_ehrt),
+      volumeTurnoverRate: asNumber(output.vol_tnrt),
+      per: asNumber(output.per),
+      pbr: asNumber(output.pbr),
+      eps: asNumber(output.eps),
+      bps: asNumber(output.bps),
+      temporaryStop: asYn(output.temp_stop_yn),
+      investmentCaution: asYn(output.invt_caful_yn),
+      marketWarningCode: output.mrkt_warn_cls_code != null && String(output.mrkt_warn_cls_code).trim() ? String(output.mrkt_warn_cls_code).trim() : null,
+      shortTermOverheat: asYn(output.short_over_yn),
+      liquidationTrading: asYn(output.sltr_yn),
+      managementIssueCode: output.mang_issu_cls_code != null && String(output.mang_issu_cls_code).trim() ? String(output.mang_issu_cls_code).trim() : null,
     };
   }
 
