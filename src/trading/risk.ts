@@ -3,6 +3,14 @@ import type { RiskCheckInput, RiskDecision, RiskLimits } from './types';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+type RiskEvaluationInput = Omit<
+  RiskCheckInput,
+  'entryPrice' | 'stopLossPrice' | 'takeProfit1Price' | 'takeProfit2Price' | 'expectedLossAtStop'
+> & Partial<Pick<
+  RiskCheckInput,
+  'entryPrice' | 'stopLossPrice' | 'takeProfit1Price' | 'takeProfit2Price' | 'expectedLossAtStop'
+>>;
+
 export const dailyLossNotionalScale = (
   dailyPnlPct: number,
   limits: RiskLimits = DEFAULT_RISK_LIMITS,
@@ -19,7 +27,7 @@ export const dailyLossNotionalScale = (
 };
 
 export const evaluateRisk = (
-  input: RiskCheckInput,
+  input: RiskEvaluationInput,
   limits: RiskLimits = DEFAULT_RISK_LIMITS,
 ): RiskDecision => {
   const reasons: string[] = [];
@@ -32,26 +40,43 @@ export const evaluateRisk = (
     reasons.push(`Requested position exceeds ${(limits.maxPositionPct * 100).toFixed(2)}% of account equity.`);
   }
 
-  const validEntry = Number.isFinite(input.entryPrice) && input.entryPrice > 0;
-  const validStop = Number.isFinite(input.stopLossPrice) && input.stopLossPrice > 0 && validEntry && input.stopLossPrice < input.entryPrice;
-  const validTp1 = Number.isFinite(input.takeProfit1Price) && validEntry && input.takeProfit1Price > input.entryPrice;
-  const validTp2 = Number.isFinite(input.takeProfit2Price) && validTp1 && input.takeProfit2Price > input.takeProfit1Price;
-  if (!validEntry) reasons.push('Dynamic protection requires a positive entry price.');
-  if (!validStop) reasons.push('Dynamic stop-loss must be positive and below the planned entry price.');
-  if (!validTp1) reasons.push('Dynamic TP1 must be above the planned entry price.');
-  if (!validTp2) reasons.push('Dynamic TP2 must be above TP1.');
+  const protectionComplete = [
+    input.entryPrice,
+    input.stopLossPrice,
+    input.takeProfit1Price,
+    input.takeProfit2Price,
+    input.expectedLossAtStop,
+  ].every((value) => Number.isFinite(value));
 
-  const expectedLossAtStopPct = input.equity > 0 ? input.expectedLossAtStop / input.equity : Number.POSITIVE_INFINITY;
-  if (!Number.isFinite(input.expectedLossAtStop) || input.expectedLossAtStop <= 0) {
-    reasons.push('Expected loss at the planned stop must be positive and finite.');
-  } else if (expectedLossAtStopPct > limits.maxRiskPerTradePct + 1e-9) {
-    reasons.push(`Planned stop loss exceeds the ${(limits.maxRiskPerTradePct * 100).toFixed(2)}% per-trade equity risk budget.`);
+  if (!protectionComplete) {
+    reasons.push('Dynamic protection data is incomplete; new risk fails closed independently of the Daily loss limit until entry, stop, TP1, TP2, and expected stop-loss are supplied.');
   } else {
-    passReasons.push(`Dynamic protection validated; planned loss at stop is ${(expectedLossAtStopPct * 100).toFixed(2)}% of equity.`);
+    const entryPrice = Number(input.entryPrice);
+    const stopLossPrice = Number(input.stopLossPrice);
+    const takeProfit1Price = Number(input.takeProfit1Price);
+    const takeProfit2Price = Number(input.takeProfit2Price);
+    const expectedLossAtStop = Number(input.expectedLossAtStop);
+    const validEntry = entryPrice > 0;
+    const validStop = stopLossPrice > 0 && validEntry && stopLossPrice < entryPrice;
+    const validTp1 = validEntry && takeProfit1Price > entryPrice;
+    const validTp2 = validTp1 && takeProfit2Price > takeProfit1Price;
+    if (!validEntry) reasons.push('Dynamic protection requires a positive entry price.');
+    if (!validStop) reasons.push('Dynamic stop-loss must be positive and below the planned entry price.');
+    if (!validTp1) reasons.push('Dynamic TP1 must be above the planned entry price.');
+    if (!validTp2) reasons.push('Dynamic TP2 must be above TP1.');
+
+    const expectedLossAtStopPct = input.equity > 0 ? expectedLossAtStop / input.equity : Number.POSITIVE_INFINITY;
+    if (expectedLossAtStop <= 0) {
+      reasons.push('Expected loss at the planned stop must be positive and finite.');
+    } else if (expectedLossAtStopPct > limits.maxRiskPerTradePct + 1e-9) {
+      reasons.push(`Planned stop loss exceeds the ${(limits.maxRiskPerTradePct * 100).toFixed(2)}% per-trade equity risk budget.`);
+    } else {
+      passReasons.push(`Dynamic protection validated; planned loss at stop is ${(expectedLossAtStopPct * 100).toFixed(2)}% of equity.`);
+    }
   }
 
   if (input.dailyPnlPct <= -limits.maxDailyLossPct) {
-    reasons.push(`Emergency daily loss stop of ${(limits.maxDailyLossPct * 100).toFixed(2)}% has been reached.`);
+    reasons.push(`Daily loss limit reached: emergency daily loss stop of ${(limits.maxDailyLossPct * 100).toFixed(2)}% has been reached.`);
   }
   if (Math.max(0, input.totalDrawdownPct) >= limits.maxTotalDrawdownPct) {
     reasons.push(`Total drawdown emergency stop of ${(limits.maxTotalDrawdownPct * 100).toFixed(2)}% has been reached.`);
