@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { DEFAULT_RISK_LIMITS, TRADING_STRATEGY_VERSION, UNIFIED_PAPER_INITIAL_EQUITY_KRW } from '../../src/trading/config';
+import './equity/krxShadowResearchScheduler';
 
 export const LEGACY_PAPER_RUNTIME_ID = 'black-oracle-paper';
 export const VNEXT_PAPER_RUNTIME_ID = 'black-oracle-paper-vnext';
