@@ -63,7 +63,7 @@ const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 const isNonNegativeInteger = (value: unknown): value is number =>
-  Number.isInteger(value) && Number(value) >= 0;
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
 
 const assertFingerprint = (value: unknown): asserts value is string => {
   if (typeof value !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value)) {
@@ -85,11 +85,17 @@ export const parsePaperProtectionEvidenceBaseline = (
   }
 
   const candidate = value as Record<string, unknown>;
-  if (!isNonNegativeInteger(candidate.sourceRows)
-      || !isNonNegativeInteger(candidate.observations)
-      || !isFiniteNumber(candidate.favorableOvershootRemoved)
-      || !isFiniteNumber(candidate.grossExitValueDelta)
-      || !isNonNegativeInteger(candidate.changedExits)) {
+  const sourceRows = candidate.sourceRows;
+  const observations = candidate.observations;
+  const favorableOvershootRemoved = candidate.favorableOvershootRemoved;
+  const grossExitValueDelta = candidate.grossExitValueDelta;
+  const changedExits = candidate.changedExits;
+
+  if (!isNonNegativeInteger(sourceRows)
+      || !isNonNegativeInteger(observations)
+      || !isFiniteNumber(favorableOvershootRemoved)
+      || !isFiniteNumber(grossExitValueDelta)
+      || !isNonNegativeInteger(changedExits)) {
     throw new Error('Paper protection baseline contains invalid diagnostic metrics.');
   }
 
@@ -100,45 +106,49 @@ export const parsePaperProtectionEvidenceBaseline = (
 
   const sourceCandidate = source as Record<string, unknown>;
   if (sourceCandidate.kind === 'exact-snapshot') {
-    if (typeof sourceCandidate.runtimeId !== 'string' || !sourceCandidate.runtimeId.trim()) {
+    const sourceRuntimeId = sourceCandidate.runtimeId;
+    const snapshotRecordedAt = sourceCandidate.snapshotRecordedAt;
+    const snapshotFingerprint = sourceCandidate.snapshotFingerprint;
+
+    if (typeof sourceRuntimeId !== 'string' || !sourceRuntimeId.trim()) {
       throw new Error('Exact-snapshot baseline requires runtimeId.');
     }
-    if (sourceCandidate.snapshotRecordedAt !== null
-        && typeof sourceCandidate.snapshotRecordedAt !== 'string') {
+    if (snapshotRecordedAt !== null && typeof snapshotRecordedAt !== 'string') {
       throw new Error('Exact-snapshot baseline snapshotRecordedAt must be a string or null.');
     }
-    assertFingerprint(sourceCandidate.snapshotFingerprint);
+    assertFingerprint(snapshotFingerprint);
 
     return {
       source: {
         kind: 'exact-snapshot',
-        runtimeId: sourceCandidate.runtimeId.trim(),
-        snapshotRecordedAt: sourceCandidate.snapshotRecordedAt as string | null,
-        snapshotFingerprint: sourceCandidate.snapshotFingerprint,
+        runtimeId: sourceRuntimeId.trim(),
+        snapshotRecordedAt,
+        snapshotFingerprint,
       },
-      sourceRows: candidate.sourceRows,
-      observations: candidate.observations,
-      favorableOvershootRemoved: candidate.favorableOvershootRemoved,
-      grossExitValueDelta: candidate.grossExitValueDelta,
-      changedExits: candidate.changedExits,
+      sourceRows,
+      observations,
+      favorableOvershootRemoved,
+      grossExitValueDelta,
+      changedExits,
     };
   }
 
   if (sourceCandidate.kind === 'historical-summary') {
-    if (typeof sourceCandidate.label !== 'string' || !sourceCandidate.label.trim()) {
+    const label = sourceCandidate.label;
+    if (typeof label !== 'string' || !label.trim()) {
       throw new Error('Historical-summary baseline requires a non-empty label.');
     }
 
     return {
       source: {
         kind: 'historical-summary',
-        label: sourceCandidate.label.trim(),
+        label: label.trim(),
       },
-      sourceRows: candidate.sourceRows,
-      observations: candidate.observations,
-      favorableOvershootRemoved: candidate.favorableOvershootRemoved,
-      grossExitValueDelta: candidate.grossExitValueDelta,
-      changedExits: candidate.changedExits,
+      sourceRows,
+      observations,
+      favorableOvershootRemoved,
+      grossExitValueDelta,
+      changedExits,
     };
   }
 
