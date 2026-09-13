@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Workflow } from 'lucide-react';
 import { BlackOracleMobileApp as BlackOracleMobileAppV9 } from './BlackOracleMobileAppV9';
+import { ObservabilityRestore } from './ObservabilityRestore';
 import { PositionMonitor } from './PositionMonitor';
 import { InvestmentCyclePanel } from './v10/InvestmentCyclePanel';
 import { InvestmentCycleLivePanel } from './v10/InvestmentCycleLivePanel';
@@ -14,6 +15,7 @@ export const BlackOracleMobileApp = () => {
     style={{ WebkitOverflowScrolling: 'touch' }}
   >
     <BlackOracleMobileAppV9 />
+    <ObservabilityRestore />
     <PositionMonitor />
 
     {!cycleOpen && <button
