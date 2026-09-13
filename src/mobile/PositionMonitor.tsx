@@ -88,13 +88,13 @@ const PriceTrack = ({ position, decision }: { position: OpenPosition; decision: 
     ? { low: valueLow, high: valueHigh }
     : null;
 
-  const levels: PriceLevel[] = [
+  const levels = [
     finite(stop) ? { key: 'stop', label: 'SL', value: stop, color: red } : null,
     finite(entry) ? { key: 'entry', label: 'ENTRY', value: entry, color: ink } : null,
     finite(current) ? { key: 'current', label: 'NOW', value: current, color: blue, emphasis: true } : null,
     finite(tp1) ? { key: 'tp1', label: 'TP1', value: tp1, color: green } : null,
     finite(tp2) ? { key: 'tp2', label: 'TP2', value: tp2, color: green } : null,
-  ].filter((item): item is PriceLevel => Boolean(item));
+  ].filter(Boolean) as PriceLevel[];
 
   const rangeValues = [...levels.map((item) => item.value), ...(valueArea ? [valueArea.low, valueArea.high] : [])];
   if (rangeValues.length < 2) return <div className="rounded-[18px] bg-[#f7f8fa] p-4 text-[10px] leading-5 text-[#8d939b]">가격 지도를 그릴 데이터가 충분하지 않습니다.</div>;
