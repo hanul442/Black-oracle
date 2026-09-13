@@ -18,13 +18,27 @@ const priceDistance = (current: number, target: number | null | undefined) => {
 
 const formatOpenedAt = (timestamp: number | null | undefined) => {
   if (!timestamp) return '—';
-  return new Date(timestamp).toLocaleString('ko-KR', {
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  });
+  }).format(timestamp);
+};
+
+const formatOpenedAtCompact = (timestamp: number | null | undefined) => {
+  if (!timestamp) return '—';
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(timestamp);
 };
 
 const holdingAge = (timestamp: number | null | undefined) => {
@@ -87,6 +101,9 @@ export const PositionTradeCard = ({ position, decisions, onOpen }: { position: a
   const mapEntry = decision?.tradeMap?.entryPrice ?? null;
   const initialStop = position.initialStopLossPrice ?? null;
   const pnlPositive = Number(position.unrealizedPnl ?? 0) >= 0;
+  const entryTimestamp = formatOpenedAt(position.openedAt);
+  const entryTimestampCompact = formatOpenedAtCompact(position.openedAt);
+  const age = holdingAge(position.openedAt);
 
   return (
     <button onClick={onOpen} className="block w-full px-4 py-4 text-left transition-colors hover:bg-white/[0.015]">
@@ -97,6 +114,12 @@ export const PositionTradeCard = ({ position, decisions, onOpen }: { position: a
             <div className="border border-white/[0.07] px-1.5 py-0.5 font-mono text-[6px] uppercase tracking-[0.12em] text-[#66727C]">{source.label}</div>
           </div>
           <div className="mt-1 text-[8px] text-[#4F5A64]">{source.sub}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[7px] uppercase tracking-[0.08em] text-[#7D8993]">
+            <span className="text-[#9DA8B1]">Entered</span>
+            <span>{entryTimestamp} KST</span>
+            <span className="text-[#4E5963]">·</span>
+            <span>{age} ago</span>
+          </div>
         </div>
         <div className="text-right">
           <div className={`font-mono text-[13px] ${pnlPositive ? 'text-[#77B9A5]' : 'text-[#D07D7D]'}`}>{signedPct(ret)}</div>
@@ -104,10 +127,11 @@ export const PositionTradeCard = ({ position, decisions, onOpen }: { position: a
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        <Cell label="Current" value={`₩${fmtKrw(markPrice)}`} sub={position.updatedAt ? `mark ${formatOpenedAt(position.updatedAt)}` : 'latest checkpoint mark'} />
-        <Cell label="Entry" value={`₩${fmtKrw(entryPrice)}`} sub={formatOpenedAt(position.openedAt)} />
-        <Cell label="Holding" value={holdingAge(position.openedAt)} sub={`${Number(position.quantity ?? 0).toFixed(6)} units`} />
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+        <Cell label="Current" value={`₩${fmtKrw(markPrice)}`} sub={position.updatedAt ? `mark ${formatOpenedAt(position.updatedAt)} KST` : 'latest checkpoint mark'} />
+        <Cell label="Entry Price" value={`₩${fmtKrw(entryPrice)}`} sub="actual position fill" />
+        <Cell label="Entered At" value={entryTimestampCompact} sub={`KST · ${age} ago`} valueClass="text-[#E4E9ED]" />
+        <Cell label="Holding" value={age} sub={`${Number(position.quantity ?? 0).toFixed(6)} units`} />
         <Cell label="Value Area" value={zone ? `₩${fmtKrw(zone.low)}–${fmtKrw(zone.high)}` : 'DATA GAP'} sub={zoneStatus} valueClass={zone ? 'text-[#C4CDD3]' : 'text-[#C7AA71]'} />
       </div>
 
