@@ -9,7 +9,10 @@ import { V10ReadinessCard } from './v10/V10ReadinessCard';
 export const BlackOracleMobileApp = () => {
   const [cycleOpen, setCycleOpen] = useState(false);
 
-  return <div className="relative h-[100dvh] w-full overflow-hidden bg-[#f6f7f9]">
+  return <div
+    className="relative h-[100dvh] w-full overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y bg-[#f6f7f9]"
+    style={{ WebkitOverflowScrolling: 'touch' }}
+  >
     <BlackOracleMobileAppV9 />
     <PositionMonitor />
 
