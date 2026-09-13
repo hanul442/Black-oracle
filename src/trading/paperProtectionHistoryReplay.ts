@@ -41,6 +41,11 @@ const nonNegativeFinite = (value: unknown): number | null => {
   return Number.isFinite(number) && number >= 0 ? number : null;
 };
 
+const nonNegativeInteger = (value: unknown): number | null => {
+  const number = nonNegativeFinite(value);
+  return number != null && Number.isInteger(number) ? number : null;
+};
+
 const positionFromPayload = (payload: Record<string, unknown>): PaperPosition | null => {
   const candidate = asRecord(payload.position);
   if (!candidate) return null;
@@ -53,6 +58,47 @@ const positionFromPayload = (payload: Record<string, unknown>): PaperPosition | 
   if (!market || quantity == null || entryPrice == null || averageCost == null || openedAt == null || updatedAt == null) return null;
 
   return candidate as unknown as PaperPosition;
+};
+
+/**
+ * Applies the compact dynamic-protection ledger event emitted by the active
+ * Paper runtime to the latest full position snapshot.
+ *
+ * These events intentionally do not repeat the full `position` object. Replay
+ * must therefore fold them into the preceding canonical position state instead
+ * of silently ignoring them. Older/stale protection revisions are ignored so a
+ * malformed out-of-order payload cannot regress the reconstructed protection.
+ */
+const applyDynamicProtectionUpdate = (
+  position: PaperPosition,
+  payload: Record<string, unknown>,
+): PaperPosition => {
+  const incomingRevision = nonNegativeInteger(payload.protectionRevision);
+  const currentRevision = nonNegativeInteger(position.protectionRevision) ?? 0;
+  const isDynamicProtectionUpdate = payload.dynamicProtection === true || incomingRevision != null;
+  if (!isDynamicProtectionUpdate || (incomingRevision != null && incomingRevision < currentRevision)) return position;
+
+  const stopLossPrice = positiveFinite(payload.stopLossPrice);
+  const takeProfit1Price = positiveFinite(payload.takeProfit1Price);
+  const takeProfit2Price = positiveFinite(payload.takeProfit2Price);
+  const takeProfitPrice = positiveFinite(payload.takeProfitPrice);
+  const currentPrice = positiveFinite(payload.currentPrice);
+  const updatedAt = nonNegativeFinite(payload.updatedAt);
+  const takeProfit1Taken = typeof payload.takeProfit1Taken === 'boolean' ? payload.takeProfit1Taken : null;
+
+  return {
+    ...position,
+    ...(stopLossPrice != null ? { stopLossPrice } : {}),
+    ...(takeProfit1Price != null ? { takeProfit1Price } : {}),
+    ...(takeProfit2Price != null ? { takeProfit2Price, takeProfitPrice: takeProfitPrice ?? takeProfit2Price } : {}),
+    ...(takeProfitPrice != null && takeProfit2Price == null ? { takeProfitPrice } : {}),
+    ...(takeProfit1Taken != null ? { takeProfit1Taken } : {}),
+    ...(incomingRevision != null ? { protectionRevision: incomingRevision } : {}),
+    ...(updatedAt != null ? { updatedAt } : {}),
+    ...(currentPrice != null ? {
+      highestPriceSinceEntry: Math.max(position.highestPriceSinceEntry ?? position.entryPrice, currentPrice),
+    } : {}),
+  };
 };
 
 const inferProtectionTrigger = (
@@ -78,9 +124,9 @@ const inferProtectionTrigger = (
  * Read-only adapter over the persisted Paper session ledger.
  *
  * The adapter reconstructs the observed SELL reference from the recorded fill
- * and broker slippage, then pairs it with the latest preceding position
- * snapshot. Non-protective exits are deliberately skipped instead of being
- * retrospectively reclassified.
+ * and broker slippage, then pairs it with the latest preceding position state,
+ * including compact dynamic-protection revisions. Non-protective exits are
+ * deliberately skipped instead of being retrospectively reclassified.
  *
  * No runtime/session/portfolio/ledger state is mutated by this module.
  */
@@ -98,8 +144,14 @@ export const extractLongProtectionHistoryObservations = (
     if (event.type === 'POSITION_UPDATED') {
       const market = typeof payload.market === 'string' ? payload.market.toUpperCase() : '';
       const position = positionFromPayload(payload);
-      if (market && position) positions.set(market, position);
-      else if (market && payload.position === null) positions.delete(market);
+      if (market && position) {
+        positions.set(market, position);
+      } else if (market && payload.position === null) {
+        positions.delete(market);
+      } else if (market) {
+        const existing = positions.get(market);
+        if (existing) positions.set(market, applyDynamicProtectionUpdate(existing, payload));
+      }
       continue;
     }
 
