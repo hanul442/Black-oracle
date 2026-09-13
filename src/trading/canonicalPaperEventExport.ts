@@ -1,4 +1,5 @@
 import type { CanonicalPaperEventRow } from './canonicalPaperProtectionReplay';
+import { fingerprintCanonicalPaperEvents } from './canonicalPaperEventFingerprint';
 
 export interface CanonicalPaperEventExportOptions {
   runtimeId: string;
@@ -16,6 +17,7 @@ export interface CanonicalPaperEventExportResult {
   pageSize: number;
   truncated: boolean;
   snapshotRecordedAt: string | null;
+  snapshotFingerprint: string;
 }
 
 const boundedInteger = (value: unknown, fallback: number, min: number, max: number) => {
@@ -72,6 +74,9 @@ const readSnapshotRecordedAt = async (
  * subsequent page is constrained to that watermark. This prevents new events
  * appended by the active Paper runtime from shifting offset pagination and
  * contaminating a single evidence pass with a moving read boundary.
+ *
+ * The completed frozen snapshot is fingerprinted with deterministic SHA-256 so
+ * operator evidence can prove which exact canonical input produced a result.
  */
 export const exportCanonicalPaperEvents = async (
   options: CanonicalPaperEventExportOptions,
@@ -88,13 +93,15 @@ export const exportCanonicalPaperEvents = async (
   const fetchImpl = options.fetchImpl ?? fetch;
   const snapshotRecordedAt = await readSnapshotRecordedAt(base, runtimeId, key, fetchImpl);
   if (snapshotRecordedAt === null) {
+    const rows: CanonicalPaperEventRow[] = [];
     return {
       runtimeId,
-      rows: [],
+      rows,
       pages: 0,
       pageSize,
       truncated: false,
       snapshotRecordedAt: null,
+      snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, null, rows),
     };
   }
 
@@ -150,5 +157,6 @@ export const exportCanonicalPaperEvents = async (
     pageSize,
     truncated: !exhausted && rows.length >= maxRows,
     snapshotRecordedAt,
+    snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, rows),
   };
 };
