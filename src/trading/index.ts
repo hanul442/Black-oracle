@@ -6,6 +6,7 @@ export * from './evidenceCoverage';
 export * from './equityUniversePolicy';
 export * from './executionPolicy';
 export * from './horizonPolicy';
+export * from './horizonPositionIdentity';
 export * from './horizonTradePlan';
 export * from './indicatorCatalog';
 export * from './indicators';
