@@ -37,16 +37,18 @@ const holdingAge = (timestamp: number | null | undefined) => {
 };
 
 const sourceLabel = (position: any, decision: any) => {
-  if (String(position.market ?? '').startsWith('KRW-')) {
-    const observedAt = Number(decision?.liquidity?.marketDataTimestamp ?? 0);
+  const observedAt = Number(decision?.liquidity?.marketDataTimestamp ?? 0);
+  if (String(position.market ?? '').startsWith('KRW-') && observedAt > 0) {
     return {
       label: 'UPBIT · LIVE',
-      sub: observedAt > 0 ? `observed ${formatOpenedAt(observedAt)}` : 'latest checkpoint mark',
+      sub: `observed ${formatOpenedAt(observedAt)}`,
     };
   }
   return {
     label: 'CHECKPOINT MARK',
-    sub: 'provider provenance unavailable on legacy position mark',
+    sub: position.updatedAt
+      ? `checkpoint ${formatOpenedAt(position.updatedAt)}`
+      : 'provider provenance not observed on this mark',
   };
 };
 
