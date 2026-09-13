@@ -53,6 +53,7 @@ test('runs one complete frozen GET-only evidence pass and compares an optional b
   assert.equal(result.export.truncated, false);
   assert.equal(result.export.rows, 1);
   assert.equal(result.export.snapshotRecordedAt, snapshotRecordedAt);
+  assert.match(result.export.snapshotFingerprint, /^sha256:[0-9a-f]{64}$/);
   assert.equal(result.diagnostic.sourceRows, 1);
   assert.equal(result.comparison?.sourceRowsDelta, 1);
 });
