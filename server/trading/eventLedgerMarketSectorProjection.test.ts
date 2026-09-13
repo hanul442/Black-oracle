@@ -77,7 +77,10 @@ test('projects KRX Market State and Sector State into the V10 live read model', 
   assert.equal(sector?.trace?.sector, '반도체');
   assert.equal(sector?.action, 'BULLISH');
 
-  const readModel = projectInvestmentCycleEvents(events, { now: asOf + 60_000 });
+  // CanonicalEventInput accepts ISO strings for write-time flexibility, while the
+  // operational read model consumes the normalized numeric timestamps returned by the Ledger reader.
+  const readModelEvents = events.map((event) => ({ ...event, occurredAt: Number(event.occurredAt) }));
+  const readModel = projectInvestmentCycleEvents(readModelEvents, { now: asOf + 60_000 });
   assert.equal(readModel.stages.find((stage) => stage.id === 'MARKET_STATE')?.status, 'LIVE');
   assert.equal(readModel.stages.find((stage) => stage.id === 'SECTOR_STATE')?.status, 'LIVE');
   assert.equal(readModel.horizons.find((item) => item.horizon === 'SHORT')?.count, 2);
