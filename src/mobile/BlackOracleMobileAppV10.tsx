@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Workflow } from 'lucide-react';
 import { BlackOracleMobileApp as BlackOracleMobileAppV9 } from './BlackOracleMobileAppV9';
+import { PositionMonitor } from './PositionMonitor';
 import { InvestmentCyclePanel } from './v10/InvestmentCyclePanel';
 import { InvestmentCycleLivePanel } from './v10/InvestmentCycleLivePanel';
 import { V10ReadinessCard } from './v10/V10ReadinessCard';
@@ -10,6 +11,7 @@ export const BlackOracleMobileApp = () => {
 
   return <div className="relative h-[100dvh] w-full overflow-hidden bg-[#f6f7f9]">
     <BlackOracleMobileAppV9 />
+    <PositionMonitor />
 
     {!cycleOpen && <button
       type="button"
