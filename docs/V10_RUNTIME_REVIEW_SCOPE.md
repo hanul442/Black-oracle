@@ -1,0 +1,1 @@
+Review scope: horizon market-state and constituent sector-strength runtime primitives, tests, and no execution-authority changes.
