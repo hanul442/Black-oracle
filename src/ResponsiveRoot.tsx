@@ -2,6 +2,8 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 
 const DesktopApp = lazy(() => import('./App'));
 const MobileApp = lazy(() => import('./mobile/BlackOracleMobileApp').then((module) => ({ default: module.BlackOracleMobileApp })));
+const ObservabilityRestore = lazy(() => import('./mobile/ObservabilityRestore').then((module) => ({ default: module.ObservabilityRestore })));
+const PositionMonitor = lazy(() => import('./mobile/PositionMonitor').then((module) => ({ default: module.PositionMonitor })));
 
 const desktopQuery = '(min-width: 1024px)';
 
@@ -28,7 +30,15 @@ const AppBoot = () => (
   </div>
 );
 
+const DesktopRoot = () => (
+  <>
+    <DesktopApp />
+    <ObservabilityRestore />
+    <PositionMonitor />
+  </>
+);
+
 export const ResponsiveRoot = () => {
   const desktop = useDesktopViewport();
-  return <Suspense fallback={<AppBoot />}>{desktop ? <DesktopApp /> : <MobileApp />}</Suspense>;
+  return <Suspense fallback={<AppBoot />}>{desktop ? <DesktopRoot /> : <MobileApp />}</Suspense>;
 };
