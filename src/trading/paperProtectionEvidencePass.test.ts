@@ -3,13 +3,14 @@ import test from 'node:test';
 import { runPaperProtectionEvidencePass } from './paperProtectionEvidencePass';
 
 const runtimeId = 'black-oracle-paper-vnext-100m-v03';
+const snapshotRecordedAt = '2026-09-13T00:10:00.000Z';
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: { 'Content-Type': 'application/json' },
 });
 
-test('runs one complete GET-only evidence pass and compares an optional baseline', async () => {
+test('runs one complete frozen GET-only evidence pass and compares an optional baseline', async () => {
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
   const rows = [
     {
@@ -21,7 +22,11 @@ test('runs one complete GET-only evidence pass and compares an optional baseline
     },
   ];
   const fetchImpl: typeof fetch = async (input, init) => {
-    calls.push({ url: new URL(String(input)), init });
+    const url = new URL(String(input));
+    calls.push({ url, init });
+    if (url.searchParams.get('select') === 'recorded_at') {
+      return response([{ recorded_at: snapshotRecordedAt }]);
+    }
     return response(rows);
   };
 
@@ -40,20 +45,27 @@ test('runs one complete GET-only evidence pass and compares an optional baseline
     },
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0]?.init?.method, 'GET');
+  assert.equal(calls[1]?.init?.method, 'GET');
   assert.equal(calls[0]?.url.searchParams.get('runtime_id'), `eq.${runtimeId}`);
+  assert.equal(calls[1]?.url.searchParams.get('recorded_at'), `lte.${snapshotRecordedAt}`);
   assert.equal(result.export.truncated, false);
   assert.equal(result.export.rows, 1);
+  assert.equal(result.export.snapshotRecordedAt, snapshotRecordedAt);
   assert.equal(result.diagnostic.sourceRows, 1);
   assert.equal(result.comparison?.sourceRowsDelta, 1);
 });
 
-test('fails closed instead of treating a capped export as complete evidence', async () => {
+test('fails closed instead of treating a capped frozen export as complete evidence', async () => {
   const fetchImpl: typeof fetch = async (input, init) => {
     assert.equal(init?.method, 'GET');
     const url = new URL(String(input));
+    if (url.searchParams.get('select') === 'recorded_at') {
+      return response([{ recorded_at: snapshotRecordedAt }]);
+    }
     const limit = Number(url.searchParams.get('limit'));
+    assert.equal(url.searchParams.get('recorded_at'), `lte.${snapshotRecordedAt}`);
     return response(Array.from({ length: limit }, (_, index) => ({
       runtime_id: runtimeId,
       occurred_at: new Date(index + 1).toISOString(),
