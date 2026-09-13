@@ -77,8 +77,6 @@ const weightedBreadth = (indexes: KrxIndexObservation[]) => {
 
 const turnoverParticipationScore = (indexes: KrxIndexObservation[], sessionProgress: number) => {
   if (sessionProgress <= 0) return null;
-  // Current and prior turnover must come from the same index observation. Independent
-  // filtering could accidentally compare KOSPI current turnover with KOSDAQ prior turnover.
   const pairs = indexes.filter((item) => finite(item.turnoverKrw)
     && item.turnoverKrw >= 0
     && finite(item.previousTurnoverKrw)
@@ -98,8 +96,6 @@ const volatilitySupportScore = (indexes: KrxIndexObservation[]) => {
   });
   const range = average(ranges);
   if (range == null) return null;
-  // Lower intraday index range is treated as more supportive for new risk. This is a
-  // transparent range-risk heuristic, not a realized-volatility estimate.
   return clamp(100 - range * 2_500);
 };
 
@@ -120,9 +116,11 @@ export const buildKrxShortHorizonMarketSectorSnapshot = (input: {
   indexes: KrxIndexObservation[];
   equities: KrxEquitySectorObservation[];
   indexErrors?: string[];
+  sourceIds?: string[];
 }): KrxShortHorizonMarketSectorSnapshot => {
   const sessionProgress = krxSessionProgress(input.asOf);
   const dataGaps = (input.indexErrors ?? []).map((item) => `Index DATA_GAP: ${item}`);
+  const sourceIds = unique(input.sourceIds ?? input.indexes.map((item) => `KIS:FHPUP02100000:${item.code}`));
   const validIndexChanges = input.indexes.map((item) => item.changeRate).filter(finite);
   const benchmarkChangeRate = average(validIndexChanges);
   const indexTrendScore = benchmarkChangeRate == null ? 50 : changeToScore(benchmarkChangeRate);
@@ -177,7 +175,7 @@ export const buildKrxShortHorizonMarketSectorSnapshot = (input: {
       turnoverScore: turnoverScore ?? 50,
       volatilityScore: volatilityScore ?? 50,
       evidenceScore: evidenceScore ?? 50,
-      sourceIds: input.indexes.map((item) => `KIS:FHPUP02100000:${item.code}`),
+      sourceIds,
       dataGaps: unique(dataGaps),
     }],
     sectorObservations: sectorObservations.map(({ localGaps: _localGaps, ...observation }) => observation),
@@ -204,7 +202,7 @@ export const buildKrxShortHorizonMarketSectorSnapshot = (input: {
     }))
     .sort((a, b) => b.score.score - a.score.score || b.constituentCount - a.constituentCount || a.sector.localeCompare(b.sector));
 
-  if (!sectorScores.length) dataGaps.push('Sector DATA_GAP: no KIS sector-tagged equity observation was available for SHORT-horizon ranking.');
+  if (!sectorScores.length) dataGaps.push('Sector DATA_GAP: no KRX sector-tagged equity observation was available for SHORT-horizon ranking.');
 
   return {
     asOf: input.asOf,
@@ -214,6 +212,6 @@ export const buildKrxShortHorizonMarketSectorSnapshot = (input: {
     benchmarkChangeRate,
     sessionProgress,
     dataGaps: unique(dataGaps),
-    sourceIds: input.indexes.map((item) => `KIS:FHPUP02100000:${item.code}`),
+    sourceIds,
   };
 };
