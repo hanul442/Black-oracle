@@ -56,6 +56,22 @@ test('maps canonical V10 stages and builds candidate funnel without inventing su
   assert.equal(projection.blockers.length, 0);
 });
 
+test('nomination readiness blocker makes the stage observable without inflating nominated funnel count', () => {
+  const projection = projectInvestmentCycleEvents([
+    event({
+      eventType: 'COUNCIL',
+      eventName: 'V10_NOMINATION_READINESS_BLOCKED',
+      action: 'BLOCKED',
+      reason: 'Crypto-linked equity classification is UNKNOWN.',
+      trace: { horizon: 'SHORT', nominationReady: false, dataGaps: ['Crypto-linked equity classification is UNKNOWN.'] },
+    }),
+  ], { now: NOW });
+
+  assert.equal(projection.stages.find((stage) => stage.id === 'NOMINATION')?.status, 'LIVE');
+  assert.equal(projection.funnel.nominated, 0);
+  assert.equal(projection.blockers.some((value) => value.includes('Crypto-linked')), true);
+});
+
 test('missing V10 producers remain explicit WAITING blockers and DATA_GAP is surfaced', () => {
   const projection = projectInvestmentCycleEvents([
     event({
