@@ -75,8 +75,10 @@ const readSnapshotRecordedAt = async (
  * appended by the active Paper runtime from shifting offset pagination and
  * contaminating a single evidence pass with a moving read boundary.
  *
- * The completed frozen snapshot is fingerprinted with deterministic SHA-256 so
- * operator evidence can prove which exact canonical input produced a result.
+ * The exported rows retain `id` and `recorded_at`, the exact tie-break identity
+ * used by deterministic pagination (`occurred_at, recorded_at, id`). Therefore
+ * the completed SHA-256 fingerprint commits not only to replay payloads but also
+ * to the canonical row/order identity that defined the frozen snapshot.
  */
 export const exportCanonicalPaperEvents = async (
   options: CanonicalPaperEventExportOptions,
@@ -114,7 +116,7 @@ export const exportCanonicalPaperEvents = async (
     const remaining = maxRows - rows.length;
     const limit = Math.min(pageSize, remaining);
     const url = new URL(`${base}/rest/v1/black_oracle_events`);
-    url.searchParams.set('select', 'runtime_id,occurred_at,event_name,strategy_version,trace');
+    url.searchParams.set('select', 'id,runtime_id,occurred_at,recorded_at,event_name,strategy_version,trace');
     url.searchParams.set('runtime_id', `eq.${runtimeId}`);
     url.searchParams.set('recorded_at', `lte.${snapshotRecordedAt}`);
     url.searchParams.set('order', 'occurred_at.asc,recorded_at.asc,id.asc');
