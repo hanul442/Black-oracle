@@ -14,11 +14,11 @@ test('freezes a runtime-scoped snapshot before deterministic GET-only pagination
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
   const pages = [
     [
-      { runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:01Z', event_name: 'POSITION_UPDATED', strategy_version: 'v1', trace: { sequence: 1 } },
-      { runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:02Z', event_name: 'ORDER_FILLED', strategy_version: 'v1', trace: { sequence: 2 } },
+      { id: 101, runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:01Z', recorded_at: '2026-09-13T00:00:01.100Z', event_name: 'POSITION_UPDATED', strategy_version: 'v1', trace: { sequence: 1 } },
+      { id: 102, runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:02Z', recorded_at: '2026-09-13T00:00:02.100Z', event_name: 'ORDER_FILLED', strategy_version: 'v1', trace: { sequence: 2 } },
     ],
     [
-      { runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:03Z', event_name: 'POSITION_UPDATED', strategy_version: 'v1', trace: { sequence: 3 } },
+      { id: 103, runtime_id: runtimeId, occurred_at: '2026-09-13T00:00:03Z', recorded_at: '2026-09-13T00:00:03.100Z', event_name: 'POSITION_UPDATED', strategy_version: 'v1', trace: { sequence: 3 } },
     ],
   ];
   let pageIndex = 0;
@@ -41,6 +41,8 @@ test('freezes a runtime-scoped snapshot before deterministic GET-only pagination
   });
 
   assert.equal(result.rows.length, 3);
+  assert.equal(result.rows[0]?.id, 101);
+  assert.equal(result.rows[0]?.recorded_at, '2026-09-13T00:00:01.100Z');
   assert.equal(result.pages, 2);
   assert.equal(result.truncated, false);
   assert.equal(result.snapshotRecordedAt, snapshotRecordedAt);
@@ -57,7 +59,7 @@ test('freezes a runtime-scoped snapshot before deterministic GET-only pagination
   assert.equal(calls[1]?.url.searchParams.get('order'), 'occurred_at.asc,recorded_at.asc,id.asc');
   assert.equal(calls[1]?.url.searchParams.get('offset'), '0');
   assert.equal(calls[2]?.url.searchParams.get('offset'), '2');
-  assert.equal(calls[1]?.url.searchParams.get('select'), 'runtime_id,occurred_at,event_name,strategy_version,trace');
+  assert.equal(calls[1]?.url.searchParams.get('select'), 'id,runtime_id,occurred_at,recorded_at,event_name,strategy_version,trace');
 });
 
 test('returns an empty complete snapshot without paging when the runtime has no events', async () => {
@@ -95,8 +97,10 @@ test('stops at maxRows and marks a capped frozen snapshot as truncated', async (
     const offset = Number(url.searchParams.get('offset'));
     assert.equal(url.searchParams.get('recorded_at'), `lte.${snapshotRecordedAt}`);
     return response(Array.from({ length: limit }, (_, index) => ({
+      id: offset + index + 1,
       runtime_id: runtimeId,
       occurred_at: new Date((offset + index + 1) * 1_000).toISOString(),
+      recorded_at: new Date((offset + index + 1) * 1_000 + 100).toISOString(),
       event_name: 'POSITION_UPDATED',
       strategy_version: 'v1',
       trace: { sequence: offset + index + 1 },
