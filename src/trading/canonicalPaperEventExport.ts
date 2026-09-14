@@ -10,6 +10,12 @@ export interface CanonicalPaperEventExportOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface CanonicalPaginationBoundary {
+  occurredAt: string;
+  recordedAt: string;
+  id: string | number;
+}
+
 export interface CanonicalPaperEventExportResult {
   runtimeId: string;
   rows: CanonicalPaperEventRow[];
@@ -18,12 +24,21 @@ export interface CanonicalPaperEventExportResult {
   truncated: boolean;
   snapshotRecordedAt: string | null;
   snapshotFingerprint: string;
+  firstBoundary: CanonicalPaginationBoundary | null;
+  lastBoundary: CanonicalPaginationBoundary | null;
 }
 
 const boundedInteger = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
+};
+
+const boundaryFromRow = (row: CanonicalPaperEventRow): CanonicalPaginationBoundary | null => {
+  if (typeof row.occurred_at !== 'string' || typeof row.recorded_at !== 'string') return null;
+  const id = row.id;
+  if (!(typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id)))) return null;
+  return { occurredAt: row.occurred_at, recordedAt: row.recorded_at, id };
 };
 
 const readSnapshotRecordedAt = async (
@@ -40,46 +55,19 @@ const readSnapshotRecordedAt = async (
 
   const response = await fetchImpl(url, {
     method: 'GET',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      Accept: 'application/json',
-    },
+    headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
     cache: 'no-store',
     signal: AbortSignal.timeout(20_000),
   });
-
-  if (!response.ok) {
-    throw new Error(`Canonical Paper event snapshot read failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
-  }
-
+  if (!response.ok) throw new Error(`Canonical Paper event snapshot read failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
   const body = await response.json();
   if (!Array.isArray(body)) throw new Error('Canonical Paper event snapshot read returned a non-array response.');
   if (body.length === 0) return null;
-
   const recordedAt = body[0]?.recorded_at;
-  if (typeof recordedAt !== 'string' || !recordedAt.trim()) {
-    throw new Error('Canonical Paper event snapshot read returned an invalid recorded_at watermark.');
-  }
+  if (typeof recordedAt !== 'string' || !recordedAt.trim()) throw new Error('Canonical Paper event snapshot read returned an invalid recorded_at watermark.');
   return recordedAt;
 };
 
-/**
- * Read-only, runtime-scoped exporter for canonical Paper events.
- *
- * This intentionally does not share mutation helpers or instantiate any trading
- * runtime. It only issues GET requests against `black_oracle_events`.
- *
- * A `recorded_at` high-watermark is captured before paging begins and every
- * subsequent page is constrained to that watermark. This prevents new events
- * appended by the active Paper runtime from shifting offset pagination and
- * contaminating a single evidence pass with a moving read boundary.
- *
- * The exported rows retain `id` and `recorded_at`, the exact tie-break identity
- * used by deterministic pagination (`occurred_at, recorded_at, id`). Therefore
- * the completed SHA-256 fingerprint commits not only to replay payloads but also
- * to the canonical row/order identity that defined the frozen snapshot.
- */
 export const exportCanonicalPaperEvents = async (
   options: CanonicalPaperEventExportOptions,
 ): Promise<CanonicalPaperEventExportResult> => {
@@ -96,22 +84,13 @@ export const exportCanonicalPaperEvents = async (
   const snapshotRecordedAt = await readSnapshotRecordedAt(base, runtimeId, key, fetchImpl);
   if (snapshotRecordedAt === null) {
     const rows: CanonicalPaperEventRow[] = [];
-    return {
-      runtimeId,
-      rows,
-      pages: 0,
-      pageSize,
-      truncated: false,
-      snapshotRecordedAt: null,
-      snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, null, rows),
-    };
+    return { runtimeId, rows, pages: 0, pageSize, truncated: false, snapshotRecordedAt: null, snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, null, rows), firstBoundary: null, lastBoundary: null };
   }
 
   const rows: CanonicalPaperEventRow[] = [];
   let pages = 0;
   let offset = 0;
   let exhausted = false;
-
   while (rows.length < maxRows && !exhausted) {
     const remaining = maxRows - rows.length;
     const limit = Math.min(pageSize, remaining);
@@ -122,36 +101,15 @@ export const exportCanonicalPaperEvents = async (
     url.searchParams.set('order', 'occurred_at.asc,recorded_at.asc,id.asc');
     url.searchParams.set('limit', String(limit));
     url.searchParams.set('offset', String(offset));
-
-    const response = await fetchImpl(url, {
-      method: 'GET',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Accept: 'application/json',
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(20_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Canonical Paper event export failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
-    }
-
+    const response = await fetchImpl(url, { method: 'GET', headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(`Canonical Paper event export failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const page = await response.json();
     if (!Array.isArray(page)) throw new Error('Canonical Paper event export returned a non-array response.');
-
-    for (const row of page) {
-      if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-      rows.push(row as CanonicalPaperEventRow);
-    }
-
+    for (const row of page) if (row && typeof row === 'object' && !Array.isArray(row)) rows.push(row as CanonicalPaperEventRow);
     pages += 1;
     offset += page.length;
-    exhausted = page.length < limit;
-    if (page.length === 0) exhausted = true;
+    exhausted = page.length < limit || page.length === 0;
   }
-
   return {
     runtimeId,
     rows,
@@ -160,5 +118,7 @@ export const exportCanonicalPaperEvents = async (
     truncated: !exhausted && rows.length >= maxRows,
     snapshotRecordedAt,
     snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, rows),
+    firstBoundary: boundaryFromRow(rows[0]),
+    lastBoundary: boundaryFromRow(rows.at(-1) as CanonicalPaperEventRow),
   };
 };
