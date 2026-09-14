@@ -2,7 +2,8 @@ import { EquityExposureRegistry } from '../../../src/trading/equityExposureRegis
 import { buildKrxShortHorizonMarketSectorSnapshot, type KrxShortHorizonMarketSectorSnapshot } from '../../../src/trading/krxMarketSectorObservation';
 import { tradingEvidenceStore } from '../evidenceStore';
 import { KrxOfficialEodMarketData } from './krxOfficialEodMarketData';
-import { buildKrxUniversePacket, type KrxUniversePacket } from './krxUniverseBuilder';
+import { NaverKrxResearchMarketData } from './naverKrxResearchMarketData';
+import { buildKrxUniversePacket, type KrxUniversePacket, type KrxUniverseSource } from './krxUniverseBuilder';
 
 export interface KrxCommitteeCandidate {
   market: string;
@@ -28,7 +29,7 @@ export interface KrxShadowResearchCycleResult {
   startedAt: number;
   finishedAt: number;
   tradingDate: string;
-  source: 'KRX_OFFICIAL_EOD';
+  source: Extract<KrxUniverseSource, 'KRX_OFFICIAL_EOD' | 'NAVER_FINANCE_DELAYED'>;
   mode: 'SHADOW';
   executionAuthority: false;
   universe: KrxUniversePacket;
@@ -37,6 +38,7 @@ export interface KrxShadowResearchCycleResult {
   nominationReadyCount: number;
   blockers: string[];
   sourceIds: string[];
+  fallbackReason: string | null;
 }
 
 const exposureRegistry = new EquityExposureRegistry();
@@ -44,13 +46,35 @@ export const krxEquityExposureRegistry = exposureRegistry;
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
-
 const blockingReasons = (reasons: string[]) => reasons.filter((reason) => /below|excluded|suspension|warning|blocked|unavailable/i.test(reason));
+
+const accountFreeProvider = async () => {
+  const official = new KrxOfficialEodMarketData();
+  try {
+    const snapshot = await official.snapshot();
+    return {
+      marketData: official,
+      snapshot,
+      source: official.source,
+      fallbackReason: null,
+    } as const;
+  } catch (error) {
+    const officialReason = error instanceof Error ? error.message : String(error);
+    const fallback = new NaverKrxResearchMarketData();
+    const snapshot = await fallback.snapshot();
+    return {
+      marketData: fallback,
+      snapshot,
+      source: fallback.source,
+      fallbackReason: `Official KRX EOD unavailable; using bounded Naver/Koscom account-free research fallback. ${officialReason}`,
+    } as const;
+  }
+};
 
 export const runKrxShadowResearchCycle = async (): Promise<KrxShadowResearchCycleResult> => {
   const startedAt = Date.now();
-  const marketData = new KrxOfficialEodMarketData();
-  const snapshot = await marketData.snapshot();
+  const resolved = await accountFreeProvider();
+  const { marketData, snapshot, source, fallbackReason } = resolved;
   const universe = await buildKrxUniversePacket(marketData, exposureRegistry, {
     discoveryLimit: 100,
     maxProfiles: 60,
@@ -76,10 +100,15 @@ export const runKrxShadowResearchCycle = async (): Promise<KrxShadowResearchCycl
     indexes: snapshot.indexObservations,
     equities: equityObservations,
     sourceIds: snapshot.sourceIds,
-    indexErrors: [
-      'Official KRX EOD fallback has no paired prior-turnover index observation; turnover pace stays neutral.',
-      'Official KRX EOD fallback has no intraday index high/low observation; range-risk support stays neutral.',
-    ],
+    indexErrors: source === 'KRX_OFFICIAL_EOD'
+      ? [
+          'Official KRX EOD fallback has no paired prior-turnover index observation; turnover pace stays neutral.',
+          'Official KRX EOD fallback has no intraday index high/low observation; range-risk support stays neutral.',
+        ]
+      : [
+          'Naver/Koscom account-free fallback is research-only and may be delayed; it cannot authorize execution.',
+          'Naver/Koscom fallback does not provide a source-complete prior-turnover pair; turnover pace stays neutral.',
+        ],
   });
 
   const strongSectorScore = new Map(
@@ -128,6 +157,7 @@ export const runKrxShadowResearchCycle = async (): Promise<KrxShadowResearchCycl
 
   const nominationReadyCount = committeeCandidates.filter((item) => item.nominationReady).length;
   const blockers = unique([
+    ...(fallbackReason ? [fallbackReason] : []),
     ...marketSector.dataGaps,
     ...(committeeCandidates.length ? [] : ['No strong-sector KRX research candidate was available for the Committee pool.']),
     ...(nominationReadyCount > 0 ? [] : ['Committee candidate pool is live, but no stock is nomination-ready because one or more Hard Universe gates remain unresolved.']),
@@ -140,7 +170,7 @@ export const runKrxShadowResearchCycle = async (): Promise<KrxShadowResearchCycl
     startedAt,
     finishedAt: Date.now(),
     tradingDate: snapshot.tradingDate,
-    source: 'KRX_OFFICIAL_EOD',
+    source,
     mode: 'SHADOW',
     executionAuthority: false,
     universe,
@@ -149,5 +179,6 @@ export const runKrxShadowResearchCycle = async (): Promise<KrxShadowResearchCycl
     nominationReadyCount,
     blockers,
     sourceIds: snapshot.sourceIds.slice(),
+    fallbackReason,
   };
 };
