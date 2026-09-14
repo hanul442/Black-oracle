@@ -34,31 +34,20 @@ const boundedInteger = (value: unknown, fallback: number, min: number, max: numb
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 };
 
-const boundaryFromRow = (row: CanonicalPaperEventRow): CanonicalPaginationBoundary | null => {
-  if (typeof row.occurred_at !== 'string' || typeof row.recorded_at !== 'string') return null;
+const boundaryFromRow = (row: CanonicalPaperEventRow | undefined): CanonicalPaginationBoundary | null => {
+  if (!row || typeof row.occurred_at !== 'string' || typeof row.recorded_at !== 'string') return null;
   const id = row.id;
   if (!(typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id)))) return null;
   return { occurredAt: row.occurred_at, recordedAt: row.recorded_at, id };
 };
 
-const readSnapshotRecordedAt = async (
-  base: string,
-  runtimeId: string,
-  key: string,
-  fetchImpl: typeof fetch,
-): Promise<string | null> => {
+const readSnapshotRecordedAt = async (base: string, runtimeId: string, key: string, fetchImpl: typeof fetch): Promise<string | null> => {
   const url = new URL(`${base}/rest/v1/black_oracle_events`);
   url.searchParams.set('select', 'recorded_at');
   url.searchParams.set('runtime_id', `eq.${runtimeId}`);
   url.searchParams.set('order', 'recorded_at.desc');
   url.searchParams.set('limit', '1');
-
-  const response = await fetchImpl(url, {
-    method: 'GET',
-    headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
-    cache: 'no-store',
-    signal: AbortSignal.timeout(20_000),
-  });
+  const response = await fetchImpl(url, { method: 'GET', headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`Canonical Paper event snapshot read failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
   const body = await response.json();
   if (!Array.isArray(body)) throw new Error('Canonical Paper event snapshot read returned a non-array response.');
@@ -68,16 +57,13 @@ const readSnapshotRecordedAt = async (
   return recordedAt;
 };
 
-export const exportCanonicalPaperEvents = async (
-  options: CanonicalPaperEventExportOptions,
-): Promise<CanonicalPaperEventExportResult> => {
+export const exportCanonicalPaperEvents = async (options: CanonicalPaperEventExportOptions): Promise<CanonicalPaperEventExportResult> => {
   const runtimeId = options.runtimeId.trim();
   const base = options.supabaseUrl.trim().replace(/\/+$/, '');
   const key = options.supabaseKey.trim();
   if (!runtimeId) throw new Error('runtimeId is required.');
   if (!base) throw new Error('supabaseUrl is required.');
   if (!key) throw new Error('supabaseKey is required.');
-
   const pageSize = boundedInteger(options.pageSize, 500, 1, 1_000);
   const maxRows = boundedInteger(options.maxRows, 50_000, 1, 100_000);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -86,7 +72,6 @@ export const exportCanonicalPaperEvents = async (
     const rows: CanonicalPaperEventRow[] = [];
     return { runtimeId, rows, pages: 0, pageSize, truncated: false, snapshotRecordedAt: null, snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, null, rows), firstBoundary: null, lastBoundary: null };
   }
-
   const rows: CanonicalPaperEventRow[] = [];
   let pages = 0;
   let offset = 0;
@@ -110,15 +95,5 @@ export const exportCanonicalPaperEvents = async (
     offset += page.length;
     exhausted = page.length < limit || page.length === 0;
   }
-  return {
-    runtimeId,
-    rows,
-    pages,
-    pageSize,
-    truncated: !exhausted && rows.length >= maxRows,
-    snapshotRecordedAt,
-    snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, rows),
-    firstBoundary: boundaryFromRow(rows[0]),
-    lastBoundary: boundaryFromRow(rows.at(-1) as CanonicalPaperEventRow),
-  };
+  return { runtimeId, rows, pages, pageSize, truncated: !exhausted && rows.length >= maxRows, snapshotRecordedAt, snapshotFingerprint: await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, rows), firstBoundary: boundaryFromRow(rows[0]), lastBoundary: boundaryFromRow(rows.length > 0 ? rows[rows.length - 1] : undefined) };
 };
