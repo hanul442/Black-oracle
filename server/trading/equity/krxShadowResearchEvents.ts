@@ -8,7 +8,10 @@ export const buildKrxShadowResearchCanonicalEvents = (
   runtimeId: string,
 ): CanonicalEventInput[] => {
   const timestamp = cycle.marketSector.asOf;
-  const prefix = `${runtimeId}:KRX:${cycle.tradingDate}:account-free`;
+  const sourceTag = cycle.source === 'KRX_OFFICIAL_EOD' ? 'krx_official_eod' : 'naver_finance_delayed';
+  const sourceLabel = cycle.source === 'KRX_OFFICIAL_EOD' ? 'official KRX EOD' : 'Naver/Koscom account-free research fallback';
+  const marketDataQuality = cycle.source === 'KRX_OFFICIAL_EOD' ? 'EOD' : 'DELAYED_PUBLIC_RESEARCH';
+  const prefix = `${runtimeId}:KRX:${cycle.tradingDate}:account-free:${sourceTag}`;
   const events: CanonicalEventInput[] = [{
     eventKey: `${prefix}:cycle`,
     occurredAt: timestamp,
@@ -18,14 +21,15 @@ export const buildKrxShadowResearchCanonicalEvents = (
     market: 'KRX',
     action: cycle.blockers.length ? 'DEGRADED' : 'OBSERVED',
     summary: `Account-free KRX shadow cycle: ${cycle.universe.discovered} discovered, ${cycle.universe.profiled} profiled, ${cycle.committeeCandidates.length} Committee-pool candidate(s), ${cycle.nominationReadyCount} nomination-ready.`,
-    reason: cycle.blockers[0] ?? 'Official KRX EOD research cycle completed without execution authority.',
+    reason: cycle.blockers[0] ?? `${sourceLabel} research cycle completed without execution authority.`,
     severity: cycle.blockers.length ? 'WARN' : 'INFO',
     authority: 'research_shadow',
     executionAuthority: false,
-    source: 'krx_official_eod',
+    source: sourceTag,
     trace: {
       tradingDate: cycle.tradingDate,
       source: cycle.source,
+      fallbackReason: cycle.fallbackReason,
       discovered: cycle.universe.discovered,
       volumePrefiltered: cycle.universe.volumePrefiltered,
       profiled: cycle.universe.profiled,
@@ -34,6 +38,7 @@ export const buildKrxShadowResearchCanonicalEvents = (
       nominationReadyCount: cycle.nominationReadyCount,
       blockers: cycle.blockers,
       sourceIds: cycle.sourceIds,
+      marketDataQuality,
     },
     links: { sourceIds: cycle.sourceIds },
   }];
@@ -49,12 +54,12 @@ export const buildKrxShadowResearchCanonicalEvents = (
       eventName: 'V10_MARKET_STATE_OBSERVED',
       market: 'KRX',
       action: state.stance,
-      summary: `KRX ${state.horizon} Market State ${state.stance} · score ${state.score.toFixed(1)} · official EOD fallback.`,
-      reason: dataGaps[0] ?? 'Official KRX end-of-day breadth and cross-sectional return state observed.',
+      summary: `KRX ${state.horizon} Market State ${state.stance} · score ${state.score.toFixed(1)} · ${sourceLabel}.`,
+      reason: dataGaps[0] ?? `${sourceLabel} breadth and cross-sectional return state observed.`,
       severity: dataGaps.length ? 'WARN' : 'INFO',
       authority: 'research_shadow',
       executionAuthority: false,
-      source: 'krx_official_eod',
+      source: sourceTag,
       trace: {
         stage: 'MARKET_STATE',
         horizon: state.horizon,
@@ -69,7 +74,7 @@ export const buildKrxShadowResearchCanonicalEvents = (
         evidenceScore: state.evidenceScore,
         dataGaps,
         sourceIds: cycle.sourceIds,
-        marketDataQuality: 'EOD',
+        marketDataQuality,
       },
       links: { sourceIds: cycle.sourceIds },
     });
@@ -85,11 +90,11 @@ export const buildKrxShadowResearchCanonicalEvents = (
       market: 'KRX',
       action: sector.score.stance,
       summary: `${sector.sector} SHORT Sector Strength ${sector.score.stance} · score ${sector.score.score.toFixed(1)} · breadth ${sector.breadthPct.toFixed(0)}%.`,
-      reason: sector.dataGaps[0] ?? 'Official KRX sector classification, EOD relative strength and breadth produced the shadow sector rank.',
+      reason: sector.dataGaps[0] ?? `${sourceLabel} sector classification, relative strength and breadth produced the shadow sector rank.`,
       severity: sector.dataGaps.length ? 'WARN' : 'INFO',
       authority: 'research_shadow',
       executionAuthority: false,
-      source: 'krx_official_eod',
+      source: sourceTag,
       trace: {
         stage: 'SECTOR_STATE',
         horizon: 'SHORT',
@@ -104,13 +109,23 @@ export const buildKrxShadowResearchCanonicalEvents = (
         evidenceScore: sector.score.evidenceScore,
         dataGaps: sector.dataGaps,
         sourceIds: cycle.sourceIds,
-        marketDataQuality: 'EOD',
+        marketDataQuality,
       },
       links: { sourceIds: cycle.sourceIds },
     });
   }
 
-  for (const candidate of cycle.committeeCandidates.slice(0, 30)) {
+  // Instrument discovery belongs to the Hard Universe stage, not to the later
+  // strong-sector Committee stage. Emit bounded canonical observations for the
+  // profiled universe even when sector enrichment is unavailable or all candidates
+  // remain fail-closed. This keeps Markets observable without inventing nominations.
+  for (const row of cycle.universe.rows.slice(0, 30)) {
+    const candidate = row.candidate;
+    const blockers = unique([
+      ...row.decision.dataGaps,
+      ...row.dataErrors,
+      ...(row.decision.eligible ? [] : row.decision.reasons),
+    ]);
     events.push({
       eventKey: `${prefix}:universe:${candidate.market}`,
       occurredAt: timestamp,
@@ -118,32 +133,30 @@ export const buildKrxShadowResearchCanonicalEvents = (
       eventType: 'SYSTEM',
       eventName: 'V10_UNIVERSE_GATE_EVALUATED',
       market: candidate.market,
-      action: candidate.hardGateEligible ? 'QUALIFIED' : 'BLOCKED',
-      summary: `${candidate.market} ${candidate.name} · ${candidate.sector} · Committee pool rank #${candidate.rank} · score ${candidate.score.toFixed(1)} · hard gate ${candidate.hardGateEligible ? 'PASS' : 'BLOCKED'}.`,
-      reason: candidate.blockers[0] ?? 'KRX hard-universe research gate passed.',
-      severity: candidate.hardGateEligible ? 'INFO' : 'WARN',
+      action: row.decision.eligible ? 'QUALIFIED' : 'BLOCKED',
+      summary: `${candidate.market} ${candidate.name} · volume rank #${row.rank}${candidate.sector ? ` · ${candidate.sector}` : ''} · hard gate ${row.decision.eligible ? 'PASS' : 'BLOCKED'}.`,
+      reason: blockers[0] ?? 'KRX hard-universe research gate passed.',
+      severity: row.decision.eligible ? 'INFO' : 'WARN',
       authority: 'research_shadow',
       executionAuthority: false,
-      source: 'krx_official_eod',
+      source: sourceTag,
       trace: {
         stage: 'UNIVERSE_GATE',
-        horizon: candidate.horizon,
-        rank: candidate.rank,
-        score: candidate.score,
+        horizon: 'SHORT',
+        rank: row.rank,
         sector: candidate.sector,
-        sectorScore: candidate.sectorScore,
         dailyVolume: candidate.dailyVolume,
         marketCapKrw: candidate.marketCapKrw,
-        changeRate: candidate.changeRate,
-        evidenceScore: candidate.evidenceScore,
-        evidenceCount: candidate.evidenceCount,
-        gateDisposition: candidate.hardGateEligible ? 'QUALIFIED' : 'BLOCKED',
-        nominationReady: candidate.nominationReady,
-        dataGaps: candidate.blockers,
-        marketDataQuality: 'EOD',
+        changeRate: row.changeRate,
+        price: row.price,
+        turnoverKrw: row.turnoverKrw,
+        gateDisposition: row.decision.eligible ? 'QUALIFIED' : 'BLOCKED',
+        nominationReady: false,
+        dataGaps: blockers,
+        marketDataQuality,
         sourceIds: cycle.sourceIds,
       },
-      links: { evidenceIds: candidate.evidenceIds, sourceIds: cycle.sourceIds },
+      links: { sourceIds: cycle.sourceIds },
     });
   }
 
@@ -160,7 +173,7 @@ export const buildKrxShadowResearchCanonicalEvents = (
     severity: cycle.nominationReadyCount > 0 ? 'INFO' : 'WARN',
     authority: 'research_shadow',
     executionAuthority: false,
-    source: 'krx_official_eod',
+    source: sourceTag,
     trace: {
       stage: 'CANDIDATE_POOL',
       horizon: 'SHORT',
@@ -176,6 +189,7 @@ export const buildKrxShadowResearchCanonicalEvents = (
       })),
       blockers: cycle.blockers,
       sourceIds: cycle.sourceIds,
+      marketDataQuality,
     },
   });
 
@@ -193,13 +207,14 @@ export const buildKrxShadowResearchCanonicalEvents = (
       severity: 'WARN',
       authority: 'research_shadow',
       executionAuthority: false,
-      source: 'krx_official_eod',
+      source: sourceTag,
       trace: {
         stage: 'NOMINATION',
         horizon: 'SHORT',
         nominationReady: false,
         dataGaps: cycle.blockers,
         sourceIds: cycle.sourceIds,
+        marketDataQuality,
       },
     });
   }
