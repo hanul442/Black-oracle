@@ -1,24 +1,18 @@
 import { readCanonicalEvents } from '../server/eventLedger';
+import {
+  buildInstrumentDecisionLineage,
+  directTraceIdOf,
+  instrumentLineageTypes,
+  latestObservedByType,
+  selectInstrumentAnalysisAnchor,
+} from '../server/instrumentDecisionLineage';
 
 const marketPattern = /^(KRW-[A-Z0-9]+|KRX-\d{6})$/;
-const supportedTypes = ['EVIDENCE', 'STRATEGY', 'COUNCIL', 'DECISION', 'RISK', 'ORDER', 'TRADE', 'OUTCOME'] as const;
 
 const boundedInt = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
-};
-
-const traceIdOf = (event: any) => {
-  const candidates = [
-    event?.trace?.traceId,
-    event?.trace?.trace_id,
-    event?.links?.traceId,
-    event?.links?.trace_id,
-    event?.links?.entryTraceId,
-    event?.links?.entry_trace_id,
-  ];
-  return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() ?? null;
 };
 
 export default async function handler(request: any, response: any) {
@@ -45,19 +39,21 @@ export default async function handler(request: any, response: any) {
       .sort((a, b) => Number(b.occurredAt ?? 0) - Number(a.occurredAt ?? 0))
       .slice(0, limit);
 
-    const latestByType = Object.fromEntries(supportedTypes.map((type) => [
-      type,
-      events.find((event) => String(event.eventType).toUpperCase() === type) ?? null,
-    ]));
-    const latestDecision = latestByType.DECISION as any;
-    const latestCouncil = latestByType.COUNCIL as any;
-    const latestStrategy = latestByType.STRATEGY as any;
-    const latestOutcome = latestByType.OUTCOME as any;
-    const analysisAnchor = latestDecision ?? latestCouncil ?? latestStrategy ?? events[0] ?? null;
+    // Pick the newest analysis state first, then require every displayed lifecycle
+    // stage to carry an explicit link to that exact canonical trace. Do not fill
+    // missing stages from older/unrelated instrument history.
+    const analysisAnchor = selectInstrumentAnalysisAnchor(events);
     const analysisAsOf = analysisAnchor ? Number(analysisAnchor.occurredAt ?? 0) || null : null;
-    const currentTraceId = traceIdOf(analysisAnchor);
+    const currentTraceId = directTraceIdOf(analysisAnchor);
+    const lineage = buildInstrumentDecisionLineage(events, currentTraceId);
+    const observedLatestByType = latestObservedByType(events);
+    const latestByType = lineage.latestByType;
+    const latestDecision = latestByType.DECISION;
+    const latestCouncil = latestByType.COUNCIL;
+    const latestStrategy = latestByType.STRATEGY;
+    const latestOutcome = latestByType.OUTCOME;
 
-    const counts = supportedTypes.reduce<Record<string, number>>((acc, type) => {
+    const counts = instrumentLineageTypes.reduce<Record<string, number>>((acc, type) => {
       acc[type] = events.filter((event) => String(event.eventType).toUpperCase() === type).length;
       return acc;
     }, {});
@@ -73,8 +69,10 @@ export default async function handler(request: any, response: any) {
       analysisExpiresAt: null,
       analysisExpiryReason: 'No canonical validity horizon has been asserted for this analysis yet.',
       currentTraceId,
+      lineage,
       counts,
       latestByType,
+      observedLatestByType,
       latestDecision,
       latestCouncil,
       latestStrategy,
