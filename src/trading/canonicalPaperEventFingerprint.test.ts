@@ -7,8 +7,10 @@ const snapshotRecordedAt = '2026-09-13T00:10:00.000Z';
 
 test('produces a stable sha256 fingerprint across object key ordering', async () => {
   const left = [{
+    id: 101,
     runtime_id: runtimeId,
     occurred_at: '2026-09-13T00:00:01Z',
+    recorded_at: '2026-09-13T00:00:01.100Z',
     event_name: 'POSITION_UPDATED',
     strategy_version: 'v1',
     trace: { sequence: 1, nested: { b: 2, a: 1 } },
@@ -17,8 +19,10 @@ test('produces a stable sha256 fingerprint across object key ordering', async ()
     trace: { nested: { a: 1, b: 2 }, sequence: 1 },
     strategy_version: 'v1',
     event_name: 'POSITION_UPDATED',
+    recorded_at: '2026-09-13T00:00:01.100Z',
     occurred_at: '2026-09-13T00:00:01Z',
     runtime_id: runtimeId,
+    id: 101,
   }];
 
   const leftFingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, left);
@@ -28,10 +32,12 @@ test('produces a stable sha256 fingerprint across object key ordering', async ()
   assert.equal(leftFingerprint, rightFingerprint);
 });
 
-test('changes when canonical input or frozen watermark changes', async () => {
+test('changes when canonical content, row identity, ordering timestamp, or frozen watermark changes', async () => {
   const rows = [{
+    id: 101,
     runtime_id: runtimeId,
     occurred_at: '2026-09-13T00:00:01Z',
+    recorded_at: '2026-09-13T00:00:01.100Z',
     event_name: 'POSITION_UPDATED',
     strategy_version: 'v1',
     trace: { sequence: 1 },
@@ -41,8 +47,16 @@ test('changes when canonical input or frozen watermark changes', async () => {
   const changedRow = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, [
     { ...rows[0], trace: { sequence: 2 } },
   ]);
+  const changedId = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, [
+    { ...rows[0], id: 102 },
+  ]);
+  const changedRecordedAt = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, [
+    { ...rows[0], recorded_at: '2026-09-13T00:00:01.200Z' },
+  ]);
   const changedWatermark = await fingerprintCanonicalPaperEvents(runtimeId, '2026-09-13T00:11:00.000Z', rows);
 
   assert.notEqual(baseline, changedRow);
+  assert.notEqual(baseline, changedId);
+  assert.notEqual(baseline, changedRecordedAt);
   assert.notEqual(baseline, changedWatermark);
 });
