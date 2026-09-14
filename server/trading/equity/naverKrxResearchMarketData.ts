@@ -1,6 +1,7 @@
 import type { KisIndexSnapshot, KisRankedStock, KisStockProfile } from './kisMarketData';
 
 const NAVER_FRONT = 'https://m.stock.naver.com/front-api';
+const NAVER_MARKET_STOCK = 'https://stock.naver.com/api/domestic/market/stock/default';
 const NAVER_POLLING = 'https://polling.finance.naver.com/api/realtime';
 const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_DISCOVERY_PER_MARKET = 100;
@@ -9,9 +10,9 @@ const SECTOR_SCAN_LIMIT = 24;
 
 const asNumber = (value: unknown): number | null => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const text = String(value ?? '').replace(/,/g, '').replace(/%/g, '').trim();
-  if (!text || text === '-' || text.toUpperCase() === 'N/A') return null;
-  const parsed = Number(text);
+  const normalized = String(value ?? '').replace(/,/g, '').replace(/%/g, '').trim();
+  if (!normalized || normalized === '-' || normalized.toUpperCase() === 'N/A') return null;
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
@@ -27,8 +28,21 @@ const text = (...values: unknown[]) => {
   return '';
 };
 
-const symbolOf = (item: any) => text(item?.itemCode, item?.stockCode, item?.code, item?.cd).replace(/^A/, '').toUpperCase();
-const nameOf = (item: any) => text(item?.stockName, item?.itemName, item?.name, item?.nm);
+const symbolOf = (item: any) => text(
+  item?.itemCode,
+  item?.itemcode,
+  item?.stockCode,
+  item?.code,
+  item?.cd,
+).replace(/^A/, '').toUpperCase();
+
+const nameOf = (item: any) => text(
+  item?.stockName,
+  item?.itemName,
+  item?.itemname,
+  item?.name,
+  item?.nm,
+);
 
 const arraysIn = (value: unknown, depth = 0): any[][] => {
   if (depth > 4 || value == null) return [];
@@ -54,10 +68,35 @@ export const parseNaverStockListPayload = (
 ): KisRankedStock[] => stockArrayFrom(payload).flatMap((item, index) => {
   const symbol = symbolOf(item);
   const name = nameOf(item);
-  const price = asNumber(item?.closePrice ?? item?.currentPrice ?? item?.tradePrice ?? item?.price ?? item?.nv);
-  const volume = asNumber(item?.accumulatedTradingVolume ?? item?.tradingVolume ?? item?.volume ?? item?.quant ?? item?.aq);
-  const turnoverKrw = asNumber(item?.accumulatedTradingValue ?? item?.tradingValue ?? item?.turnoverKrw ?? item?.amount ?? item?.aa) ?? 0;
-  const changeRate = asPercentRatio(item?.fluctuationsRatio ?? item?.changeRate ?? item?.cr);
+  const price = asNumber(
+    item?.closePrice
+      ?? item?.currentPrice
+      ?? item?.tradePrice
+      ?? item?.nowPrice
+      ?? item?.price
+      ?? item?.nv,
+  );
+  const volume = asNumber(
+    item?.accumulatedTradingVolume
+      ?? item?.tradingVolume
+      ?? item?.tradeVolume
+      ?? item?.volume
+      ?? item?.quant
+      ?? item?.aq,
+  );
+  const turnoverKrw = asNumber(
+    item?.accumulatedTradingValue
+      ?? item?.tradingValue
+      ?? item?.turnoverKrw
+      ?? item?.amount
+      ?? item?.aa,
+  ) ?? 0;
+  const changeRate = asPercentRatio(
+    item?.fluctuationsRatio
+      ?? item?.changeRate
+      ?? item?.prevChangeRate
+      ?? item?.cr,
+  );
   if (!/^[A-Z0-9]{6}$/.test(symbol) || !name || price == null || price <= 0 || volume == null || volume < 0) return [];
   return [{
     symbol,
@@ -165,7 +204,7 @@ const getJson = async (url: string) => {
     headers: {
       Accept: 'application/json, text/plain, */*',
       'User-Agent': 'Mozilla/5.0 BlackOracle/1.0 account-free-research',
-      Referer: 'https://m.stock.naver.com/',
+      Referer: url.startsWith('https://stock.naver.com/') ? 'https://stock.naver.com/' : 'https://m.stock.naver.com/',
     },
     cache: 'no-store',
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -239,10 +278,11 @@ export class NaverKrxResearchMarketData {
 
   private async loadSnapshot(now = Date.now()): Promise<NaverKrxResearchSnapshot> {
     const listRequests = (['KOSPI', 'KOSDAQ'] as const).map(async (marketName) => {
-      const url = new URL(`${NAVER_FRONT}/stock/domestic/stockList`);
-      url.searchParams.set('sortType', 'quantTop');
-      url.searchParams.set('category', marketName);
-      url.searchParams.set('page', '1');
+      const url = new URL(NAVER_MARKET_STOCK);
+      url.searchParams.set('tradeType', 'KRX');
+      url.searchParams.set('marketType', marketName);
+      url.searchParams.set('orderType', 'quantTop');
+      url.searchParams.set('startIdx', '0');
       url.searchParams.set('pageSize', String(MAX_DISCOVERY_PER_MARKET));
       return { marketName, payload: await getJson(url.toString()) };
     });
@@ -314,8 +354,8 @@ export class NaverKrxResearchMarketData {
       tradingDate: kstDate(now),
       asOf: now,
       sourceIds: [
-        'NAVER:FRONT:STOCK_LIST:QUANT_TOP:KOSPI',
-        'NAVER:FRONT:STOCK_LIST:QUANT_TOP:KOSDAQ',
+        'NAVER:STOCK:DOMESTIC_MARKET:QUANT_TOP:KOSPI',
+        'NAVER:STOCK:DOMESTIC_MARKET:QUANT_TOP:KOSDAQ',
         'NAVER:POLLING:SERVICE_ITEM',
         'NAVER:POLLING:SERVICE_INDEX',
         'NAVER:FRONT:SECTOR_UPJONG:OPTIONAL',
