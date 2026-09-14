@@ -162,6 +162,27 @@ export const parsePaperProtectionEvidenceBaseline = (
 };
 
 /**
+ * Converts one already-validated, complete frozen evidence result into the exact
+ * baseline schema used by later comparisons. Keeping this mapping centralized
+ * avoids manual transcription of lineage or diagnostic metrics.
+ */
+export const buildExactPaperProtectionEvidenceBaseline = (
+  result: PaperProtectionEvidencePassResult,
+): PaperProtectionEvidenceBaseline => parsePaperProtectionEvidenceBaseline({
+  source: {
+    kind: 'exact-snapshot',
+    runtimeId: result.runtimeId,
+    snapshotRecordedAt: result.export.snapshotRecordedAt,
+    snapshotFingerprint: result.export.snapshotFingerprint,
+  },
+  sourceRows: result.diagnostic.sourceRows,
+  observations: result.diagnostic.observations,
+  favorableOvershootRemoved: result.diagnostic.favorableOvershootRemoved,
+  grossExitValueDelta: result.diagnostic.grossExitValueDelta,
+  changedExits: result.diagnostic.changedExits,
+});
+
+/**
  * Executes one read-only evidence pass from a frozen canonical Paper snapshot
  * to the protection diagnostic. A capped/truncated export is rejected rather
  * than being presented as complete qualification evidence.
