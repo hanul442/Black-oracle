@@ -15,8 +15,10 @@ const row = (
   ledgerType: 'POSITION_UPDATED' | 'ORDER_FILLED',
   payload: Record<string, unknown>,
 ): CanonicalPaperEventRow => ({
+  id: `canonical-${sequence.toString().padStart(4, '0')}`,
   runtime_id: runtimeId,
   occurred_at: new Date(sequence * 1_000).toISOString(),
+  recorded_at: new Date(sequence * 1_000 + 100).toISOString(),
   event_name: ledgerType,
   strategy_version: 'BO-UNIFIED-v0.3.0',
   trace: {
@@ -91,7 +93,7 @@ const buildArtifacts = async () => {
   };
 };
 
-test('verifies lineage fingerprint and replayed metrics for a saved exact baseline', async () => {
+test('verifies lineage fingerprint pagination identity and replayed metrics for a saved exact baseline', async () => {
   const { exported, baseline } = await buildArtifacts();
   const result = await verifyPaperProtectionBaselineAgainstExport(exported, baseline);
 
@@ -150,16 +152,89 @@ test('rejects historical summaries, truncated artifacts, and cross-runtime rows'
   );
 });
 
+test('rejects duplicate canonical row ids even when an artifact can be re-fingerprinted', async () => {
+  const { exported, baseline } = await buildArtifacts();
+  const duplicateRows = structuredClone(exported.rows);
+  duplicateRows[1]!.id = duplicateRows[0]!.id;
+  const fingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, duplicateRows);
+  const duplicateExport = {
+    ...exported,
+    snapshotFingerprint: fingerprint,
+    rows: duplicateRows,
+  };
+  const duplicateBaseline = {
+    ...baseline,
+    source: { ...baseline.source, snapshotFingerprint: fingerprint },
+  };
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport(duplicateExport, duplicateBaseline),
+    /duplicate row id/,
+  );
+});
+
+test('rejects non-monotonic occurred_at recorded_at id pagination identity', async () => {
+  const { exported, baseline } = await buildArtifacts();
+  const unorderedRows = structuredClone(exported.rows).reverse();
+  const fingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, unorderedRows);
+  const unorderedExport = {
+    ...exported,
+    snapshotFingerprint: fingerprint,
+    rows: unorderedRows,
+  };
+  const unorderedBaseline = {
+    ...baseline,
+    source: { ...baseline.source, snapshotFingerprint: fingerprint },
+  };
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport(unorderedExport, unorderedBaseline),
+    /violates deterministic occurred_at\/recorded_at\/id pagination order/,
+  );
+});
+
+test('rejects missing pagination identity and rows beyond the frozen watermark', async () => {
+  const { exported, baseline } = await buildArtifacts();
+
+  const missingIdentity = structuredClone(exported);
+  delete missingIdentity.rows[0]!.id;
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport(missingIdentity, baseline),
+    /requires a stable id/,
+  );
+
+  const beyondWatermarkRows = structuredClone(exported.rows);
+  beyondWatermarkRows[1]!.recorded_at = '2026-09-14T00:00:00.001Z';
+  const fingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, beyondWatermarkRows);
+  const beyondWatermarkExport = {
+    ...exported,
+    snapshotFingerprint: fingerprint,
+    rows: beyondWatermarkRows,
+  };
+  const beyondWatermarkBaseline = {
+    ...baseline,
+    source: { ...baseline.source, snapshotFingerprint: fingerprint },
+  };
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport(beyondWatermarkExport, beyondWatermarkBaseline),
+    /recorded_at exceeds the frozen snapshot watermark/,
+  );
+});
+
 test('fails closed when replay rejects a canonical row even if the artifact fingerprint is internally consistent', async () => {
   const { exported, baseline } = await buildArtifacts();
   const malformedRows = structuredClone(exported.rows);
   malformedRows.push({
+    id: 'canonical-0003',
     runtime_id: runtimeId,
-    occurred_at: '2026-09-14T00:00:03.000Z',
+    occurred_at: '2026-09-13T23:59:59.000Z',
+    recorded_at: '2026-09-13T23:59:59.100Z',
     event_name: 'POSITION_UPDATED',
     strategy_version: 'BO-UNIFIED-v0.3.0',
     trace: null,
   });
+  malformedRows.sort((left, right) => Date.parse(String(left.occurred_at)) - Date.parse(String(right.occurred_at)));
   const fingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, malformedRows);
   const malformedExport = {
     ...exported,
