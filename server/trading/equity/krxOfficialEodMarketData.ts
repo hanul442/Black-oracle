@@ -1,7 +1,7 @@
 import type { KisIndexSnapshot, KisRankedStock, KisStockProfile } from './kisMarketData';
 
-const KRX_JSON_URL = 'https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd';
-const KRX_REFERER = 'https://data.krx.co.kr/contents/MDC/MAIN/main/index.cmd';
+const KRX_JSON_URL = 'http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd';
+const KRX_REFERER = 'http://data.krx.co.kr/contents/MDC/STAT/standard/MDCSTAT01501';
 const DAY_MS = 24 * 60 * 60_000;
 
 const asNumber = (value: unknown): number | null => {
@@ -36,14 +36,17 @@ const postKrx = async (bld: string, form: Record<string, string>) => {
       Accept: 'application/json, text/plain, */*',
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       Referer: KRX_REFERER,
-      'User-Agent': 'Mozilla/5.0 BlackOracle/1.0 KRX-EOD-research',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36',
       'X-Requested-With': 'XMLHttpRequest',
     },
     body,
     cache: 'no-store',
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`KRX ${bld} returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 180);
+    throw new Error(`KRX ${bld} returned HTTP ${response.status}${detail ? `: ${detail}` : '.'}`);
+  }
   const payload = await response.json().catch(() => null) as any;
   if (!payload || typeof payload !== 'object') throw new Error(`KRX ${bld} returned a non-JSON payload.`);
   return payload;
@@ -137,8 +140,6 @@ const indexObservation = (
   return {
     code: name === 'KOSPI' ? '0001' as const : '1001' as const,
     name,
-    // EOD all-stock statistics do not expose the official index level in this endpoint.
-    // A neutral positive sentinel keeps the observation structurally valid while change-rate/breadth drive the research score.
     value: 1,
     changeRate: weightedReturn,
     volume: rows.reduce((sum, item) => sum + Math.max(0, item.volume ?? 0), 0),
