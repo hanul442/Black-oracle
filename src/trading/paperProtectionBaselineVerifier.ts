@@ -43,18 +43,54 @@ const isPositiveInteger = (value: unknown): value is number =>
 const isSnapshotFingerprint = (value: unknown): value is string =>
   typeof value === 'string' && /^sha256:[0-9a-f]{64}$/.test(value);
 
-const parseSnapshotRecordedAt = (value: unknown): string | null => {
-  if (value === null) return null;
+const parseTimestamp = (value: unknown, label: string): string => {
   if (typeof value !== 'string' || !value.trim() || !Number.isFinite(Date.parse(value))) {
-    throw new Error('Canonical Paper export snapshotRecordedAt must be a valid timestamp string or null.');
+    throw new Error(`${label} must be a valid timestamp string.`);
   }
   return value;
+};
+
+const parseSnapshotRecordedAt = (value: unknown): string | null => {
+  if (value === null) return null;
+  return parseTimestamp(value, 'Canonical Paper export snapshotRecordedAt');
+};
+
+const parseIdentityId = (value: unknown, index: number): string | number => {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  throw new Error(`Canonical Paper export row ${index} requires a stable id for pagination identity.`);
+};
+
+interface CanonicalPaginationIdentity {
+  occurredAt: number;
+  recordedAt: number;
+  id: string | number;
+}
+
+const compareIds = (left: string | number, right: string | number): number => {
+  if (typeof left !== typeof right) {
+    throw new Error('Canonical Paper export mixes id types; deterministic pagination identity cannot be verified.');
+  }
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  const leftString = String(left);
+  const rightString = String(right);
+  return leftString < rightString ? -1 : leftString > rightString ? 1 : 0;
+};
+
+const comparePaginationIdentity = (
+  left: CanonicalPaginationIdentity,
+  right: CanonicalPaginationIdentity,
+): number => {
+  if (left.occurredAt !== right.occurredAt) return left.occurredAt - right.occurredAt;
+  if (left.recordedAt !== right.recordedAt) return left.recordedAt - right.recordedAt;
+  return compareIds(left.id, right.id);
 };
 
 /**
  * Parses a saved output from `export:paper-protection-events` without trusting
  * operator-edited metadata. A truncated artifact, count mismatch, cross-runtime
- * row, or malformed fingerprint fails closed before any baseline comparison.
+ * row, malformed fingerprint, duplicate row identity, or pagination-order drift
+ * fails closed before any baseline comparison.
  */
 export const parseSavedCanonicalPaperEventExport = (
   value: unknown,
@@ -80,13 +116,36 @@ export const parseSavedCanonicalPaperEventExport = (
   if (candidate.rows.length > 0 && snapshotRecordedAt === null) {
     throw new Error('Non-empty canonical Paper export requires a frozen snapshotRecordedAt watermark.');
   }
+  const snapshotRecordedAtMs = snapshotRecordedAt === null ? null : Date.parse(snapshotRecordedAt);
 
+  const seenIds = new Set<string>();
+  let previousIdentity: CanonicalPaginationIdentity | null = null;
   const rows = candidate.rows.map((row, index) => {
     const record = asRecord(row);
     if (!record) throw new Error(`Canonical Paper export row ${index} must be an object.`);
     if (record.runtime_id !== runtimeId) {
       throw new Error(`Canonical Paper export row ${index} runtime_id does not match ${runtimeId}.`);
     }
+
+    const id = parseIdentityId(record.id, index);
+    const idKey = `${typeof id}:${String(id)}`;
+    if (seenIds.has(idKey)) {
+      throw new Error(`Canonical Paper export contains duplicate row id ${String(id)}.`);
+    }
+    seenIds.add(idKey);
+
+    const occurredAt = Date.parse(parseTimestamp(record.occurred_at, `Canonical Paper export row ${index} occurred_at`));
+    const recordedAt = Date.parse(parseTimestamp(record.recorded_at, `Canonical Paper export row ${index} recorded_at`));
+    if (snapshotRecordedAtMs !== null && recordedAt > snapshotRecordedAtMs) {
+      throw new Error(`Canonical Paper export row ${index} recorded_at exceeds the frozen snapshot watermark.`);
+    }
+
+    const identity: CanonicalPaginationIdentity = { occurredAt, recordedAt, id };
+    if (previousIdentity && comparePaginationIdentity(previousIdentity, identity) >= 0) {
+      throw new Error(`Canonical Paper export row ${index} violates deterministic occurred_at/recorded_at/id pagination order.`);
+    }
+    previousIdentity = identity;
+
     return record as CanonicalPaperEventRow;
   });
 
@@ -113,9 +172,10 @@ const assertMetric = (label: string, actual: number, expected: number) => {
  * canonical export. This is intentionally offline: it opens no runtime, makes no
  * network request, and has no database/broker write path.
  *
- * Verification requires all three lineage anchors (runtime, frozen watermark,
- * SHA-256 fingerprint) plus diagnostic metrics to agree with a fresh replay of
- * the saved canonical rows. Historical-summary baselines cannot pass this gate.
+ * Verification requires the canonical pagination identity to be complete and
+ * monotonic, all three lineage anchors (runtime, frozen watermark, SHA-256
+ * fingerprint) to agree, and diagnostic metrics to match a fresh replay of the
+ * saved canonical rows. Historical-summary baselines cannot pass this gate.
  */
 export const verifyPaperProtectionBaselineAgainstExport = async (
   exportValue: unknown,
