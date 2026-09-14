@@ -4,6 +4,7 @@ import { fingerprintCanonicalPaperEvents } from './canonicalPaperEventFingerprin
 import type { CanonicalPaperEventRow } from './canonicalPaperProtectionReplay';
 import { buildPaperProtectionDiagnostic } from './paperProtectionDiagnostic';
 import {
+  parseSavedCanonicalPaperEventExport,
   verifyPaperProtectionBaselineAgainstExport,
 } from './paperProtectionBaselineVerifier';
 
@@ -62,6 +63,12 @@ const rows = (): CanonicalPaperEventRow[] => [
   }),
 ];
 
+const boundaryFor = (canonicalRow: CanonicalPaperEventRow) => ({
+  occurredAt: canonicalRow.occurred_at,
+  recordedAt: canonicalRow.recorded_at,
+  id: canonicalRow.id!,
+});
+
 const buildArtifacts = async () => {
   const canonicalRows = rows();
   const fingerprint = await fingerprintCanonicalPaperEvents(runtimeId, snapshotRecordedAt, canonicalRows);
@@ -75,6 +82,8 @@ const buildArtifacts = async () => {
       truncated: false,
       snapshotRecordedAt,
       snapshotFingerprint: fingerprint,
+      firstBoundary: boundaryFor(canonicalRows[0]!),
+      lastBoundary: boundaryFor(canonicalRows[canonicalRows.length - 1]!),
       rows: canonicalRows,
     },
     baseline: {
@@ -93,7 +102,7 @@ const buildArtifacts = async () => {
   };
 };
 
-test('verifies lineage fingerprint pagination identity and replayed metrics for a saved exact baseline', async () => {
+test('verifies lineage fingerprint pagination identity boundaries and replayed metrics for a saved exact baseline', async () => {
   const { exported, baseline } = await buildArtifacts();
   const result = await verifyPaperProtectionBaselineAgainstExport(exported, baseline);
 
@@ -160,6 +169,7 @@ test('rejects duplicate canonical row ids even when an artifact can be re-finger
   const duplicateExport = {
     ...exported,
     snapshotFingerprint: fingerprint,
+    lastBoundary: boundaryFor(duplicateRows[1]!),
     rows: duplicateRows,
   };
   const duplicateBaseline = {
@@ -180,6 +190,8 @@ test('rejects non-monotonic occurred_at recorded_at id pagination identity', asy
   const unorderedExport = {
     ...exported,
     snapshotFingerprint: fingerprint,
+    firstBoundary: boundaryFor(unorderedRows[0]!),
+    lastBoundary: boundaryFor(unorderedRows[unorderedRows.length - 1]!),
     rows: unorderedRows,
   };
   const unorderedBaseline = {
@@ -209,6 +221,7 @@ test('rejects missing pagination identity and rows beyond the frozen watermark',
   const beyondWatermarkExport = {
     ...exported,
     snapshotFingerprint: fingerprint,
+    lastBoundary: boundaryFor(beyondWatermarkRows[1]!),
     rows: beyondWatermarkRows,
   };
   const beyondWatermarkBaseline = {
@@ -241,6 +254,8 @@ test('fails closed when replay rejects a canonical row even if the artifact fing
     count: malformedRows.length,
     pages: 1,
     snapshotFingerprint: fingerprint,
+    firstBoundary: boundaryFor(malformedRows[0]!),
+    lastBoundary: boundaryFor(malformedRows[malformedRows.length - 1]!),
     rows: malformedRows,
   };
   const diagnostic = buildPaperProtectionDiagnostic(runtimeId, malformedRows);
@@ -271,5 +286,63 @@ test('rejects page-count metadata that cannot describe the exported row set', as
   await assert.rejects(
     () => verifyPaperProtectionBaselineAgainstExport({ ...exported, pageSize: 1 }, baseline),
     /page cardinality mismatch/,
+  );
+});
+
+test('rejects missing or tampered first and last pagination boundary attestations', async () => {
+  const { exported, baseline } = await buildArtifacts();
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({ ...exported, firstBoundary: undefined }, baseline),
+    /firstBoundary must be an object or null/,
+  );
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({ ...exported, lastBoundary: null }, baseline),
+    /requires firstBoundary and lastBoundary attestations/,
+  );
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({
+      ...exported,
+      firstBoundary: { ...exported.firstBoundary, id: 'canonical-tampered' },
+    }, baseline),
+    /firstBoundary does not match the first ordered row identity/,
+  );
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({
+      ...exported,
+      lastBoundary: { ...exported.lastBoundary, recordedAt: '2026-09-13T00:00:00.000Z' },
+    }, baseline),
+    /lastBoundary does not match the last ordered row identity/,
+  );
+});
+
+test('requires null boundary attestations for an empty canonical export', async () => {
+  const emptyFingerprint = await fingerprintCanonicalPaperEvents(runtimeId, null, []);
+  const emptyExport = {
+    runtimeId,
+    count: 0,
+    pages: 0,
+    pageSize: 500,
+    truncated: false,
+    snapshotRecordedAt: null,
+    snapshotFingerprint: emptyFingerprint,
+    firstBoundary: null,
+    lastBoundary: null,
+    rows: [],
+  };
+
+  const parsed = parseSavedCanonicalPaperEventExport(emptyExport);
+  assert.equal(parsed.firstBoundary, null);
+  assert.equal(parsed.lastBoundary, null);
+
+  assert.throws(
+    () => parseSavedCanonicalPaperEventExport({
+      ...emptyExport,
+      firstBoundary: { occurredAt: '2026-09-14T00:00:00.000Z', recordedAt: '2026-09-14T00:00:00.000Z', id: 'unexpected' },
+    }),
+    /Empty canonical Paper export requires null firstBoundary and lastBoundary attestations/,
   );
 });
