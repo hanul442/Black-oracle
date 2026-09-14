@@ -239,6 +239,7 @@ test('fails closed when replay rejects a canonical row even if the artifact fing
   const malformedExport = {
     ...exported,
     count: malformedRows.length,
+    pages: 1,
     snapshotFingerprint: fingerprint,
     rows: malformedRows,
   };
@@ -256,5 +257,19 @@ test('fails closed when replay rejects a canonical row even if the artifact fing
   await assert.rejects(
     () => verifyPaperProtectionBaselineAgainstExport(malformedExport, malformedBaseline),
     /replay-rejected row/,
+  );
+});
+
+test('rejects page-count metadata that cannot describe the exported row set', async () => {
+  const { exported, baseline } = await buildArtifacts();
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({ ...exported, pages: 2 }, baseline),
+    /page cardinality mismatch/,
+  );
+
+  await assert.rejects(
+    () => verifyPaperProtectionBaselineAgainstExport({ ...exported, pageSize: 1 }, baseline),
+    /page cardinality mismatch/,
   );
 });
