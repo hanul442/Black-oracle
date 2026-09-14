@@ -1,4 +1,5 @@
 import { fingerprintCanonicalPaperEvents } from './canonicalPaperEventFingerprint';
+import type { CanonicalPaginationBoundary } from './canonicalPaperEventExport';
 import type { CanonicalPaperEventRow } from './canonicalPaperProtectionReplay';
 import { buildPaperProtectionDiagnostic } from './paperProtectionDiagnostic';
 import {
@@ -14,6 +15,8 @@ export interface SavedCanonicalPaperEventExport {
   truncated: false;
   snapshotRecordedAt: string | null;
   snapshotFingerprint: string;
+  firstBoundary: CanonicalPaginationBoundary | null;
+  lastBoundary: CanonicalPaginationBoundary | null;
   rows: CanonicalPaperEventRow[];
 }
 
@@ -86,11 +89,31 @@ const comparePaginationIdentity = (
   return compareIds(left.id, right.id);
 };
 
+const parseBoundary = (value: unknown, label: 'firstBoundary' | 'lastBoundary'): CanonicalPaginationBoundary | null => {
+  if (value === null) return null;
+  const candidate = asRecord(value);
+  if (!candidate) throw new Error(`Canonical Paper export ${label} must be an object or null.`);
+  const occurredAt = parseTimestamp(candidate.occurredAt, `Canonical Paper export ${label}.occurredAt`);
+  const recordedAt = parseTimestamp(candidate.recordedAt, `Canonical Paper export ${label}.recordedAt`);
+  const id = candidate.id;
+  if (!(typeof id === 'string' && id.trim()) && !(typeof id === 'number' && Number.isFinite(id))) {
+    throw new Error(`Canonical Paper export ${label}.id must be a stable string or finite number.`);
+  }
+  return { occurredAt, recordedAt, id };
+};
+
+const boundaryMatchesRow = (boundary: CanonicalPaginationBoundary, row: CanonicalPaperEventRow): boolean =>
+  boundary.occurredAt === row.occurred_at
+  && boundary.recordedAt === row.recorded_at
+  && typeof boundary.id === typeof row.id
+  && boundary.id === row.id;
+
 /**
  * Parses a saved output from `export:paper-protection-events` without trusting
  * operator-edited metadata. A truncated artifact, count mismatch, page-cardinality
- * mismatch, cross-runtime row, malformed fingerprint, duplicate row identity, or
- * pagination-order drift fails closed before any baseline comparison.
+ * mismatch, cross-runtime row, malformed fingerprint, duplicate row identity,
+ * pagination-order drift, or boundary-attestation mismatch fails closed before
+ * any baseline comparison.
  */
 export const parseSavedCanonicalPaperEventExport = (
   value: unknown,
@@ -154,6 +177,24 @@ export const parseSavedCanonicalPaperEventExport = (
     return record as CanonicalPaperEventRow;
   });
 
+  const firstBoundary = parseBoundary(candidate.firstBoundary, 'firstBoundary');
+  const lastBoundary = parseBoundary(candidate.lastBoundary, 'lastBoundary');
+  if (rows.length === 0) {
+    if (firstBoundary !== null || lastBoundary !== null) {
+      throw new Error('Empty canonical Paper export requires null firstBoundary and lastBoundary attestations.');
+    }
+  } else {
+    if (firstBoundary === null || lastBoundary === null) {
+      throw new Error('Non-empty canonical Paper export requires firstBoundary and lastBoundary attestations.');
+    }
+    if (!boundaryMatchesRow(firstBoundary, rows[0]!)) {
+      throw new Error('Canonical Paper export firstBoundary does not match the first ordered row identity.');
+    }
+    if (!boundaryMatchesRow(lastBoundary, rows[rows.length - 1]!)) {
+      throw new Error('Canonical Paper export lastBoundary does not match the last ordered row identity.');
+    }
+  }
+
   return {
     runtimeId,
     count: candidate.count,
@@ -162,6 +203,8 @@ export const parseSavedCanonicalPaperEventExport = (
     truncated: false,
     snapshotRecordedAt,
     snapshotFingerprint: candidate.snapshotFingerprint,
+    firstBoundary,
+    lastBoundary,
     rows,
   };
 };
@@ -178,10 +221,10 @@ const assertMetric = (label: string, actual: number, expected: number) => {
  * network request, and has no database/broker write path.
  *
  * Verification requires the canonical pagination identity to be complete and
- * monotonic, page cardinality to match the declared page size, all three lineage
- * anchors (runtime, frozen watermark, SHA-256 fingerprint) to agree, and diagnostic
- * metrics to match a fresh replay of the saved canonical rows. Historical-summary
- * baselines cannot pass this gate.
+ * monotonic, page cardinality and first/last boundary attestations to match the
+ * saved ordered row set, all three lineage anchors (runtime, frozen watermark,
+ * SHA-256 fingerprint) to agree, and diagnostic metrics to match a fresh replay
+ * of the saved canonical rows. Historical-summary baselines cannot pass this gate.
  */
 export const verifyPaperProtectionBaselineAgainstExport = async (
   exportValue: unknown,
