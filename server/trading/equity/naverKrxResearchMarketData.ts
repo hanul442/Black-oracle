@@ -136,7 +136,7 @@ export const parseNaverIndexPolling = (payload: unknown, asOf: number): KisIndex
   .flat()
   .flatMap((item) => {
     const rawCode = text(item?.cd, item?.code, item?.reutersCode).toUpperCase();
-    const name = rawCode.includes('KOSDAQ') ? 'KOSDAQ' : rawCode.includes('KOSPI') ? 'KOSPI' : null;
+    const name: 'KOSPI' | 'KOSDAQ' | null = rawCode.includes('KOSDAQ') ? 'KOSDAQ' : rawCode.includes('KOSPI') ? 'KOSPI' : null;
     if (!name) return [];
     const value = indexValue(item?.nv ?? item?.closePrice);
     if (value == null || value <= 0) return [];
