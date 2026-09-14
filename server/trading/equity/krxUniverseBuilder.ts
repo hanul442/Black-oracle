@@ -7,7 +7,7 @@ import {
 import type { EquityExposureResolution } from '../../../src/trading/equityExposureRegistry';
 import type { KisRankedStock, KisStockProfile } from './kisMarketData';
 
-export type KrxUniverseSource = 'KIS' | 'KRX_OFFICIAL_EOD';
+export type KrxUniverseSource = 'KIS' | 'KRX_OFFICIAL_EOD' | 'NAVER_FINANCE_DELAYED';
 
 export interface KrxUniverseMarketData {
   readonly source?: KrxUniverseSource;
@@ -162,7 +162,11 @@ export const buildKrxUniversePacket = async (
   }
 
   const eligible = rows.filter((row) => row.decision.eligible).length;
-  const sourceLabel = source === 'KIS' ? 'KIS realtime/current profile data' : 'official KRX end-of-day statistics';
+  const sourceLabel = source === 'KIS'
+    ? 'KIS realtime/current profile data'
+    : source === 'KRX_OFFICIAL_EOD'
+      ? 'official KRX end-of-day statistics'
+      : 'Naver/Koscom public market-data fallback';
   return {
     asOf,
     source,
@@ -180,7 +184,9 @@ export const buildKrxUniversePacket = async (
       'Crypto exposure must resolve from source-backed registry records; UNKNOWN remains blocked.',
       source === 'KRX_OFFICIAL_EOD'
         ? 'Official KRX EOD data is research-only; missing current-session designation flags remain an explicit hard-gate DATA_GAP.'
-        : 'KIS current profile metadata is used when configured.',
+        : source === 'NAVER_FINANCE_DELAYED'
+          ? 'Naver/Koscom account-free fallback is research-only; source-incomplete designation metadata remains an explicit hard-gate DATA_GAP and cannot authorize execution.'
+          : 'KIS current profile metadata is used when configured.',
     ],
   };
 };
