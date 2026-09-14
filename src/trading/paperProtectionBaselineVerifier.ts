@@ -88,9 +88,9 @@ const comparePaginationIdentity = (
 
 /**
  * Parses a saved output from `export:paper-protection-events` without trusting
- * operator-edited metadata. A truncated artifact, count mismatch, cross-runtime
- * row, malformed fingerprint, duplicate row identity, or pagination-order drift
- * fails closed before any baseline comparison.
+ * operator-edited metadata. A truncated artifact, count mismatch, page-cardinality
+ * mismatch, cross-runtime row, malformed fingerprint, duplicate row identity, or
+ * pagination-order drift fails closed before any baseline comparison.
  */
 export const parseSavedCanonicalPaperEventExport = (
   value: unknown,
@@ -110,6 +110,11 @@ export const parseSavedCanonicalPaperEventExport = (
   if (!Array.isArray(candidate.rows)) throw new Error('Canonical Paper export requires a rows array.');
   if (candidate.count !== candidate.rows.length) {
     throw new Error(`Canonical Paper export count mismatch: metadata=${candidate.count}, rows=${candidate.rows.length}.`);
+  }
+
+  const expectedPages = candidate.count === 0 ? 0 : Math.ceil(candidate.count / candidate.pageSize);
+  if (candidate.pages !== expectedPages) {
+    throw new Error(`Canonical Paper export page cardinality mismatch: metadata=${candidate.pages}, expected=${expectedPages}.`);
   }
 
   const snapshotRecordedAt = parseSnapshotRecordedAt(candidate.snapshotRecordedAt);
@@ -173,9 +178,10 @@ const assertMetric = (label: string, actual: number, expected: number) => {
  * network request, and has no database/broker write path.
  *
  * Verification requires the canonical pagination identity to be complete and
- * monotonic, all three lineage anchors (runtime, frozen watermark, SHA-256
- * fingerprint) to agree, and diagnostic metrics to match a fresh replay of the
- * saved canonical rows. Historical-summary baselines cannot pass this gate.
+ * monotonic, page cardinality to match the declared page size, all three lineage
+ * anchors (runtime, frozen watermark, SHA-256 fingerprint) to agree, and diagnostic
+ * metrics to match a fresh replay of the saved canonical rows. Historical-summary
+ * baselines cannot pass this gate.
  */
 export const verifyPaperProtectionBaselineAgainstExport = async (
   exportValue: unknown,
