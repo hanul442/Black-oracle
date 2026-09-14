@@ -2,8 +2,10 @@ import { replayLongProtectionHistory, type PaperProtectionHistoryReport } from '
 import type { TradingLedgerEvent } from './types';
 
 export interface CanonicalPaperEventRow {
+  id?: string | number | null;
   runtime_id?: string | null;
   occurred_at?: string | number | null;
+  recorded_at?: string | number | null;
   event_name?: string | null;
   strategy_version?: string | null;
   trace?: unknown;
@@ -59,6 +61,10 @@ const incrementReason = (reasons: Record<string, number>, reason: string) => {
  * The adapter is intentionally fail-closed: rows from another runtime,
  * malformed traces, and unrelated canonical events are never guessed into
  * trading ledger entries. No database/session/portfolio state is mutated.
+ *
+ * `id` and `recorded_at` are retained on the canonical row type because export
+ * snapshots fingerprint the same stable pagination identity used by PostgREST.
+ * They remain metadata only and never affect replay/trading semantics.
  */
 export const replayCanonicalPaperProtectionEvents = (
   runtimeId: string,
