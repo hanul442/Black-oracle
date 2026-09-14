@@ -12,7 +12,11 @@
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts server/eventLedger*.test.ts",
-    "smoke:trading": "tsx scripts/trading-smoke.ts"
+    "smoke:trading": "tsx scripts/trading-smoke.ts",
+    "diagnostic:paper-protection": "tsx scripts/paper-protection-diagnostic.ts",
+    "export:paper-protection-events": "tsx scripts/export-paper-protection-events.ts",
+    "evidence:paper-protection": "tsx scripts/run-paper-protection-evidence.ts",
+    "verify:paper-protection-baseline": "tsx scripts/verify-paper-protection-baseline.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
