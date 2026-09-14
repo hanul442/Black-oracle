@@ -1,6 +1,7 @@
 import type { DecisionTapeItem, LedgerEvent, OpenPosition, OperationsPayload } from '../v2/types';
 
 export type InstrumentAssetClass = 'CRYPTO' | 'EQUITY' | 'UNKNOWN';
+export type InstrumentLineageStatus = 'COMPLETE' | 'PARTIAL' | 'DATA_GAP';
 
 export type InstrumentSummary = {
   market: string;
@@ -23,6 +24,11 @@ export type InstrumentCockpitProjection = InstrumentSummary & {
   tradeEvents: LedgerEvent[];
   outcomes: LedgerEvent[];
   latestByType: Record<string, LedgerEvent | null>;
+  observedLatestByType: Record<string, LedgerEvent | null>;
+  currentTraceId: string | null;
+  lineageStatus: InstrumentLineageStatus;
+  lineageScope: 'CANDIDATE_DECISION';
+  linkagePolicy: 'EXPLICIT_ONLY';
 };
 
 const assetClassOf = (market: string): InstrumentAssetClass => {
@@ -32,6 +38,28 @@ const assetClassOf = (market: string): InstrumentAssetClass => {
 };
 
 const eventTime = (event: LedgerEvent) => Number(event.occurredAt) || 0;
+const nonEmptyText = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null;
+const ownTraceIdOf = (event: LedgerEvent | null | undefined) =>
+  nonEmptyText(event?.trace?.traceId)
+  ?? nonEmptyText(event?.trace?.trace_id)
+  ?? nonEmptyText(event?.links?.traceId)
+  ?? nonEmptyText(event?.links?.trace_id);
+const entryTraceIdOf = (event: LedgerEvent | null | undefined) =>
+  nonEmptyText(event?.links?.entryTraceId)
+  ?? nonEmptyText(event?.links?.entry_trace_id);
+const explicitlyLinksTrace = (event: LedgerEvent, traceId: string) =>
+  ownTraceIdOf(event) === traceId || entryTraceIdOf(event) === traceId;
+
+const lineageTypes = ['EVIDENCE', 'STRATEGY', 'COUNCIL', 'DECISION', 'RISK', 'ORDER', 'TRADE', 'OUTCOME'] as const;
+
+const latestByTypeFrom = (events: LedgerEvent[]) => Object.fromEntries(
+  lineageTypes.map((type) => [type, events.find((item) => item.eventType?.toUpperCase() === type) ?? null]),
+) as Record<string, LedgerEvent | null>;
+
+const selectAnalysisAnchor = (events: LedgerEvent[]) => {
+  const observed = latestByTypeFrom(events);
+  return observed.DECISION ?? observed.COUNCIL ?? observed.STRATEGY ?? events[0] ?? null;
+};
 
 export const deriveInstrumentUniverse = (
   operations: OperationsPayload | null,
@@ -92,11 +120,28 @@ export const deriveInstrumentCockpit = (
     activityCount: 0,
     recentlyAnalyzed: false,
   };
-  const scoped = events
+  const observedEvents = events
     .filter((item) => item.market?.toUpperCase() === normalized)
     .sort((a, b) => eventTime(b) - eventTime(a));
+  const observedLatestByType = latestByTypeFrom(observedEvents);
+  const analysisAnchor = selectAnalysisAnchor(observedEvents);
+  const currentTraceId = ownTraceIdOf(analysisAnchor);
+
+  // Match the server instrument-cockpit contract: every displayed canonical stage
+  // must explicitly link to the same analysis trace. Missing trace identity fails
+  // closed instead of borrowing newer/older events from unrelated decisions.
+  const scoped = currentTraceId
+    ? observedEvents.filter((item) => explicitlyLinksTrace(item, currentTraceId))
+    : [];
   const by = (type: string) => scoped.filter((item) => item.eventType?.toUpperCase() === type);
-  const types = ['EVIDENCE', 'STRATEGY', 'COUNCIL', 'DECISION', 'RISK', 'ORDER', 'TRADE', 'OUTCOME'];
+  const latestByType = latestByTypeFrom(scoped);
+  const linkedStageCount = lineageTypes.reduce((count, type) => count + (latestByType[type] ? 1 : 0), 0);
+  const lineageStatus: InstrumentLineageStatus = !currentTraceId
+    ? 'DATA_GAP'
+    : linkedStageCount === lineageTypes.length
+      ? 'COMPLETE'
+      : 'PARTIAL';
+
   return {
     ...summary,
     events: scoped,
@@ -106,6 +151,11 @@ export const deriveInstrumentCockpit = (
     riskEvents: by('RISK'),
     tradeEvents: [...by('ORDER'), ...by('TRADE')].sort((a, b) => eventTime(b) - eventTime(a)),
     outcomes: by('OUTCOME'),
-    latestByType: Object.fromEntries(types.map((type) => [type, by(type)[0] ?? null])),
+    latestByType,
+    observedLatestByType,
+    currentTraceId,
+    lineageStatus,
+    lineageScope: 'CANDIDATE_DECISION',
+    linkagePolicy: 'EXPLICIT_ONLY',
   };
 };
