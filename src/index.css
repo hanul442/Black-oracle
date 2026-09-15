@@ -94,6 +94,23 @@
     overscroll-behavior: none;
   }
 
+  /* V11 mobile pages use the document as the primary scroll surface.
+     Desktop/legacy workspaces retain the locked-root contract above. */
+  body.bo-v11-document-scroll {
+    height: auto;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
+  }
+
+  body.bo-v11-document-scroll #root {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
   button,
   input,
   textarea,
