@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { BlackOracleMobileApp as BlackOracleMobileAppV11_1 } from './BlackOracleMobileAppV11_1';
+import './v11-scroll.css';
 
 const V11_DOCUMENT_SCROLL_CLASS = 'bo-v11-document-scroll';
 const SOURCE_STALE_MS = 90_000;
@@ -154,9 +155,13 @@ export const BlackOracleMobileApp = () => {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    document.documentElement.classList.add(V11_DOCUMENT_SCROLL_CLASS);
     document.body.classList.add(V11_DOCUMENT_SCROLL_CLASS);
-    return () => document.body.classList.remove(V11_DOCUMENT_SCROLL_CLASS);
+    return () => {
+      document.documentElement.classList.remove(V11_DOCUMENT_SCROLL_CLASS);
+      document.body.classList.remove(V11_DOCUMENT_SCROLL_CLASS);
+    };
   }, []);
 
   useEffect(() => {
