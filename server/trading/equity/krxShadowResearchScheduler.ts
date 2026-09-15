@@ -1,6 +1,7 @@
 import { appendCanonicalEvents } from '../../eventLedger';
 import { buildKrxShadowResearchCanonicalEvents } from './krxShadowResearchEvents';
 import { runKrxShadowResearchCycle, type KrxShadowResearchCycleResult } from './krxShadowResearchLoop';
+import { classifyKrxResearchTruth, snapshotKrxResearchTruth } from './krxResearchTruth';
 
 const DEFAULT_CADENCE_MS = 60 * 60_000;
 const START_DELAY_MS = 15_000;
@@ -16,8 +17,17 @@ export interface KrxShadowResearchSchedulerStatus {
   cadenceMs: number;
   lastStartedAt: number | null;
   lastFinishedAt: number | null;
+  lastSuccessfulAt: number | null;
   lastTradingDate: string | null;
+  lastSource: string | null;
+  lastDisposition: string | null;
+  lastDiscoveredCount: number | null;
+  lastVolumePrefilteredCount: number | null;
+  lastProfiledCount: number | null;
+  lastEligibleCount: number | null;
+  lastCommitteeCandidateCount: number | null;
   lastNominationReadyCount: number | null;
+  lastCanonicalEventCount: number | null;
   lastError: string | null;
 }
 
@@ -27,7 +37,9 @@ class KrxShadowResearchScheduler {
   private inFlight = false;
   private lastStartedAt = 0;
   private lastFinishedAt = 0;
+  private lastSuccessfulAt = 0;
   private lastCycle: KrxShadowResearchCycleResult | null = null;
+  private lastCanonicalEventCount: number | null = null;
   private lastError: string | null = null;
 
   private cadenceMs() {
@@ -42,6 +54,7 @@ class KrxShadowResearchScheduler {
   }
 
   status(): KrxShadowResearchSchedulerStatus {
+    const truth = this.lastCycle ? snapshotKrxResearchTruth(this.lastCycle) : null;
     return {
       enabled: this.enabled(),
       running: this.timer !== null || this.startTimer !== null || this.inFlight,
@@ -49,8 +62,17 @@ class KrxShadowResearchScheduler {
       cadenceMs: this.cadenceMs(),
       lastStartedAt: this.lastStartedAt || null,
       lastFinishedAt: this.lastFinishedAt || null,
+      lastSuccessfulAt: this.lastSuccessfulAt || null,
       lastTradingDate: this.lastCycle?.tradingDate ?? null,
-      lastNominationReadyCount: this.lastCycle?.nominationReadyCount ?? null,
+      lastSource: truth?.source ?? null,
+      lastDisposition: truth ? classifyKrxResearchTruth(truth) : null,
+      lastDiscoveredCount: truth?.discovered ?? null,
+      lastVolumePrefilteredCount: truth?.volumePrefiltered ?? null,
+      lastProfiledCount: truth?.profiled ?? null,
+      lastEligibleCount: truth?.eligible ?? null,
+      lastCommitteeCandidateCount: truth?.committeeCandidateCount ?? null,
+      lastNominationReadyCount: truth?.nominationReadyCount ?? null,
+      lastCanonicalEventCount: this.lastCanonicalEventCount,
       lastError: this.lastError,
     };
   }
@@ -59,19 +81,36 @@ class KrxShadowResearchScheduler {
     if (!this.enabled() || this.inFlight) return this.status();
     this.inFlight = true;
     this.lastStartedAt = Date.now();
+    let phase: 'RESEARCH_CYCLE' | 'CANONICAL_APPEND' = 'RESEARCH_CYCLE';
     try {
       const cycle = await runKrxShadowResearchCycle();
-      this.lastCycle = cycle;
-      this.lastFinishedAt = Date.now();
-      this.lastError = null;
       const id = runtimeId();
       const events = buildKrxShadowResearchCanonicalEvents(cycle, id);
+      phase = 'CANONICAL_APPEND';
       await appendCanonicalEvents(events);
-      console.info(`Black Oracle KRX account-free research: ${cycle.tradingDate} · ${cycle.committeeCandidates.length} candidate(s) · ${cycle.nominationReadyCount} nomination-ready · executionAuthority=false.`);
+
+      // Only promote a cycle into scheduler truth after its canonical events commit.
+      // A successful provider read followed by a failed append must not look like
+      // the latest successfully observed canonical KRX state.
+      this.lastCycle = cycle;
+      this.lastCanonicalEventCount = events.length;
+      this.lastSuccessfulAt = Date.now();
+      this.lastFinishedAt = this.lastSuccessfulAt;
+      this.lastError = null;
+
+      const truth = snapshotKrxResearchTruth(cycle);
+      const disposition = classifyKrxResearchTruth(truth);
+      console.info(
+        `Black Oracle KRX account-free research: ${cycle.tradingDate} · source=${truth.source} · disposition=${disposition}`
+        + ` · universe ${truth.discovered} discovered / ${truth.volumePrefiltered} volume-prefiltered / ${truth.profiled} profiled / ${truth.eligible} eligible`
+        + ` · Committee ${truth.committeeCandidateCount} candidate(s) / ${truth.nominationReadyCount} nomination-ready`
+        + ` · canonicalEvents=${events.length} · executionAuthority=false.`,
+      );
     } catch (error) {
       this.lastFinishedAt = Date.now();
-      this.lastError = error instanceof Error ? error.message : String(error);
-      console.warn(`Black Oracle KRX account-free research failed: ${this.lastError}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastError = `${phase}: ${message}`;
+      console.warn(`Black Oracle KRX account-free research failed [${phase}]: ${message}`);
     } finally {
       this.inFlight = false;
     }
