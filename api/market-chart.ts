@@ -15,11 +15,52 @@ const kisConfigured = () => Boolean(
   && String(process.env.KIS_APP_SECRET ?? '').trim(),
 );
 
+const krxTruth = (payload: any, unit: number, receivedAt: number) => {
+  const observedAt = Number.isFinite(payload?.asOf) ? Number(payload.asOf) : null;
+  const available = payload?.available === true && Array.isArray(payload?.candles) && payload.candles.length >= 2;
+  const quality = available ? (unit >= DAY_UNIT ? 'EOD' : 'LIVE') : 'UNAVAILABLE';
+  return {
+    provider: 'KOREA_INVESTMENT_SECURITIES',
+    source: 'KIS_OFFICIAL',
+    quality,
+    observedAt,
+    receivedAt,
+    freshnessAgeMinutes: observedAt == null ? null : Math.max(0, (receivedAt - observedAt) / 60_000),
+    delayMinutes: null,
+    executionEligible: false,
+    researchOnly: true,
+    reason: available
+      ? 'Official KIS read-only chart data. This display surface does not grant execution suitability or trading authority.'
+      : 'Official KIS chart data is unavailable. Missing prices are not inferred or substituted on the KIS path.',
+  };
+};
+
+const runKisWithTruthContract = async (request: any, response: any, unit: number) => {
+  let statusCode = 200;
+  const proxy = {
+    setHeader: (name: string, value: unknown) => { response.setHeader(name, value); return proxy; },
+    status: (code: number) => { statusCode = code; return proxy; },
+    json: (payload: any) => {
+      const receivedAt = Date.now();
+      const marketData = krxTruth(payload, unit, receivedAt);
+      return response.status(statusCode).json({
+        ...payload,
+        marketData,
+        warning: payload?.warning ?? (marketData.quality === 'UNAVAILABLE'
+          ? 'KRX market data is unavailable. No price or execution suitability is inferred.'
+          : 'KRX chart data is read-only research/display data; execution suitability is false on this surface.'),
+      });
+    },
+  };
+  return legacyMarketChartHandler(request, proxy);
+};
+
 /**
  * Market-data provider router for the public chart surface.
  *
  * - Crypto and search keep the existing official/public handlers.
- * - KRX uses KIS when credentials exist.
+ * - KRX uses KIS when credentials exist and normalizes provenance/freshness/
+ *   suitability into the same truth contract as the fallback path.
  * - Without a brokerage account, KRX falls back to Yahoo delayed data for
  *   research/display only. The response carries explicit provenance and never
  *   claims execution eligibility.
@@ -29,12 +70,16 @@ export default async function handler(request: any, response: any) {
   const market = String(request.query?.market ?? '').trim().toUpperCase();
   const isKrx = /^KRX-\d{6}$/.test(market);
 
-  if (request.method !== 'GET' || searchMode || !isKrx || kisConfigured()) {
+  if (request.method !== 'GET' || searchMode || !isKrx) {
     return legacyMarketChartHandler(request, response);
   }
 
-  response.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=40');
   const unit = boundedInt(request.query?.unit, DAY_UNIT, 1, MAX_CHART_UNIT);
+  if (kisConfigured()) {
+    return runKisWithTruthContract(request, response, unit);
+  }
+
+  response.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=40');
   const count = boundedInt(request.query?.count, 60, 12, 120);
   const symbol = market.slice(4);
 
@@ -66,6 +111,7 @@ export default async function handler(request: any, response: any) {
         quality: chart.provenance.quality,
         observedAt: chart.provenance.observedAt,
         receivedAt: chart.provenance.receivedAt,
+        freshnessAgeMinutes: chart.provenance.observedAt == null ? null : Math.max(0, (chart.provenance.receivedAt - chart.provenance.observedAt) / 60_000),
         delayMinutes: chart.provenance.delayMinutes,
         executionEligible: false,
         researchOnly: true,
@@ -84,10 +130,16 @@ export default async function handler(request: any, response: any) {
       configured: true,
       source: 'YAHOO_FINANCE',
       marketData: {
-        quality: 'DELAYED',
+        provider: 'YAHOO_FINANCE',
+        source: 'YAHOO_FINANCE',
+        quality: 'UNAVAILABLE',
+        observedAt: null,
+        receivedAt: Date.now(),
+        freshnessAgeMinutes: null,
         executionEligible: false,
         researchOnly: true,
         delayMinutes: 20,
+        reason: 'Yahoo KRX fallback failed. Missing prices are not inferred.',
       },
       error: message,
     });
