@@ -1,0 +1,17 @@
+html.bo-v11-document-scroll,
+body.bo-v11-document-scroll {
+  height: auto !important;
+  min-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.bo-v11-document-scroll body.bo-v11-document-scroll #root {
+  height: auto !important;
+  min-height: 100dvh;
+  overflow: visible !important;
+}
