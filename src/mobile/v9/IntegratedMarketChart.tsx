@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { DecisionTapeItem, OpenPosition, PriceCandle } from '../v2/types';
-import { cn, dateTime } from '../v2/types';
+import { actionKo, cn, dateTime, reasonKo, regimeKo } from '../v2/types';
 import { formatKrw, formatPercent, positionFinancials } from '../v2/financial';
 
 const green = '#16845b';
@@ -121,6 +121,24 @@ export const IntegratedMarketChart = ({ market, decision, position }: { market: 
   const yFor = (value: number) => bottom - ((value - min) / span) * (bottom - top);
   const xFor = (index: number) => left + slot * (index + 0.5);
 
+  const primaryReason = decision?.primaryReason ?? decision?.reasons?.[0] ?? null;
+  const decisionMeaning = !decision
+    ? 'NOT RUN'
+    : position && tradeMap
+      ? 'ACTIVE POSITION + CANDIDATE PLAN'
+      : position
+        ? 'ACTIVE POSITION'
+        : tradeMap
+          ? 'CANDIDATE PLAN'
+          : 'DECISION ONLY';
+  const decisionWhy = !decision ? 'NOT RUN' : primaryReason ? reasonKo(primaryReason) : 'NOT REPORTED';
+  const decisionNext = decision?.aiCouncilReview?.whatWouldChangeMind ?? 'NOT REPORTED';
+  const evidenceIds = decision?.evidenceIds ?? [];
+  const evidenceIdLabel = evidenceIds.length
+    ? `${evidenceIds.slice(0, 2).join(' · ')}${evidenceIds.length > 2 ? ` · +${evidenceIds.length - 2}` : ''}`
+    : decision ? 'NOT LINKED' : 'NOT RUN';
+  const councilMembers = decision?.council?.members;
+
   return <section>
     <div className="mb-3 flex items-end justify-between gap-3">
       <div><div className="text-[17px] font-semibold tracking-[-0.025em] text-[#15171c]">Market chart</div><div className="mt-1 text-[10px] text-[#8c929a]">실제 OHLCV와 현재 Paper 포지션을 같은 화면에서 봅니다.</div></div>
@@ -157,6 +175,26 @@ export const IntegratedMarketChart = ({ market, decision, position }: { market: 
           <div className="flex items-center justify-between gap-2"><div><div className="text-[8px] font-bold tracking-[0.13em] text-[#606974]">FRESH CANDIDATE PLAN</div><div className="mt-1 text-[9px] text-[#9aa1aa]">최신 Oracle 판단이 제안한 신규 진입 지도</div></div><span className="rounded-full bg-[#a46b170d] px-2 py-1 text-[8px] font-semibold text-[#a46b17]">{tradeMap ? (tradeMap.status ?? 'AVAILABLE') : decision ? 'NOT LINKED' : 'NOT RUN'}</span></div>
           {tradeMap ? <><div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3"><div><div className="text-[8px] text-[#9aa1aa]">Analyzed</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{dateTime(decision?.timestamp)}</div></div><div><div className="text-[8px] text-[#9aa1aa]">Decision</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{decision?.decision ?? 'NOT REPORTED'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">Candidate entry</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(tradeMap.entryPrice) ? formatKrw(tradeMap.entryPrice) : 'DATA GAP'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">Candidate stop</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(candidateStop) ? formatKrw(candidateStop) : 'DATA GAP'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">Candidate TP1</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(tradeMap.takeProfit1Price) ? formatKrw(tradeMap.takeProfit1Price) : 'NOT LINKED'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">Candidate TP2</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(tradeMap.takeProfit2Price) ? formatKrw(tradeMap.takeProfit2Price) : 'NOT LINKED'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">R/R 1</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(tradeMap.riskReward1) ? tradeMap.riskReward1.toFixed(2) : 'NOT REPORTED'}</div></div><div><div className="text-[8px] text-[#9aa1aa]">R/R 2</div><div className="mt-1 text-[10px] font-semibold text-[#343a41]">{finite(tradeMap.riskReward2) ? tradeMap.riskReward2.toFixed(2) : 'NOT REPORTED'}</div></div></div><div className="mt-4 space-y-2 rounded-[12px] bg-[#fffaf2] px-3 py-3 text-[8px] leading-4 text-[#806238]"><div><strong>Risk:</strong> {decision?.riskReasons?.[0] ?? 'NOT REPORTED'}</div><div><strong>What changes decision:</strong> {decision?.aiCouncilReview?.whatWouldChangeMind ?? 'NOT REPORTED'}</div></div></> : <div className="mt-4 rounded-[12px] bg-[#f7f8f9] px-3 py-3 text-[9px] leading-5 text-[#838b94]">{decision ? '최신 Decision은 있지만 canonical trade map이 연결되지 않았습니다. NOT LINKED 상태로 유지합니다.' : '최신 Decision이 없어 candidate plan을 실행한 것으로 표시하지 않습니다. NOT RUN 상태입니다.'}</div>}
         </div>
+      </div>
+      <div className="border-t border-[#eef1f3] bg-white p-4">
+        <div className="flex items-end justify-between gap-3"><div><div className="text-[8px] font-bold tracking-[0.14em] text-[#606974]">DECISION TRUTH CONTRACT</div><div className="mt-1 text-[9px] text-[#9aa1aa]">STATUS → MEANING → WHY → NEXT · canonical 값만 표시</div></div><span className="rounded-full bg-[#11131808] px-2 py-1 text-[8px] font-semibold text-[#69717b]">{decision ? dateTime(decision.timestamp) : 'NOT RUN'}</span></div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0 rounded-[14px] bg-[#f7f8f9] p-3"><div className="text-[8px] font-semibold text-[#9aa1aa]">STATUS</div><div className="mt-1 break-words text-[10px] font-semibold text-[#343a41]">{decision ? actionKo(decision.decision) : 'NOT RUN'}</div></div>
+          <div className="min-w-0 rounded-[14px] bg-[#f7f8f9] p-3"><div className="text-[8px] font-semibold text-[#9aa1aa]">MEANING</div><div className="mt-1 break-words text-[10px] font-semibold text-[#343a41]">{decisionMeaning}</div></div>
+          <div className="min-w-0 rounded-[14px] bg-[#f7f8f9] p-3"><div className="text-[8px] font-semibold text-[#9aa1aa]">WHY</div><div className="mt-1 break-words text-[10px] font-semibold leading-4 text-[#343a41]">{decisionWhy}</div></div>
+          <div className="min-w-0 rounded-[14px] bg-[#f7f8f9] p-3"><div className="text-[8px] font-semibold text-[#9aa1aa]">NEXT</div><div className="mt-1 break-words text-[10px] font-semibold leading-4 text-[#343a41]">{decisionNext}</div></div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-[14px] border border-[#e8ebee] p-3 lg:grid-cols-4">
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Regime</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision ? regimeKo(decision.regime) : 'NOT RUN'}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Strategy</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision?.router?.route ?? decision?.strategyDisposition ?? (decision ? 'NOT LINKED' : 'NOT RUN')}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Council</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision?.council?.verdict ?? (decision ? 'NOT RUN' : 'NOT RUN')}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Council participants</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{councilMembers ? councilMembers.length : decision?.council ? 'NOT REPORTED' : 'NOT RUN'}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Risk</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision?.riskDisposition ?? (decision ? 'NOT RUN' : 'NOT RUN')}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Evidence</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision ? `${decision.evidenceActiveCount ?? 0} active` : 'NOT RUN'}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Confidence</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{finite(decision?.confidence) ? formatPercent(decision!.confidence!) : decision ? 'NOT REPORTED' : 'NOT RUN'}</div></div>
+          <div className="min-w-0"><div className="text-[8px] text-[#9aa1aa]">Risk reason</div><div className="mt-1 truncate text-[9px] font-semibold text-[#434a52]">{decision?.riskReasons?.[0] ?? (decision ? 'NOT REPORTED' : 'NOT RUN')}</div></div>
+        </div>
+        <div className="mt-3 min-w-0 rounded-[14px] bg-[#f7f8f9] px-3 py-3"><div className="text-[8px] text-[#9aa1aa]">Canonical Evidence IDs</div><div className="mt-1 break-all text-[8px] font-medium leading-4 text-[#68717b]">{evidenceIdLabel}</div></div>
       </div>
       <div className="border-t border-[#eef1f3] px-4 py-3 text-[8px] leading-4 text-[#929aa2]">{marketData?.reason ?? (marketData?.executionEligible === false ? '표시용/리서치 데이터 · 주문 권한 없음' : '시장 데이터 품질/사용 적합성은 보고된 값만 표시합니다.')}{payload?.warning ? ` · ${payload.warning}` : ''}</div>
     </div>
