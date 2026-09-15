@@ -24,6 +24,8 @@ const krxCode = (market: string) => {
   return match?.[1] ?? null;
 };
 
+const identitySourceLabel = (source: MarketIdentity['source']) => source === 'KIS_MASTER' ? 'KIS MASTER' : 'UPBIT MASTER';
+
 const resolveKrxIdentity = (market: string) => {
   const normalized = String(market ?? '').toUpperCase();
   const cached = resolvedCache.get(normalized);
@@ -88,8 +90,8 @@ export const MarketName = ({ market, className = '' }: { market: string | null |
 
 export const MarketMeta = ({ market, className = '' }: { market: string | null | undefined; className?: string }) => {
   const identity = useMarketIdentity(market);
-  if (identity) return <span className={className}>{identity.code} · {identity.exchange}</span>;
+  if (identity) return <span className={className}>{identity.code} · {identity.exchange} · {identitySourceLabel(identity.source)}</span>;
   const value = String(market ?? '');
-  if (/^KRX-\d{6}$/.test(value)) return <span className={className}>{marketCodeLabel(value)} · KRX</span>;
+  if (/^KRX-\d{6}$/.test(value)) return <span className={className}>{marketCodeLabel(value)} · KRX · IDENTITY DATA GAP</span>;
   return <span className={className}>{value}</span>;
 };
