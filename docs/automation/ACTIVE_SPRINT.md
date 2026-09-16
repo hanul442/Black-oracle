@@ -31,27 +31,30 @@ DEPLOY
 - MERGE: PR #173 merged as `520270c467da3d15cc46262fda836e26fefca755`.
 - STATE: Canonical scheduler state file created and is persistent.
 - DEPLOY DISCOVERY: S2 Shadow remained SUCCESS on stale `8c2f27aa53345a9738847e05f204cd38cf393d02`.
-- DEPLOY BLOCKER PROOF: On 2026-09-16, a low-risk S2-only Railway redeploy was used specifically to test whether the service would refresh its GitHub source. Railway created deployments `1dc14e37-29c7-47db-b33b-121b5dc10f0e` and `fa1c9937-32fb-482c-8260-ceef6ff44266`; both metadata explicitly resolve to commit `8c2f27aa53345a9738847e05f204cd38cf393d02`, proving generic redeploy reuses the stale source snapshot and cannot satisfy exact-revision deployment. No further redeploy should be attempted for this blocker.
+- DEPLOY BLOCKER PROOF: On 2026-09-16, a low-risk S2-only Railway redeploy was used specifically to test whether the service would refresh its GitHub source. Railway created deployments `1dc14e37-29c7-47db-b33b-121b5dc10f0e` and `fa1c9937-32fb-482c-8260-ceef6ff44266`; both metadata explicitly resolve to commit `8c2f27aa53345a9738847e05f204cd38cf393d02`, proving generic redeploy reuses the stale source snapshot and cannot satisfy exact-revision deployment. No further generic redeploy should be attempted for this blocker.
+- DEPLOY PATH DISCOVERY: Railway's current official GitHub autodeploy documentation explicitly distinguishes generic redeploy from **Deploy Latest Commit**. For a service linked to a GitHub branch, Command Palette (`CMD + K`) -> `Deploy Latest Commit` creates a deployment from the latest commit on the connected branch. The same docs say a linked service should autodeploy on new branch commits and list disabled autodeploy/GitHub permissions/watch paths as troubleshooting causes when it does not. This identifies the correct fresh-source mechanism and the likely integration fault class.
 
 ## Next checkpoint
-Resolve the exact-revision S2 source blocker through a mechanism that creates a fresh GitHub source revision for the existing S2 service without changing secrets or protected runtimes. Do not use generic redeploy again. Once a revision containing #173 is proven, deploy/verify S2 and inspect KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
+Execute Railway **Deploy Latest Commit** for the existing S2 Shadow service (not generic redeploy), then verify deployment metadata contains a GitHub revision that includes PR #173. If that control is unavailable or fails, repair/reconnect S2's GitHub autodeploy integration in Railway service settings without changing secrets/runtime variables. Once exact revision is proven, inspect KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
 
 ## Blockers
-- **ACTIVE / PROVEN:** Railway generic redeploy reuses S2's stale `8c2f27aa...` source snapshot. The current Railway service configuration surface does not expose source-branch/commit mutation for the existing service.
-- Exact revision containing #173 cannot currently be guaranteed through the available safe Railway mutation surface.
+- **ACTIVE / TOOL-SURFACE:** The connected Railway tool exposes generic `redeploy` but does not expose the documented `Deploy Latest Commit` control or GitHub autodeploy enable/reconnect settings for an existing service.
+- **PROVEN:** Generic redeploy reuses S2's stale `8c2f27aa...` source snapshot and must not be used again for this purpose.
+- S2 has not autodeployed on recent `main` commits despite Railway documentation stating linked GitHub services normally do; likely fault classes are disabled autodeploy, GitHub permission/integration state, or watch-path configuration. Exact cause requires the Railway service-settings control surface.
 - Do not treat deployment SUCCESS as revision correctness.
 - Do not mutate secrets, S1R2, qualification logic, or trading authority to work around this blocker.
 
 ## Relevant PR / branch
 - PR #173 — merged.
 - Merge commit: `520270c467da3d15cc46262fda836e26fefca755`.
+- Current GitHub main at deployment-path discovery: `8307d563a303181fd92c7e2e9b0b55880776b169` (contains #173).
 - Protected qualification work such as PR #115 remains isolated and is not part of this sprint.
 
 ## Validation status
-GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment. Generic redeploy behavior is now empirically verified as stale-snapshot reuse.
+GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment. Generic redeploy behavior is empirically verified as stale-snapshot reuse; official Railway documentation now identifies `Deploy Latest Commit` as the required fresh-source operation.
 
 ## Deploy status
-BLOCKED. S2-only redeploy test initiated two builds, but both explicitly target stale commit `8c2f27aa53345a9738847e05f204cd38cf393d02`; therefore neither qualifies as the required deployment containing #173. No secret/config/trading mutation occurred.
+BLOCKED ON RAILWAY CONTROL SURFACE. S2 latest successful redeploy `fa1c9937-32fb-482c-8260-ceef6ff44266` is stale commit `8c2f27aa53345a9738847e05f204cd38cf393d02`. No further deployment mutation was performed after identifying the documented fresh-source operation because the available connector does not expose it.
 
 ## Protected invariants
 - Protected ₩100M S1R2 Paper qualification runtime/sample untouched.
@@ -61,4 +64,4 @@ BLOCKED. S2-only redeploy test initiated two builds, but both explicitly target 
 - No destructive migration, secret mutation, portfolio/account mutation, or canonical-ledger semantic rewrite.
 
 ## Next action
-Stay in DEPLOY. Find or establish a fresh-source deployment mechanism for the existing S2 service that can prove a revision containing #173. Generic redeploy is now ruled out. After exact revision is proven, VERIFY KRX runtime telemetry and advance to DONE only if acceptance criteria pass.
+Stay in DEPLOY. Use Railway's documented **Deploy Latest Commit** operation for S2 Shadow when that service-settings/Command Palette surface is available; otherwise restore S2 GitHub autodeploy integration (enable/reconnect/permissions/watch-path check) without changing secrets. Then verify exact deployed SHA, inspect KRX telemetry, and advance to VERIFY/DONE only if acceptance criteria pass.
