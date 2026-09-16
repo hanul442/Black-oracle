@@ -31,6 +31,7 @@ DEPLOY
 - MERGE: PR #173 merged as `520270c467da3d15cc46262fda836e26fefca755`.
 - STATE: Canonical scheduler state file created after prior connector write blocker cleared.
 - DEPLOY DISCOVERY: Rechecked S2 Shadow deployments. Latest remains SUCCESS on `8c2f27aa53345a9738847e05f204cd38cf393d02`; current Railway tools expose generic redeploy/create-service paths but no safe operation that pins an existing S2 service to an exact GitHub commit SHA. Generic redeploy therefore cannot satisfy the exact-revision acceptance criterion.
+- DEPLOY BLOCKER RECHECK: At main `e9ffbbb1a331d93b04bc52d8f9835051181d191d`, S2 Shadow is still on deployment `4140402d-915d-460c-be05-a58449d2d65c` / commit `8c2f27aa53345a9738847e05f204cd38cf393d02`. Available Railway deployment actions still do not expose an exact commit pin for the existing service, so no unsafe/stale redeploy was triggered.
 
 ## Next checkpoint
 Resolve the exact-revision S2 deployment blocker without changing secrets or protected runtimes. Prefer an existing Railway source/revision mechanism if it becomes available; otherwise use a new safe GitHub source event only if it can guarantee that S2 receives a revision containing #173. After exact revision is proven, deploy S2 only and VERIFY KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
@@ -43,14 +44,14 @@ Resolve the exact-revision S2 deployment blocker without changing secrets or pro
 ## Relevant PR / branch
 - PR #173 — merged.
 - Merge commit: `520270c467da3d15cc46262fda836e26fefca755`.
-- Active scheduler-state commit created at `3024923592345a450d510706527baf0e488452dd`.
+- Current main at blocker recheck: `e9ffbbb1a331d93b04bc52d8f9835051181d191d`.
 - Protected qualification work such as PR #115 remains isolated and is not part of this sprint.
 
 ## Validation status
 GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment.
 
 ## Deploy status
-BLOCKED. S2 Shadow latest verified deployment is `4140402d-915d-460c-be05-a58449d2d65c`, status SUCCESS, commit `8c2f27aa53345a9738847e05f204cd38cf393d02`; this is stale relative to #173. No deployment mutation performed in this checkpoint.
+BLOCKED. S2 Shadow latest verified deployment is `4140402d-915d-460c-be05-a58449d2d65c`, status SUCCESS, commit `8c2f27aa53345a9738847e05f204cd38cf393d02`; this is stale relative to #173 and current main. No deployment mutation performed in this checkpoint.
 
 ## Protected invariants
 - Protected ₩100M S1R2 Paper qualification runtime/sample untouched.
