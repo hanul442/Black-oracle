@@ -29,29 +29,29 @@ DEPLOY
 - TEST: Black Oracle CI and Trading CI passed, including typecheck, trading core/regression tests, Supabase function typecheck, runtime bundle, scheduler smoke tests, and production build.
 - REVIEW: Diff constrained to KRX scheduler truth and regression coverage; protected invariants unchanged.
 - MERGE: PR #173 merged as `520270c467da3d15cc46262fda836e26fefca755`.
-- STATE: Canonical scheduler state file created after prior connector write blocker cleared.
-- DEPLOY DISCOVERY: Rechecked S2 Shadow deployments. Latest remains SUCCESS on `8c2f27aa53345a9738847e05f204cd38cf393d02`; current Railway tools expose generic redeploy/create-service paths but no safe operation that pins an existing S2 service to an exact GitHub commit SHA. Generic redeploy therefore cannot satisfy the exact-revision acceptance criterion.
-- DEPLOY BLOCKER RECHECK: At main `e9ffbbb1a331d93b04bc52d8f9835051181d191d`, S2 Shadow is still on deployment `4140402d-915d-460c-be05-a58449d2d65c` / commit `8c2f27aa53345a9738847e05f204cd38cf393d02`. Available Railway deployment actions still do not expose an exact commit pin for the existing service, so no unsafe/stale redeploy was triggered.
+- STATE: Canonical scheduler state file created and is persistent.
+- DEPLOY DISCOVERY: S2 Shadow remained SUCCESS on stale `8c2f27aa53345a9738847e05f204cd38cf393d02`.
+- DEPLOY BLOCKER PROOF: On 2026-09-16, a low-risk S2-only Railway redeploy was used specifically to test whether the service would refresh its GitHub source. Railway created deployments `1dc14e37-29c7-47db-b33b-121b5dc10f0e` and `fa1c9937-32fb-482c-8260-ceef6ff44266`; both metadata explicitly resolve to commit `8c2f27aa53345a9738847e05f204cd38cf393d02`, proving generic redeploy reuses the stale source snapshot and cannot satisfy exact-revision deployment. No further redeploy should be attempted for this blocker.
 
 ## Next checkpoint
-Resolve the exact-revision S2 deployment blocker without changing secrets or protected runtimes. Prefer an existing Railway source/revision mechanism if it becomes available; otherwise use a new safe GitHub source event only if it can guarantee that S2 receives a revision containing #173. After exact revision is proven, deploy S2 only and VERIFY KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
+Resolve the exact-revision S2 source blocker through a mechanism that creates a fresh GitHub source revision for the existing S2 service without changing secrets or protected runtimes. Do not use generic redeploy again. Once a revision containing #173 is proven, deploy/verify S2 and inspect KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
 
 ## Blockers
-- **ACTIVE:** Railway generic redeploy may reuse the currently attached/stale deployment snapshot and the available service configuration tool does not expose source-branch/commit mutation. Latest S2 is still `8c2f27aa...`, so exact revision containing #173 cannot currently be guaranteed through the available Railway mutation surface.
+- **ACTIVE / PROVEN:** Railway generic redeploy reuses S2's stale `8c2f27aa...` source snapshot. The current Railway service configuration surface does not expose source-branch/commit mutation for the existing service.
+- Exact revision containing #173 cannot currently be guaranteed through the available safe Railway mutation surface.
 - Do not treat deployment SUCCESS as revision correctness.
 - Do not mutate secrets, S1R2, qualification logic, or trading authority to work around this blocker.
 
 ## Relevant PR / branch
 - PR #173 — merged.
 - Merge commit: `520270c467da3d15cc46262fda836e26fefca755`.
-- Current main at blocker recheck: `e9ffbbb1a331d93b04bc52d8f9835051181d191d`.
 - Protected qualification work such as PR #115 remains isolated and is not part of this sprint.
 
 ## Validation status
-GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment.
+GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment. Generic redeploy behavior is now empirically verified as stale-snapshot reuse.
 
 ## Deploy status
-BLOCKED. S2 Shadow latest verified deployment is `4140402d-915d-460c-be05-a58449d2d65c`, status SUCCESS, commit `8c2f27aa53345a9738847e05f204cd38cf393d02`; this is stale relative to #173 and current main. No deployment mutation performed in this checkpoint.
+BLOCKED. S2-only redeploy test initiated two builds, but both explicitly target stale commit `8c2f27aa53345a9738847e05f204cd38cf393d02`; therefore neither qualifies as the required deployment containing #173. No secret/config/trading mutation occurred.
 
 ## Protected invariants
 - Protected ₩100M S1R2 Paper qualification runtime/sample untouched.
@@ -61,4 +61,4 @@ BLOCKED. S2 Shadow latest verified deployment is `4140402d-915d-460c-be05-a58449
 - No destructive migration, secret mutation, portfolio/account mutation, or canonical-ledger semantic rewrite.
 
 ## Next action
-Stay in DEPLOY and resolve the exact-revision source blocker. Do not switch sprint yet: the blocker is directly tied to production verification of the merged P0 repair. Once a safe exact-revision path exists, deploy only S2 Shadow, verify deployed SHA contains #173, inspect KRX runtime telemetry, then advance to VERIFY/DONE if acceptance criteria pass.
+Stay in DEPLOY. Find or establish a fresh-source deployment mechanism for the existing S2 service that can prove a revision containing #173. Generic redeploy is now ruled out. After exact revision is proven, VERIFY KRX runtime telemetry and advance to DONE only if acceptance criteria pass.
