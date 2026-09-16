@@ -95,43 +95,50 @@ export const BlackOracleMobileApp = () => {
       const source = sourceFromRequest(args[0]);
       try {
         const response = await previousFetch(...args);
-        if (source) {
-          const checkedAt = Date.now();
+        if (!source) return response;
+
+        const checkedAt = Date.now();
+        let apiError: string | null = null;
+        let invalidJson = false;
+
+        try {
+          apiError = payloadError(await response.clone().json());
+        } catch {
+          invalidJson = true;
+        }
+
+        const detail = !response.ok
+          ? (apiError ?? `HTTP ${response.status}`)
+          : (apiError ?? (invalidJson ? 'INVALID JSON' : null));
+
+        if (detail) {
           setSourceHealth((previous) => ({
             ...previous,
             [source]: {
-              status: response.ok ? 'OK' : 'ERROR',
+              status: 'ERROR',
               checkedAt,
               httpStatus: response.status,
-              detail: response.ok ? null : `HTTP ${response.status}`,
+              detail,
             },
           }));
 
-          const probe = response.clone();
-          void probe.json().then((payload: unknown) => {
-            const apiError = payloadError(payload);
-            if (!apiError) return;
-            setSourceHealth((previous) => ({
-              ...previous,
-              [source]: {
-                status: 'ERROR',
-                checkedAt: Date.now(),
-                httpStatus: response.status,
-                detail: apiError,
-              },
-            }));
-          }).catch(() => {
-            setSourceHealth((previous) => ({
-              ...previous,
-              [source]: {
-                status: 'ERROR',
-                checkedAt: Date.now(),
-                httpStatus: response.status,
-                detail: 'INVALID JSON',
-              },
-            }));
-          });
+          // Do not let a 4xx/5xx or API-level failure masquerade as a valid
+          // Operations/Factory/Events payload. The child app uses
+          // Promise.allSettled(), so rejecting here preserves the last known
+          // good state while the data-truth banner reports the degraded source.
+          return Promise.reject(new Error(`${SOURCE_LABELS[source]}: ${detail}`));
         }
+
+        setSourceHealth((previous) => ({
+          ...previous,
+          [source]: {
+            status: 'OK',
+            checkedAt,
+            httpStatus: response.status,
+            detail: null,
+          },
+        }));
+
         return response;
       } catch (error) {
         if (source) {
