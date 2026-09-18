@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07`
-- **Session checkpoint:** 2026-09-18T17:57:54Z
+- **Canonical main at checkpoint:** `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`
+- **Session checkpoint:** 2026-09-18T20:47:59Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -14,7 +14,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 ## Work-package status
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is deployed as Supabase Edge Function version 4 with an exact bundle hash, while independent HTTP response probes remain blocked by runner networking.
 - **B0.2 — IN_PROGRESS:** runtime/storage actors are catalogued; deployed source bounds public runtime enumeration and no longer accepts 409 or scheduler heartbeat as checkpoint proof, while qualification ownership and endpoint probe evidence remain incomplete.
-- **B0.3 — IN_PROGRESS / FAIL-CLOSED:** 47/47 scoped tables have RLS and no browser table grants, but `service_role` can destructively mutate 44 tables and no beta write namespace exists. The legacy read-only rule is not database-enforced.
+- **B0.3 — IN_PROGRESS / DESIGN CONTRACT READY:** a machine-checked least-privilege identity and beta namespace contract now rejects service-role use, inherited/bypass authority, direct legacy grants, browser access, and premature DDL authorization. It is not applied; database enforcement remains absent.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
 - **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
@@ -40,6 +40,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Deployed that exact merged v0.3 source as Supabase Edge Function version 4; retrieved ACTIVE artifact bundle SHA-256 is `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`.
 - Preserved rollback to function version 3 / bundle `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`.
 - Kept endpoint health `UNKNOWN`: direct, browser-mediated, and read-only SQL probes timed out from this runner and were not promoted to PASS.
+- Merged deployment-evidence PR #186 as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b` after Black Oracle CI 881 and Trading CI 1060 passed.
+- Added the B0.3 beta authority design contract, negative validator, and apply/rollback gate without applying production DDL.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -53,6 +55,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
 
 ## Active PRs / branches
+- B0.3 authority-contract branch — dedicated identity/namespace design and negative validation; no production DDL.
+- PR #186 — merged runtime-status deployment evidence as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`.
 - PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
 - PR #185 — merged B0.1/B0.2 fail-closed runtime readiness as `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07`.
 - PR #177 — merged governing B0-B9 plan.
@@ -70,12 +74,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Current B0.1/B0.2 readiness branch: readiness/scheduler policy 17/17 PASS; baseline tests 31/31 PASS; trading regressions 314/314 PASS; TypeScript lint PASS; production build PASS.
 - Local Deno check unavailable because Deno is not installed in this runner; GitHub NARS CI supplied the authoritative Edge Function typecheck.
 - PR #185 final head: Black Oracle CI 879 PASS; Trading CI 1058 PASS; NARS CI 146 PASS, including authoritative Deno typecheck.
+- PR #186 final head: Black Oracle CI 881 PASS; Trading CI 1060 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment: Supabase Edge Function only; no Railway service deployed.
-- This documentation-only closing checkpoint must pass GitHub CI before merge.
-- The closing checkpoint commit must pass Black Oracle, Trading, and NARS CI before PR #185 can merge.
+- Current B0.3 authority contract must pass its negative tests, baseline validation, lint, build, and GitHub CI before merge.
 
 ## Deployment / rollback
 - No Railway deployment.
@@ -96,7 +100,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 
 ## Next safe actions
 1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
-2. Design and separately review a least-privilege beta identity plus beta write namespace; prove prohibited legacy mutations fail before applying production DDL.
+2. Review the least-privilege beta identity and namespace contract, then create a separate migration only after an ephemeral database can prove prohibited legacy mutations fail.
 3. Run independent GET probes for both allowed runtime IDs and a forbidden qualification ID from a network that can reach the Supabase endpoint; do not promote health before the responses match the v0.3 contract.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
 5. Classify older pre-beta PR deltas before reuse.
