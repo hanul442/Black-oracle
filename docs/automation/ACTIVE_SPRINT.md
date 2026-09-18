@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`
-- **Session checkpoint:** 2026-09-18T21:48:25Z
+- **Canonical main at checkpoint:** `447a92eaa3141bc48459296c0fa861e306617db8`
+- **Session checkpoint:** 2026-09-18T21:51:08Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -46,6 +46,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Merged ACTIVE_SPRINT checkpoint PR #188 as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee` after Black Oracle CI 885 and Trading CI 1064 passed.
 - Confirmed the Supabase project has zero development branches; a new branch costs USD 0.01344/hour and was not created without explicit cost confirmation.
 - Added a non-production B0.3 candidate migration, isolated negative integration script, RESTRICT rollback, and fail-closed static validation. Nothing was added to `supabase/migrations` or applied to a database.
+- Merged candidate-package PR #189 as `447a92eaa3141bc48459296c0fa861e306617db8` after Black Oracle CI 887 and Trading CI 1066 passed.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -59,6 +60,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
 
 ## Active PRs / branches
+- PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
 - PR #188 — merged B0 authority-contract checkpoint as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`.
 - PR #186 — merged runtime-status deployment evidence as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`.
@@ -83,6 +85,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #187 final head: authority and baseline tests 44/44 PASS locally; Black Oracle CI 883 PASS; Trading CI 1062 PASS.
 - PR #188 final head: Black Oracle CI 885 PASS; Trading CI 1064 PASS.
 - Current B0.3 candidate package: authority, SQL, and baseline tests 50/50 PASS; execution status remains NOT EXECUTED.
+- PR #189 final head: Black Oracle CI 887 PASS; Trading CI 1066 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
