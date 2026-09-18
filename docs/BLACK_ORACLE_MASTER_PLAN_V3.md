@@ -2,8 +2,9 @@
 
 Status: PROPOSED CANONICAL EXECUTION PLAN
 Date: 2026-09-18
-Branch: `plan/product-redesign-v3`
-Supersedes for future planning: `BLACK_ORACLE_MASTER_PLAN_V2.md`
+Branch: plan/product-redesign-v3
+Depends on: BLACK_ORACLE_PRODUCT_CONSTITUTION_V2.md
+Supersedes for future planning: BLACK_ORACLE_MASTER_PLAN_V2.md
 Preserves: canonical audit data, PAPER outcomes, qualification evidence, Strategy experiments, runtime incidents, Evidence provenance, and all other historically valuable validation records.
 
 ---
@@ -14,8 +15,10 @@ BLACK ORACLE will be rebuilt as one coherent product rather than continuing to a
 
 The product has two independent operating modes:
 
-1. **AutoTrade** - an autonomous investment-engine experience that configures and runs strategy portfolios according to investor profile, target, horizon, loss tolerance, and desired level of intervention.
-2. **Report** - an independent research and market-intelligence product. Reports may be referenced inside AutoTrade as supporting context, but Report is not a mandatory execution gate and does not silently authorize orders.
+1. **AutoTrade** - an autonomous investment-engine experience that configures and runs strategy portfolios according to investor profile, target, horizon, loss tolerance, and desired level of intervention. Current execution authority is PAPER-only.
+2. **Report** - an independent research and market-intelligence product covering supported markets, sectors, equities, crypto, and event-driven research. Reports may be referenced inside AutoTrade as supporting context, but Report is not a mandatory execution gate and does not silently authorize orders.
+
+Research and execution may reuse lineage, source provenance, and instrument identity, but they do not reuse authority.
 
 The engineering program is intentionally **integration-first and product-first at the same time**:
 
@@ -84,11 +87,13 @@ The default completion chain is:
 
 ## 2.1 Global product shell
 
-BLACK ORACLE should present a clear mode switch:
+Approved primary mobile navigation:
 
-`AUTOTRADE | REPORT`
+**Home / Report / AutoTrade / Community**
 
-The switch changes the primary user workflow without pretending that research and execution are the same product.
+BLACK ORACLE may also present a fast **AutoTrade | Report** mode switch in the shared shell.
+
+The switch changes the primary user workflow without pretending that research and execution are the same product. Community is a first-class navigation destination, but interactive social features may remain PLANNED during Beta and must never be simulated with fake activity.
 
 Shared infrastructure may be reused across both modes:
 
@@ -140,7 +145,11 @@ Market / Company / Asset
   -> Archive / Compare / Share
 ```
 
-A report may be linked into an AutoTrade trace as supporting information when relevant. It must remain clearly labeled as reference material unless a separate Evidence process promotes specific claims into execution-relevant evidence.
+A report may be linked into an AutoTrade trace as supporting information when relevant.
+
+Report uses **research-grade Evidence**. AutoTrade requires a separately evaluated **execution-grade Evidence Packet** under current market state, freshness, provenance, contradiction, policy, and trace rules.
+
+A Report must remain clearly labeled as reference material and can never inherit execution authority merely because it shares sources or lineage.
 
 ## 2.4 Canonical lineage
 
@@ -198,6 +207,14 @@ The following may be replaced or retired after dependency review:
 ---
 
 # 4. Sprint Map
+
+## 4.0 Status vocabulary
+
+All roadmap and capability status claims use only:
+
+**DESIGN / PLANNED / IMPLEMENTED / DEPLOYED / VERIFIED / BLOCKED / DEPRECATED / ARCHIVED**
+
+A green CI run, deployment badge, mockup, or merged PR does not by itself mean VERIFIED.
 
 | Sprint | Name | Primary Outcome | Depends on |
 | --- | --- | --- | --- |
@@ -429,18 +446,20 @@ Make every active and historical trade understandable from portfolio summary to 
 Build Report as a complete independent product rather than a subordinate AutoTrade screen.
 
 ### Sessions
-1. report domain model and research brief schema.
-2. report generation pipeline.
-3. asset/company/market report templates.
-4. Report mode UI.
-5. archive/compare/export/share-ready structure.
-6. optional reference links into AutoTrade.
+1. report domain model, versioning, trigger, and research brief schema.
+2. report generation pipeline with research-grade Evidence, counterevidence, invalidation, and freshness.
+3. market / sector / equity / crypto / Flash report templates and schedules.
+4. Report discovery, search, filter, Watchlist, Alerts, and detail UI.
+5. archive / compare / export / share-ready structure.
+6. explicit reference links into AutoTrade with execution-grade revalidation boundary.
 
 ### Acceptance
 - Report can be used without AutoTrade,
+- AutoTrade can operate without a completed Report,
 - Report generation does not directly place or authorize orders,
-- reports are versioned and timestamped,
-- references into AutoTrade remain explicit and auditable.
+- reports are versioned, timestamped, provenance-aware, and freshness-aware,
+- related AutoTrade links remain references rather than coupled execution inputs,
+- 24/7 crypto/event research scheduling cannot expand AutoTrade execution authority.
 
 ---
 
@@ -450,18 +469,21 @@ Build Report as a complete independent product rather than a subordinate AutoTra
 Map investor intent to a transparent strategy/risk package.
 
 ### Sessions
-1. onboarding questionnaire.
-2. profile schema: risk, horizon, return objective, loss limit, intervention preference.
-3. profile -> strategy package mapping.
-4. editable constraints and change history.
-5. personalized AutoTrade explanation.
-6. edge-case and suitability-state QA.
+1. onboarding questionnaire and Conservative / Balanced / Growth / Aggressive presets.
+2. profile schema: risk, horizon, return objective, maximum loss, intervention preference, asset allowlist, cash / concentration constraints.
+3. profile -> strategy package / risk-envelope mapping without cloning strategy identity.
+4. editable constraints, policy preview, effective time, and change history.
+5. PAPER execution preference: Auto / Confirm / Signal.
+6. suitability, hard-block, boundary, and rollback QA.
 
 ### Acceptance
-- profile changes are versioned,
+- every preset expands to explicit editable values,
+- profile and policy changes are versioned,
 - strategy package changes are explainable,
+- incompatible strategies are blocked with a reason,
 - no silent increase in authority or risk follows a profile edit,
-- user can inspect the constraints currently governing AutoTrade.
+- user can inspect the exact constraints currently governing AutoTrade,
+- point-in-time Decision Replay can recover the profile/policy version used.
 
 ---
 
@@ -489,20 +511,39 @@ Unify research, experiments, Monte Carlo, and Champion-Challenger governance.
 ## S12 - Pricing, Credits & Entitlements
 
 ### Objective
-Connect product plans to measurable resource usage and feature authority.
+Enforce the approved commercial model while keeping safety, truth, and financial authority independent from monetization.
+
+### Commercial contract
+
+Plan ladder:
+
+**Core -> Plus -> Pro -> Max -> Enterprise**
+
+Capacity multipliers:
+
+**Pro ×2 / ×5 / ×20** expand eligible Pro compute / capacity only. They do not unlock Max-only or Enterprise-only features.
+
+Workload presets:
+
+**Balanced / Strategy / Research** tune resource allocation. They do not silently change plan entitlement, total authority, or historical truth.
 
 ### Sessions
-1. plan/entitlement schema.
-2. credit/usage accounting.
-3. AutoTrade-oriented quotas and strategy limits.
-4. Report-oriented quotas and research limits.
-5. billing/settings UI contracts.
-6. downgrade/limit/overage tests.
+1. Plan / Capacity / Credits / Profile domain separation and entitlement matrix.
+2. Credit wallet, estimate-before-run, reservation, success/failure/cancel settlement, and usage history.
+3. Pro ×2 / ×5 / ×20 capacity enforcement and concurrency controls.
+4. Balanced / Strategy / Research workload presets.
+5. Report and AutoTrade usage contracts, settings UI, upgrade/downgrade flows, Enterprise contact scaffolding.
+6. insufficient-Credit, concurrency, retry, refund/rollback, and entitlement-drift tests.
 
 ### Acceptance
+- Pro ×20 cannot access Max-only features,
+- workload profile changes cannot fabricate capacity or change plan authority,
 - plan state cannot alter historical truth,
 - entitlement checks exist server-side for protected actions,
-- usage accounting is auditable,
+- usage accounting is auditable and idempotent,
+- ordinary navigation and minimum exposure truth do not consume Credits,
+- insufficient Credits cannot hide or lock positions, risk, stops, protection, Decision Replay, audit history, freshness/degraded status, or critical alerts,
+- Beta performs no real payment or charge unless separately approved,
 - plan copy and actual limits cannot drift silently.
 
 ---
@@ -548,6 +589,21 @@ Freeze the redesigned product into a qualification-ready release candidate.
 - operational incidents have clear response paths,
 - live-capital authority remains a separate explicitly approved stage.
 
+### Post-Beta future gate: G10 Live Readiness
+
+G10 is **not** part of v1 Beta delivery and cannot be unlocked by finishing S14 alone.
+
+At minimum it requires:
+
+- broker/account isolation,
+- order and position reconciliation,
+- credential/permission controls,
+- compliance and jurisdiction review where applicable,
+- live slippage/fill divergence measurement,
+- incident and kill-switch procedures,
+- canary-capital stages,
+- rollback criteria and explicit human approval.
+
 ---
 
 # 6. UI / Information Architecture Redesign
@@ -555,6 +611,8 @@ Freeze the redesigned product into a qualification-ready release candidate.
 ## Global principles
 
 - mobile-first,
+- approved primary navigation: **Home / Report / AutoTrade / Community**,
+- optional fast **AutoTrade | Report** switch in the shared shell,
 - premium fintech, not cyberpunk,
 - institutional data discipline with consumer clarity,
 - full-page detail for deep work,
@@ -633,11 +691,12 @@ A green web deployment alone is never equivalent to trading-runtime health.
 
 The next implementation sequence is:
 
-1. merge/approve this Master Plan PR as planning source of truth,
-2. execute **S0 System Audit & Reset**,
-3. produce a KEEP/MIGRATE/RETIRE map for current UI, runtime, APIs, services, and old PRs,
-4. only then begin **S1 Canonical Data Foundation** and **S2 Mobile App Shell**,
-5. preserve existing PAPER/audit evidence throughout the transition.
+1. merge/approve this Master Plan PR together with Product Constitution v2 as planning source of truth,
+2. reconcile PR #177 into this canonical plan and close/supersede duplicated planning scope rather than running two competing master plans,
+3. execute **S0 System Audit & Reset**,
+4. produce a KEEP / MIGRATE / ABSORB / RETIRE / DELETE-LATER map for current UI, runtime, APIs, services, and old PRs,
+5. only then begin **S1 Canonical Data Foundation** and **S2 Mobile App Shell**,
+6. preserve existing PAPER/audit evidence throughout the transition.
 
 ---
 
