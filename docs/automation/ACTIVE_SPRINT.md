@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at branch:** `f45d3d08f78dcd2882dafec8429ed9cb46b8024b`
-- **Session checkpoint:** 2026-09-18T15:58:00Z
+- **Canonical main at checkpoint:** `7c9f13832b02297378c6a1dd72991f5cd4791e94`
+- **Session checkpoint:** 2026-09-18T16:03:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -39,19 +39,20 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Railway SUCCESS is recorded as deployment completion only; runtime health remains UNKNOWN.
 
 ## Active PRs / branches
-- Current branch: `beta/b0-frozen-baseline-evidence` — B0 evidence reconciliation.
-- PR #179: superseded candidate after evidence transfer; close only after this PR is open and diff verified.
-- PR #176: closed; retained as original B0 evidence.
-- PR #175: open; incompatible portions must not merge unchanged.
+- No open B0 implementation PR remains from this session.
+- PR #177 — merged governing B0-B9 plan.
+- PR #180 — merged B0 baseline manifest/validator/evidence package.
+- PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
+- PRs #175, #176, and #179 — closed with evidence/disposition preserved.
+- Older pre-beta PRs remain open historical candidates and require separate B0 delta classification before reuse; none is authorized for merge by this checkpoint.
 
 ## Validation
-- Offline validator: PASS; returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
-- Offline negative tests: 16/16 PASS.
-- Black Oracle CI run 866: PASS on initial PR head `06b7cee43c38e6626aeb7c8650cb42e9651ff545`.
-- Trading CI run 1045: PASS on the same head.
-- Final documentation-correction head requires the same checks before merge.
-- Changed scope is limited to two documents, one JSON manifest, and two offline validator/test files; no runtime code or deployment configuration.
-- Vercel preview is not a deployment target for this audit-only package.
+- PR #177 final head: Black Oracle CI 864 PASS; Trading CI 1043 PASS.
+- PR #180 final head: offline tests 16/16 PASS; Black Oracle CI 867 PASS; Trading CI 1046 PASS.
+- PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
+- Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
+- Merged session scope is documentation, manifests, and offline validators/tests only.
+- Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
 
 ## Deployment / rollback
@@ -68,8 +69,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 6. Future Data API grants and no-JWT custom-auth boundaries require verification.
 
 ## Next safe actions
-1. Require final-head Black Oracle CI and Trading CI to pass, then merge only if conflict-free.
-2. Verify this PR diff contains no authority or production mutation.
-3. Continue sanitized read-only ownership verification for B0.2/B0.3.
-4. Define runtime readiness semantics that fail closed on persistence and upstream errors.
-5. Keep B0 IN_PROGRESS; do not begin B1 implementation until the B0 gate passes.
+1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
+2. Prove B0.3 beta write namespaces cannot mutate legacy state.
+3. Define runtime readiness semantics that fail closed on persistence/upstream failure and 409 contention.
+4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
+5. Classify older pre-beta PR deltas before reuse.
+6. Keep B0 IN_PROGRESS; do not begin B1 implementation until the complete B0 exit gate passes.
