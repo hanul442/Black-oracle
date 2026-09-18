@@ -39,6 +39,16 @@ for (const [name, change] of [
   ['readiness invented from deployment success', m => {
     m.operationalObservations = m.operationalObservations.filter(s => s.state !== 'NOT_READY');
   }],
+  ['legacy destructive grants hidden', m => { m.storageAuthority.serviceRoleDestructiveTables = 0; }],
+  ['browser table access introduced', m => { m.storageAuthority.browserGrantedTables = 1; }],
+  ['beta namespace invented', m => { m.storageAuthority.betaWriteNamespace.exists = true; }],
+  ['legacy mutation denial invented', m => { m.storageAuthority.betaWriteNamespace.legacyMutationDeniedByDatabase = true; }],
+  ['B0.3 enforcement invented', m => { m.storageAuthority.betaWriteNamespace.enforcementStatus = 'ENFORCED'; }],
+  ['public status auth review invented', m => {
+    const status = m.storageAuthority.edgeFunctionsWithoutJwt.find(f => f.name === 'black-oracle-runtime-status');
+    status.reviewStatus = 'VERIFIED_FAIL_CLOSED';
+  }],
+  ['security invoker gap hidden', m => { m.storageAuthority.viewsWithoutSecurityInvoker = []; }],
 ]) {
   test(`rejects ${name}`, () => {
     const manifest = fixture();
