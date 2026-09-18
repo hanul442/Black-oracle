@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `5edc52837aeb06cb09fb216f8ded51886a7697d0`
-- **Session checkpoint:** 2026-09-18T16:55:00Z
+- **Canonical main at checkpoint:** `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`
+- **Session checkpoint:** 2026-09-18T17:00:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -44,7 +44,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - No-JWT functions: two custom hashed-header jobs fail closed; public runtime status remains pending output/enumeration review.
 
 ## Active PRs / branches
-- PR #183 — B0.2/B0.3 storage-authority boundary; head `f69d88e150db016ab590f6cf27b41a2e0b7a64ef` before this closing checkpoint.
+- PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
 - PR #177 — merged governing B0-B9 plan.
 - PR #180 — merged B0 baseline manifest/validator/evidence package.
 - PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
@@ -56,16 +56,16 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #180 final head: offline tests 16/16 PASS; Black Oracle CI 867 PASS; Trading CI 1046 PASS.
 - PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
 - Current B0.2/B0.3 branch: baseline tests 25/25 PASS; TypeScript lint PASS; production build PASS; trading regressions 303/303 PASS (run with `node --import tsx --test` because the `tsx` CLI IPC socket is unavailable in this sandbox).
-- PR #183 pre-checkpoint head: Black Oracle CI 873 PASS; Trading CI 1052 PASS.
+- PR #183 final head: Black Oracle CI 874 PASS; Trading CI 1053 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
-- The closing checkpoint commit must pass GitHub CI before PR #183 can merge.
+- This documentation-only closing checkpoint must pass GitHub CI before merge.
 
 ## Deployment / rollback
 - No Railway deployment.
-- Rollback: revert the B0 evidence PR; production runtime is unchanged.
+- Rollback: revert PR #183 and this checkpoint PR; production runtime is unchanged.
 - Do not use generic Railway redeploy for S2; it is proven to reuse the stale snapshot.
 
 ## Blockers
