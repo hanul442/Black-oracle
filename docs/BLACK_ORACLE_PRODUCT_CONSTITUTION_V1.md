@@ -1,8 +1,11 @@
 # BLACK ORACLE Product Constitution v1
 
-Status: APPROVED BASELINE
+Status: SUPERSEDED FOR FUTURE PRODUCT DECISIONS
 Date: 2026-09-11
-Scope: Product identity, investment authority, system boundaries, UX principles, promotion governance
+Superseded on: 2026-09-18 by BLACK_ORACLE_PRODUCT_CONSTITUTION_V2.md
+Scope: Historical product identity, investment authority, system boundaries, UX principles, promotion governance
+
+> This file is retained as a historical policy baseline. Do not silently reinterpret qualification cohorts or past decisions under v2 semantics.
 
 ## 1. Product Definition
 
