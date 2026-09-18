@@ -5,15 +5,15 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `447a92eaa3141bc48459296c0fa861e306617db8`
-- **Session checkpoint:** 2026-09-18T21:51:08Z
+- **Canonical main at checkpoint:** `1ffc8f78856c735962985799ccefe9c71f12385e`
+- **Session checkpoint:** 2026-09-18T22:42:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
 ## Work-package status
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is deployed as Supabase Edge Function version 4 with an exact bundle hash, while independent HTTP response probes remain blocked by runner networking.
-- **B0.2 — IN_PROGRESS:** runtime/storage actors are catalogued; deployed source bounds public runtime enumeration and no longer accepts 409 or scheduler heartbeat as checkpoint proof, while qualification ownership and endpoint probe evidence remain incomplete.
+- **B0.2 — IN_PROGRESS / MATRIX PARTIAL:** positions, Paper order/fill identity, runtime Ledger, canonical event Ledger, checkpoint, strategy identity, qualification cohort, Strategy Factory, scheduler control, and NARS now have an explicit fail-closed ownership matrix. v03 ownership and production catalog grants are verified; S2/vNext/qualification ownership remains partial because source revisions disagree.
 - **B0.3 — IN_PROGRESS / CANDIDATE READY, NOT EXECUTED:** the design contract and candidate SQL package cover restricted roles, the beta namespace, representative legacy mutation denials, isolated beta writes, and non-cascading rollback. No Supabase branch exists, the package is not applied, and database enforcement remains absent.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
@@ -47,6 +47,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Confirmed the Supabase project has zero development branches; a new branch costs USD 0.01344/hour and was not created without explicit cost confirmation.
 - Added a non-production B0.3 candidate migration, isolated negative integration script, RESTRICT rollback, and fail-closed static validation. Nothing was added to `supabase/migrations` or applied to a database.
 - Merged candidate-package PR #189 as `447a92eaa3141bc48459296c0fa861e306617db8` after Black Oracle CI 887 and Trading CI 1066 passed.
+- Added the B0.2 state authority matrix and negative validator without changing runtime code or production data.
+- Confirmed through a sanitized production catalog query that the five scoped state/control tables have RLS, browser roles have no SELECT, and the canonical event Ledger is service-role INSERT/SELECT only with UPDATE/DELETE trigger denial.
+- Kept the runtime-local Paper Ledger distinct from the canonical cross-runtime event Ledger and kept scheduler/NARS/Report outside execution authority.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -58,8 +61,11 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Supabase boundary: 47 scoped tables, 47 with RLS, 0 browser-granted, 44 destructively mutable by `service_role`, 0 beta namespaces.
 - No-JWT functions: two custom hashed-header jobs fail closed; public runtime status v0.3 has a verified deployed allowlist artifact but still lacks independent HTTP response probes.
 - Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
+- B0.2 matrix: 10 ownership records; `PARTIAL`, with beta access limited to `READ_ONLY` or `NONE`.
+- Catalog cross-check: canonical events deny service-role UPDATE/DELETE; runtime, scheduler, and research stores remain service-role mutable and therefore protected from beta writes by contract only until B0.3 enforcement.
 
 ## Active PRs / branches
+- B0.2 state-authority matrix branch — validation complete; PR/merge evidence pending.
 - PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
 - PR #188 — merged B0 authority-contract checkpoint as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`.
@@ -86,6 +92,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #188 final head: Black Oracle CI 885 PASS; Trading CI 1064 PASS.
 - Current B0.3 candidate package: authority, SQL, and baseline tests 50/50 PASS; execution status remains NOT EXECUTED.
 - PR #189 final head: Black Oracle CI 887 PASS; Trading CI 1066 PASS.
+- Current B0.2 matrix: static validator PASS; combined baseline/authority/matrix tests 59/59 PASS; TypeScript lint PASS; production build PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
@@ -102,7 +109,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 1. vNext configured/deployed revision mismatch.
 2. S2 exact latest-source deployment control unavailable through the connected tool surface.
 3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
-4. Exact remaining service/runtime/scheduler/qualification ownership matrix is incomplete.
+4. State categories are mapped, but S2/vNext/qualification writer ownership remains PARTIAL until deployed/configured revisions agree.
 5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
 6. Future Data API grants require verification; the two custom-token no-JWT jobs are reviewed, while runtime-status v0.3 still needs independent HTTP response probes.
 7. B0.3 is not database-enforced: the operational `service_role` has destructive access to 44 scoped legacy tables and no beta write namespace exists.
@@ -111,7 +118,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 10. No Supabase development branch exists; isolated execution requires explicit approval of USD 0.01344/hour branch cost.
 
 ## Next safe actions
-1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
+1. Resolve S2/vNext deployed-source mismatches, then promote only the corresponding B0.2 writer records from PARTIAL when runtime evidence agrees.
 2. Execute the reviewed B0.3 candidate only on an explicitly approved isolated Supabase branch, then require all negative mutation, beta-write, and RESTRICT rollback probes to pass before considering a production migration.
 3. Run independent GET probes for both allowed runtime IDs and a forbidden qualification ID from a network that can reach the Supabase endpoint; do not promote health before the responses match the v0.3 contract.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.

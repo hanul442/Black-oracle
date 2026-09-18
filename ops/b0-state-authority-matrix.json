@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "sprint": "B0",
+  "workPackage": "B0.2",
+  "asOf": "2026-09-18T22:42:00Z",
+  "status": "PARTIAL",
+  "productionMutation": false,
+  "rules": {
+    "tradingMode": "PAPER_ONLY",
+    "betaLegacyAccess": "READ_ONLY",
+    "reportExecutionAuthority": false,
+    "narsExecutionAuthority": false,
+    "unknownIsHealthy": false
+  },
+  "records": [
+    {
+      "id": "runtime-checkpoint",
+      "state": "checkpoint envelope",
+      "store": "public.black_oracle_trading_runtime",
+      "jsonPath": "checkpoint",
+      "sourceOfTruth": true,
+      "writer": "SupabaseTradingCheckpointStore.save through the owning Paper runtime",
+      "writerStatus": "VERIFIED_FOR_V03_PARTIAL_FOR_OTHER_RUNTIMES",
+      "betaAccess": "READ_ONLY",
+      "mutation": "POST upsert by runtime_id; never rekey or reseed",
+      "evidence": [
+        "server/trading/persistence.ts#SupabaseTradingCheckpointStore.save",
+        "api/trading-paper-cycle.ts",
+        "supabase/migrations/20260901043139_black_oracle_trading_runtime.sql"
+      ]
+    },
+    {
+      "id": "paper-positions",
+      "state": "Paper positions and portfolio accounting",
+      "store": "public.black_oracle_trading_runtime",
+      "jsonPath": "checkpoint.session.portfolio",
+      "sourceOfTruth": true,
+      "writer": "PaperTradingSession via the owning Paper runtime checkpoint",
+      "writerStatus": "VERIFIED_IN_SOURCE",
+      "betaAccess": "READ_ONLY",
+      "mutation": "Only deterministic-Risk-approved Paper fills followed by checkpoint persistence",
+      "evidence": [
+        "server/trading/paperSession.ts#PaperTradingSessionCheckpoint",
+        "src/trading/paperPortfolio.ts",
+        "api/trading-paper-cycle.ts"
+      ]
+    },
+    {
+      "id": "paper-orders-fills",
+      "state": "Paper order/fill identity and idempotency",
+      "store": "public.black_oracle_trading_runtime",
+      "jsonPath": "checkpoint.session.processedOrderIds, checkpoint.session.entryMetadata, checkpoint.session.closedTrades, checkpoint.session.ledger",
+      "sourceOfTruth": true,
+      "writer": "PaperBroker and PaperTradingSession via the owning Paper runtime checkpoint",
+      "writerStatus": "VERIFIED_IN_SOURCE",
+      "betaAccess": "READ_ONLY",
+      "mutation": "PAPER only; deterministic Risk cannot be bypassed; duplicate order IDs are rejected",
+      "evidence": [
+        "server/trading/paperSession.ts#PaperTradingSessionCheckpoint",
+        "src/trading/paperBroker.ts",
+        "src/trading/types.ts"
+      ]
+    },
+    {
+      "id": "paper-runtime-ledger",
+      "state": "Runtime-local Paper event ledger",
+      "store": "public.black_oracle_trading_runtime",
+      "jsonPath": "checkpoint.session.ledger",
+      "sourceOfTruth": true,
+      "writer": "TradingLedger inside PaperTradingSession, persisted with the checkpoint",
+      "writerStatus": "VERIFIED_IN_SOURCE",
+      "betaAccess": "READ_ONLY",
+      "mutation": "Append in memory and replace only as part of the owning checkpoint; not the canonical cross-runtime ledger",
+      "evidence": [
+        "src/trading/ledger.ts",
+        "server/trading/paperSession.ts"
+      ]
+    },
+    {
+      "id": "canonical-event-ledger",
+      "state": "Cross-runtime canonical evidence and decision events",
+      "store": "public.black_oracle_events",
+      "jsonPath": null,
+      "sourceOfTruth": true,
+      "writer": "server/eventLedger.ts appendCanonicalEvents",
+      "writerStatus": "VERIFIED_IN_SOURCE_AND_CATALOG",
+      "betaAccess": "READ_ONLY",
+      "mutation": "INSERT/select only for service_role; UPDATE/DELETE denied by grants and append-only trigger",
+      "evidence": [
+        "server/eventLedger.ts#appendCanonicalEvents",
+        "supabase/migrations/20260909054202_black_oracle_canonical_event_ledger.sql",
+        "2026-09-18 read-only catalog query"
+      ]
+    },
+    {
+      "id": "strategy-identity",
+      "state": "Strategy/version attached to decisions, fills, and outcomes",
+      "store": "checkpoint payload plus public.black_oracle_events",
+      "jsonPath": "checkpoint.runtime.strategyVersion and event strategy_id/strategy_version",
+      "sourceOfTruth": true,
+      "writer": "Pinned runtime profile and append-only event exporter",
+      "writerStatus": "VERIFIED_IN_SOURCE",
+      "betaAccess": "READ_ONLY",
+      "mutation": "Preserve identity and lineage; beta must not clone, rekey, or rewrite historical records",
+      "evidence": [
+        "server/trading/runtimeProfile.ts",
+        "server/trading/persistence.ts#TradingRuntimeCheckpoint",
+        "server/eventLedger.ts"
+      ]
+    },
+    {
+      "id": "qualification-cohort",
+      "state": "Qualification identity and initial conditions",
+      "store": "public.black_oracle_trading_runtime",
+      "jsonPath": "checkpoint.runtime.{runtimeId,qualificationId,qualificationArmedAt,systemRevision,strategyVersion,riskConfigHash,initialEquityKrw}",
+      "sourceOfTruth": true,
+      "writer": "Qualification bootstrap in the pinned owning runtime; activation SQL validates identity",
+      "writerStatus": "PARTIAL_REVISION_MISMATCH_OPEN",
+      "betaAccess": "READ_ONLY",
+      "mutation": "Never reset, rearm, rekey, reseed, or bulk rewrite",
+      "evidence": [
+        "server/trading/runtimeProfile.ts#TradingCheckpointIdentity",
+        "ops/supabase/activate-vnext-qualification-runtime.sql",
+        "ops/supabase/activate-vnext-s1r2-qualification-runtime.sql"
+      ]
+    },
+    {
+      "id": "strategy-research",
+      "state": "Strategy Factory runs and experiment candidates",
+      "store": "public.black_oracle_strategy_factory_runs and public.black_oracle_strategy_experiments",
+      "jsonPath": null,
+      "sourceOfTruth": true,
+      "writer": "strategyFactoryRunner and strategyExperimentLedger",
+      "writerStatus": "VERIFIED_IN_SOURCE_AND_CATALOG",
+      "betaAccess": "READ_ONLY",
+      "mutation": "Research classification only; execution_authority=false and promotion_authority=false",
+      "evidence": [
+        "server/trading/strategyFactoryRunner.ts",
+        "server/trading/strategyExperimentLedger.ts",
+        "supabase/migrations/20260909024306_black_oracle_autonomous_strategy_factory.sql"
+      ]
+    },
+    {
+      "id": "scheduler-control",
+      "state": "Scheduler target/configuration and cycle lease",
+      "store": "public.black_oracle_trading_scheduler_config and runtime lease functions",
+      "jsonPath": null,
+      "sourceOfTruth": false,
+      "writer": "Reviewed scheduler activation/configuration paths",
+      "writerStatus": "PARTIAL_TARGET_MISMATCH_OPEN",
+      "betaAccess": "NONE",
+      "mutation": "Control-plane only; HTTP 200/409 or heartbeat cannot prove checkpoint persistence or readiness",
+      "evidence": [
+        "ops/supabase/activate-vnext-qualification-runtime.sql",
+        "supabase/functions/black-oracle-runtime-status/index.ts"
+      ]
+    },
+    {
+      "id": "nars",
+      "state": "NARS observations and fanout",
+      "store": "NARS evidence/read models",
+      "jsonPath": null,
+      "sourceOfTruth": false,
+      "writer": "NARS evidence pipeline",
+      "writerStatus": "VERIFIED_NO_EXECUTION_AUTHORITY",
+      "betaAccess": "READ_ONLY",
+      "mutation": "May observe and advise; cannot create orders, mutate positions, bypass Risk, or own qualification",
+      "evidence": [
+        "server/trading/narsConsumer.ts",
+        "supabase/migrations/20260910065000_black_oracle_nars_runtime_fanout.sql"
+      ]
+    }
+  ],
+  "openBlockers": [
+    "S2 exact-source owner remains stale/partial",
+    "vNext configured and deployed revisions do not match",
+    "Qualification ownership cannot be promoted beyond PARTIAL until revision and endpoint evidence agree",
+    "B0.3 database enforcement is not executed"
+  ]
+}
