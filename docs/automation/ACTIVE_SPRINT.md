@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `a8f307449b81ad1a49a7b148b31ac807bc53219c`
-- **Session checkpoint:** 2026-09-18T23:41:00Z
+- **Canonical main at checkpoint:** `20452029e0ebdde20103db7782089d799314c6b0`
+- **Session checkpoint:** 2026-09-18T23:49:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -55,6 +55,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Re-read Railway source configuration, deployment history, and current logs for vNext and S2 without reading secret values.
 - Added a B0.6 explicit carry-forward contract: exact-SHA deployment, runtime-reported revision equality, semantic health, and verified rollback artifact are mandatory before cutover.
 - Prohibited generic vNext redeploy because it cannot select/prove the pinned commit, and prohibited S2 redeploy because it repeats the unpinned `8c2f27a…` snapshot.
+- Merged B0.6 blocker-disposition PR #193 as `20452029e0ebdde20103db7782089d799314c6b0` after Black Oracle CI 899 and Trading CI 1078 passed.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -72,7 +73,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - S2 has no source branch/commit pin; latest redeploy remains `8c2f27a…`; recent logs contain KRX timeout and canonical append 503/521 failures.
 
 ## Active PRs / branches
-- B0.6 deployment-blocker disposition branch — validation pending PR/CI.
+- PR #193 — merged B0.6 deployment-blocker disposition as `20452029e0ebdde20103db7782089d799314c6b0`; blockers remain carried forward and cutover-blocking.
 - PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
 - PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
@@ -104,6 +105,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #191 final head: Black Oracle CI 895 PASS; Trading CI 1074 PASS.
 - PR #192 final head: Black Oracle CI 897 PASS; Trading CI 1076 PASS.
 - Current B0.6 disposition: combined B0 safety tests 71/71 PASS; TypeScript lint PASS; production build PASS.
+- PR #193 final head: Black Oracle CI 899 PASS; Trading CI 1078 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
