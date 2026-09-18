@@ -5,15 +5,15 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`
-- **Session checkpoint:** 2026-09-18T17:00:00Z
+- **Canonical main at checkpoint:** `9074c2753f72f97ff21c260e2bee8aa611423037`
+- **Session checkpoint:** 2026-09-18T17:42:30Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
 ## Work-package status
-- **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; exact runtime-reported revisions remain incomplete.
-- **B0.2 — IN_PROGRESS:** `black-oracle-paper-vnext-100m-v03` owner resolved to `black-oracle-web`; Supabase storage/function actors are now catalogued, while remaining qualification ownership and readiness semantics still require proof.
+- **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is implemented in source, while deployment and exact runtime-reported revision proof remain pending.
+- **B0.2 — IN_PROGRESS:** runtime/storage actors are catalogued; public runtime enumeration is bounded and readiness no longer accepts 409 or scheduler heartbeat as checkpoint proof in source, while qualification ownership remains incomplete.
 - **B0.3 — IN_PROGRESS / FAIL-CLOSED:** 47/47 scoped tables have RLS and no browser table grants, but `service_role` can destructively mutate 44 tables and no beta write namespace exists. The legacy read-only rule is not database-enforced.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
@@ -32,6 +32,10 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Inspected scoped Supabase grants, RLS/policy counts, function execution grants, view security mode, and deployed no-JWT function authorization through sanitized read-only paths.
 - Recorded the B0.3 enforcement gap in `docs/audit/B0_STORAGE_AUTHORITY_BOUNDARY.md` and manifest schema v4.
 - Added negative baseline tests that reject fabricated beta isolation, hidden destructive grants, browser table exposure, hidden view-security gaps, and a falsely completed public-status auth review.
+- Implemented `BO-RUNTIME-STATUS-v0.3` readiness policy in source: fresh persisted checkpoint, recent scheduler 2xx where required, zero cycle errors, and no Evidence attachment failure.
+- Restricted unauthenticated runtime status to the legacy and native-shadow PWA IDs; internal and qualification IDs share a 404 response.
+- Hardened canonical scheduler health so HTTP 409 or missing status cannot be reported HEALTHY.
+- Added readiness policy regression tests and a deployment/rollback contract; production function deployment remains intentionally pending.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -42,9 +46,11 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Railway SUCCESS is recorded as deployment completion only; runtime health remains UNKNOWN.
 - Supabase boundary: 47 scoped tables, 47 with RLS, 0 browser-granted, 44 destructively mutable by `service_role`, 0 beta namespaces.
 - No-JWT functions: two custom hashed-header jobs fail closed; public runtime status remains pending output/enumeration review.
+- Runtime status source target: v0.3; production remains v0.2 / source SHA-256 `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb` until the exact-SHA deployment gate passes.
 
 ## Active PRs / branches
 - PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
+- Current B0.1/B0.2 readiness branch: `codex/b0-runtime-readiness-contract`; PR pending creation.
 - PR #177 — merged governing B0-B9 plan.
 - PR #180 — merged B0 baseline manifest/validator/evidence package.
 - PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
@@ -57,11 +63,14 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
 - Current B0.2/B0.3 branch: baseline tests 25/25 PASS; TypeScript lint PASS; production build PASS; trading regressions 303/303 PASS (run with `node --import tsx --test` because the `tsx` CLI IPC socket is unavailable in this sandbox).
 - PR #183 final head: Black Oracle CI 874 PASS; Trading CI 1053 PASS.
+- Current B0.1/B0.2 readiness branch: readiness/scheduler policy 17/17 PASS; baseline tests 31/31 PASS; trading regressions 314/314 PASS; TypeScript lint PASS; production build PASS.
+- Local Deno check unavailable because Deno is not installed in this runner; GitHub Trading/NARS CI must supply the authoritative Edge Function typecheck before merge.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
 - This documentation-only closing checkpoint must pass GitHub CI before merge.
+- Current readiness branch has passed local baseline, policy, trading, lint, and build validation; GitHub Deno/CI evidence remains required before merge.
 
 ## Deployment / rollback
 - No Railway deployment.
@@ -74,14 +83,15 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
 4. Exact remaining service/runtime/scheduler/qualification ownership matrix is incomplete.
 5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
-6. Future Data API grants and no-JWT custom-auth boundaries require verification.
+6. Future Data API grants require verification; the two custom-token no-JWT jobs are reviewed, while production runtime-status v0.2 remains pending v0.3 deployment verification.
 7. B0.3 is not database-enforced: the operational `service_role` has destructive access to 44 scoped legacy tables and no beta write namespace exists.
 8. Three service-only NARS views lack `security_invoker=true`; public runtime status still needs output/enumeration review.
+9. Runtime status v0.3 is not deployed; production remains v0.2 until exact merged SHA, source hash, probes, and rollback are verified.
 
 ## Next safe actions
 1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
 2. Design and separately review a least-privilege beta identity plus beta write namespace; prove prohibited legacy mutations fail before applying production DDL.
-3. Define runtime readiness semantics that fail closed on persistence/upstream failure and 409 contention.
+3. Merge and deploy runtime status v0.3 only after CI, exact-SHA, source-hash, public allowlist, and negative readiness probes pass.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
 5. Classify older pre-beta PR deltas before reuse.
 6. Keep B0 IN_PROGRESS; do not begin B1 implementation until the complete B0 exit gate passes.
