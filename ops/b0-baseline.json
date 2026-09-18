@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "program": "B0_FROZEN_BASELINE",
   "observedOn": "2026-09-18",
   "baselineSha": "f45d3d08f78dcd2882dafec8429ed9cb46b8024b",
@@ -202,6 +202,9 @@
     "black-oracle-paper and vnext-s1r2 show recent scheduler 409 responses treated as successful while durable checkpoints have not advanced since 2026-09-13; semantics require explicit reconciliation",
     "Supabase security advisor reports service-role-style RLS tables without policies as INFO; grants and intended exposure must be verified before product-facing Data API use",
     "Several Edge Functions intentionally or historically run with verify_jwt=false; custom authentication boundaries require code-level review before reuse",
+    "B0.3 is not database-enforced: service_role can update or delete 44 of 47 scoped legacy tables and no beta write namespace exists",
+    "Three service-only NARS views do not set security_invoker=true; they are not browser-readable today but require hardening before any broader grant",
+    "Public black-oracle-runtime-status uses service_role internally and requires output/enumeration review before beta reuse",
     "Observed persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims even when deployments report SUCCESS"
   ],
   "b0Status": "IN_PROGRESS",
@@ -240,6 +243,57 @@
       "status": "PARTIAL_REVISION_MISMATCH"
     }
   ],
+  "storageAuthority": {
+    "observedAt": "2026-09-18T16:47:32Z",
+    "inspectionMode": "SANITIZED_READ_ONLY_METADATA",
+    "scopedPublicTables": 47,
+    "rlsEnabledTables": 47,
+    "browserGrantedTables": 0,
+    "tablesWithPolicies": 0,
+    "serviceRoleDestructiveTables": 44,
+    "appendOnlyServiceRoleTables": [
+      "black_oracle_events",
+      "research_feature_observations",
+      "research_feature_outcomes"
+    ],
+    "betaWriteNamespace": {
+      "exists": false,
+      "legacyMutationDeniedByDatabase": false,
+      "enforcementStatus": "NOT_ENFORCED"
+    },
+    "scopedFunctions": 35,
+    "securityDefinerFunctions": 7,
+    "browserExecutableFunctions": [
+      {
+        "name": "nars_official_series_version",
+        "securityDefiner": false
+      }
+    ],
+    "viewsWithoutSecurityInvoker": [
+      "nars_cluster_metrics_v1",
+      "nars_cluster_review_queue_v1",
+      "nars_story_wire_v1"
+    ],
+    "viewsWithoutSecurityInvokerBrowserReadable": false,
+    "edgeFunctionsWithoutJwt": [
+      {
+        "name": "nars-shadow-poll",
+        "authorization": "CUSTOM_HASHED_HEADER",
+        "reviewStatus": "VERIFIED_FAIL_CLOSED"
+      },
+      {
+        "name": "nars-evidence-acquire",
+        "authorization": "CUSTOM_HASHED_HEADER",
+        "reviewStatus": "VERIFIED_FAIL_CLOSED"
+      },
+      {
+        "name": "black-oracle-runtime-status",
+        "authorization": "PUBLIC_READ_ONLY_STATUS",
+        "reviewStatus": "REQUIRES_OUTPUT_AND_ENUMERATION_REVIEW"
+      }
+    ],
+    "conclusion": "DECLARED_READ_ONLY_NOT_DATABASE_ENFORCED"
+  },
   "operationalObservations": [
     {
       "observedAt": "2026-09-18T15:38:14Z",
