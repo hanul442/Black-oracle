@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "targetVersion": "1.0.0-beta.1",
+  "observedOn": "2026-09-18",
+  "baselineSha": "32d3b67e698b13e08549e099bf4ae1c82c0e5394",
+  "b0Status": "IN_PROGRESS",
+  "policy": {
+    "tradingMode": "PAPER_ONLY",
+    "reportRequiredForOrder": false,
+    "reportCanBypassRisk": false,
+    "legacyDataAccess": "READ_ONLY",
+    "personalization": "POLICY_AND_ALLOCATION",
+    "performanceStreams": ["BACKTEST", "FORWARD", "PAPER"],
+    "missingPerformance": "UNKNOWN",
+    "plans": ["Core", "Plus", "Pro", "Max", "Enterprise"],
+    "proCapacityMultipliers": [1, 2, 5, 20],
+    "capacityChangesEntitlements": false,
+    "profiles": ["Balanced", "Strategy", "Research"],
+    "profileMinimumPlan": "Pro"
+  },
+  "services": [
+    {"name":"black-oracle-web","deploymentSha":"32d3b67e698b13e08549e099bf4ae1c82c0e5394","configuredSha":null,"deploymentStatus":"SUCCESS","healthHttpStatus":200,"healthSemantics":"PROCESS_LIVENESS","runtimeHealth":"UNKNOWN","runtimeOwnership":"UNKNOWN"},
+    {"name":"black-oracle-paper-v9-multiasset","deploymentSha":"8c2f27aa53345a9738847e05f204cd38cf393d02","configuredSha":null,"deploymentStatus":"SUCCESS","healthHttpStatus":200,"healthSemantics":"PROCESS_LIVENESS","runtimeHealth":"UNKNOWN","runtimeOwnership":"UNKNOWN"},
+    {"name":"black-oracle-paper-s2-shadow","deploymentSha":"8c2f27aa53345a9738847e05f204cd38cf393d02","configuredSha":null,"deploymentStatus":"SUCCESS","healthHttpStatus":200,"healthSemantics":"PROCESS_LIVENESS","runtimeHealth":"UNKNOWN","runtimeOwnership":"UNKNOWN"},
+    {"name":"black-oracle-paper-vnext","deploymentSha":"8933516036f0910634fd53e97df1e81cc54637ea","configuredSha":"7c5bfd09297ad8497312b372f60386aeb7cfedcd","deploymentStatus":"SUCCESS","healthHttpStatus":200,"healthSemantics":"PROCESS_LIVENESS","runtimeHealth":"UNKNOWN","runtimeOwnership":"UNKNOWN"}
+  ],
+  "blockers": [
+    "Runtime identity, checkpoint ownership and scheduler target mapping not verified",
+    "vNext configured revision differs from latest deployment metadata",
+    "S2 exact-revision deployment remains unresolved; generic redeploy reuses stale snapshot",
+    "Recent logs include persistence aborts and upstream timeouts; liveness is not runtime readiness",
+    "PR 175 product scope requires reconciliation with the approved B0-B9 contract"
+  ]
+}
