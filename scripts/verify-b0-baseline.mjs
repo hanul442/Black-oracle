@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export function validateB0Baseline(manifest) {
-  assert.equal(manifest.schemaVersion, 4);
+  assert.equal(manifest.schemaVersion, 5);
   assert.equal(manifest.program, 'B0_FROZEN_BASELINE');
   assert.match(manifest.baselineSha, /^[a-f0-9]{40}$/);
   assert.equal(manifest.constitution, 'BLACK_ORACLE_PRODUCT_CONSTITUTION_V2');
@@ -89,6 +89,30 @@ export function validateB0Baseline(manifest) {
     ['black-oracle-runtime-status', 'PUBLIC_READ_ONLY_STATUS', 'REQUIRES_OUTPUT_AND_ENUMERATION_REVIEW']
   ]);
   assert.equal(storage.conclusion, 'DECLARED_READ_ONLY_NOT_DATABASE_ENFORCED');
+
+  const readiness = manifest.runtimeReadinessContract;
+  assert.equal(readiness.version, 'BO-RUNTIME-STATUS-v0.3');
+  assert.equal(readiness.sourceStatus, 'MERGE_AND_DEPLOY_PENDING');
+  assert.equal(readiness.productionVersion, 'BO-RUNTIME-STATUS-v0.2');
+  assert.match(readiness.productionSourceSha256, /^[a-f0-9]{64}$/);
+  assert.deepEqual(readiness.publicRuntimeIds, [
+    'black-oracle-paper',
+    'black-oracle-paper-native-shadow'
+  ]);
+  assert.deepEqual(readiness.readyRequires, [
+    'PERSISTED_CHECKPOINT',
+    'FRESH_CHECKPOINT',
+    'REQUIRED_SCHEDULER_ENABLED',
+    'REQUIRED_SCHEDULER_FRESH',
+    'REQUIRED_SCHEDULER_2XX',
+    'REQUIRED_SCHEDULER_LAST_OK',
+    'ZERO_CYCLE_ERRORS',
+    'EVIDENCE_ATTACHMENT_NOT_FAILED'
+  ]);
+  assert.equal(readiness.http409Ready, false);
+  assert.equal(readiness.schedulerHeartbeatCanRefreshCheckpoint, false);
+  assert.equal(readiness.unknownReady, false);
+  assert.equal(readiness.authority, 'OBSERVABILITY_ONLY');
 
   return {
     contractValid: true,

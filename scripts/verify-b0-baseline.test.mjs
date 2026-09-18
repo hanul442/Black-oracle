@@ -49,6 +49,14 @@ for (const [name, change] of [
     status.reviewStatus = 'VERIFIED_FAIL_CLOSED';
   }],
   ['security invoker gap hidden', m => { m.storageAuthority.viewsWithoutSecurityInvoker = []; }],
+  ['HTTP 409 promoted to ready', m => { m.runtimeReadinessContract.http409Ready = true; }],
+  ['scheduler heartbeat substitutes for checkpoint', m => { m.runtimeReadinessContract.schedulerHeartbeatCanRefreshCheckpoint = true; }],
+  ['UNKNOWN promoted to ready', m => { m.runtimeReadinessContract.unknownReady = true; }],
+  ['internal qualification runtime exposed publicly', m => {
+    m.runtimeReadinessContract.publicRuntimeIds.push('black-oracle-paper-vnext-s1r2');
+  }],
+  ['readiness granted execution authority', m => { m.runtimeReadinessContract.authority = 'EXECUTION'; }],
+  ['deployment falsely claimed', m => { m.runtimeReadinessContract.sourceStatus = 'DEPLOYED'; }],
 ]) {
   test(`rejects ${name}`, () => {
     const manifest = fixture();

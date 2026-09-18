@@ -197,6 +197,9 @@ export const classifySchedulerHealth = (schedulerRow: any, now = Date.now()): Sc
   } else if (ageMs > 35 * MINUTE) {
     status = 'DEGRADED';
     reason = 'Scheduler heartbeat is older than the expected 15-minute cadence window.';
+  } else if (lastHttpStatus == null || lastHttpStatus < 200 || lastHttpStatus >= 300) {
+    status = 'DEGRADED';
+    reason = `Scheduler HTTP status ${lastHttpStatus ?? 'UNKNOWN'} does not prove that a PAPER cycle completed and persisted a checkpoint.`;
   } else if (controlPlaneDrift) {
     status = 'DEGRADED';
     reason = 'Scheduler control-plane drift detected: source-of-truth says enabled while its preserved control marker says recurring execution is intentionally disabled.';

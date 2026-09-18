@@ -59,6 +59,34 @@ test('old recovered scheduler error does not degrade a recent successful heartbe
   assert.equal(health.controlPlaneDrift, false);
 });
 
+test('recent HTTP 409 is degraded even when scheduler last_ok is true', () => {
+  const now = Date.parse('2026-09-12T04:20:00.000Z');
+  const health = classifySchedulerHealth({
+    enabled: true,
+    last_invoked_at: '2026-09-12T04:15:00.000Z',
+    last_http_status: 409,
+    last_ok: true,
+    last_error: null,
+  }, now);
+
+  assert.equal(health.status, 'DEGRADED');
+  assert.match(health.reason, /does not prove/i);
+});
+
+test('missing scheduler HTTP status cannot become healthy', () => {
+  const now = Date.parse('2026-09-12T04:20:00.000Z');
+  const health = classifySchedulerHealth({
+    enabled: true,
+    last_invoked_at: '2026-09-12T04:15:00.000Z',
+    last_http_status: null,
+    last_ok: true,
+    last_error: null,
+  }, now);
+
+  assert.equal(health.status, 'DEGRADED');
+  assert.match(health.reason, /UNKNOWN/);
+});
+
 test('failed or stale scheduler remains critical regardless of control marker', () => {
   const now = Date.parse('2026-09-12T04:20:00.000Z');
   const failed = classifySchedulerHealth({
