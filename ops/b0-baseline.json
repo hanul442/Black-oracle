@@ -200,13 +200,12 @@
     "vNext configured commit pin differs from latest Railway deployment metadata",
     "S2 scheduler telemetry has not advanced since 2026-09-10 despite the service remaining deployed",
     "black-oracle-paper and vnext-s1r2 show recent scheduler 409 responses treated as successful while durable checkpoints have not advanced since 2026-09-13; semantics require explicit reconciliation",
-    "black-oracle-paper-vnext-100m-v03 has a fresh checkpoint but no matching scheduler_config row; writer ownership is not yet proven",
-    "Legacy open PRs and stacked branches must be classified before closure or reuse",
     "Supabase security advisor reports service-role-style RLS tables without policies as INFO; grants and intended exposure must be verified before product-facing Data API use",
-    "Several Edge Functions intentionally or historically run with verify_jwt=false; custom authentication boundaries require code-level review before reuse"
+    "Several Edge Functions intentionally or historically run with verify_jwt=false; custom authentication boundaries require code-level review before reuse",
+    "Observed persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims even when deployments report SUCCESS"
   ],
   "b0Status": "IN_PROGRESS",
-  "evidenceCapturedAt": "2026-09-18T15:50:00Z",
+  "evidenceCapturedAt": "2026-09-18T15:58:00Z",
   "workPackages": [
     "B0.1",
     "B0.2",
@@ -214,5 +213,52 @@
     "B0.4",
     "B0.5",
     "B0.6"
+  ],
+  "runtimeOwners": [
+    {
+      "runtimeId": "black-oracle-paper-vnext-100m-v03",
+      "ownerService": "black-oracle-web",
+      "evidence": "Railway boot profile plus cycle/checkpoint log lineage",
+      "status": "VERIFIED"
+    },
+    {
+      "runtimeId": "black-oracle-paper-native-shadow",
+      "ownerService": "black-oracle-native-paper-shadow edge function",
+      "evidence": "deployed function source",
+      "status": "VERIFIED"
+    },
+    {
+      "runtimeId": "black-oracle-paper-s2-shadow",
+      "ownerService": "black-oracle-paper-s2-shadow",
+      "evidence": "scheduler target and deployment metadata",
+      "status": "PARTIAL_STALE_SOURCE"
+    },
+    {
+      "runtimeId": "black-oracle-paper-vnext-s1r2",
+      "ownerService": "black-oracle-paper-vnext",
+      "evidence": "scheduler target mapping",
+      "status": "PARTIAL_REVISION_MISMATCH"
+    }
+  ],
+  "operationalObservations": [
+    {
+      "observedAt": "2026-09-18T15:38:14Z",
+      "service": "black-oracle-paper-v9-multiasset",
+      "state": "DEGRADED",
+      "evidence": "KRX research timeout; preceding 503/522 canonical append failures"
+    },
+    {
+      "observedAt": "2026-09-17T09:45:31Z",
+      "service": "black-oracle-web",
+      "runtimeId": "black-oracle-paper-vnext-100m-v03",
+      "state": "PARTIAL_RECOVERY",
+      "evidence": "checkpoint committed after earlier rollback and 521 persistence failures"
+    },
+    {
+      "service": "black-oracle-web",
+      "runtimeId": "black-oracle-paper-vnext-100m-v03",
+      "state": "NOT_READY",
+      "evidence": "409 cycles and intermittent aborted/503/521 persistence failures"
+    }
   ]
 }
