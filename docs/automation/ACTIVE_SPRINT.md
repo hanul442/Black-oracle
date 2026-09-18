@@ -42,7 +42,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #175: open; incompatible portions must not merge unchanged.
 
 ## Validation
-- Offline validator/test and repository CI: pending on this branch.
+- Offline validator: PASS; returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
+- Offline negative tests: 16/16 PASS.
+- Black Oracle CI run 866: PASS on initial PR head `06b7cee43c38e6626aeb7c8650cb42e9651ff545`.
+- Trading CI run 1045: PASS on the same head.
+- Final documentation-correction head requires the same checks before merge.
+- Changed scope is limited to two documents, one JSON manifest, and two offline validator/test files; no runtime code or deployment configuration.
 - Vercel preview is not a deployment target for this audit-only package.
 - Production deployment target: NONE.
 
@@ -61,7 +66,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 7. PR #175 unique-delta disposition is incomplete.
 
 ## Next safe actions
-1. Run the B0 offline validator/test plus required repository CI.
+1. Require final-head Black Oracle CI and Trading CI to pass, then merge only if conflict-free.
 2. Verify this PR diff contains no authority or production mutation.
 3. Close PR #179 as superseded only after its evidence is fully preserved here.
 4. Continue sanitized read-only ownership verification for B0.2/B0.3.
