@@ -4,58 +4,70 @@
 - **ID:** B0
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
-- **Session opened:** 2026-09-18T15:41:00Z
-- **Session checkpoint:** 2026-09-18T15:47:00Z
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
+- **Canonical main at branch:** `f45d3d08f78dcd2882dafec8429ed9cb46b8024b`
+- **Session checkpoint:** 2026-09-18T15:50:00Z
 
-## Ready work packages
-- **B0.1:** reconcile deployed SHA, configured revision, branch, scheduler, and health semantics.
-- **B0.2:** verify runtime/checkpoint/order/position/Ledger/NARS ownership through sanitized read-only evidence.
-- **B0.3:** prove legacy read-only and beta-write namespace separation.
-- **B0.4:** preserve PAPER-only, rollback, and protected qualification boundaries.
-- **B0.5:** reconcile PRs #175, #176, #178, and #179 with the governing B0-B9 sequence.
-- **B0.6:** carry S2 stale-source and vNext revision mismatches as explicit blockers until exact-source proof exists.
+## Objective
+Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
-## Current phase
-GATE_REVIEW
+## Work-package status
+- **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; exact runtime-reported revisions remain incomplete.
+- **B0.2 — IN_PROGRESS:** sanitized checkpoint, scheduler, cron, and native-shadow ownership evidence inherited from PR #179; one runtime owner remains unresolved.
+- **B0.3 — IN_PROGRESS:** protected stores are classified read-only; beta write-namespace enforcement proof remains pending.
+- **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
+- **B0.5 — IN_PROGRESS:** PR #177 merged; PR #179 evidence remapped here; PR #175 still requires split/reuse/close disposition.
+- **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
 
-## This session
-- Confirmed PR #177 was closed unmerged after PR #178 introduced a competing S0-S14 execution sequence.
-- Preserved Product Constitution v2, Report/AutoTrade independence, PAPER-only authority, design decisions, and commercial semantics from PR #178.
-- Added explicit reconciliation: B0-B9 is the sole beta delivery/gate sequence; S0 artifacts and PR #179 are reusable only as B0 evidence after remapping.
-- Reopened the plan path for CI and merge review.
-- No runtime, scheduler, database, secret, billing, position, order, Ledger, checkpoint, or qualification mutation.
+## Completed this session
+- Merged governing plan PR #177 as `f45d3d08f78dcd2882dafec8429ed9cb46b8024b` after Black Oracle CI 864 and Trading CI 1043 passed.
+- Revalidated Railway production service configuration and recent deployment metadata without reading secret values.
+- Created a fresh B0 branch from governing `main`; did not merge the conflicting S0 branch.
+- Remapped PR #179's useful audit manifest, validator, and negative tests to B0.1-B0.6.
+- Preserved Report/AutoTrade independence, PAPER-only authority, Risk sovereignty, protected historical state, and explicit UNKNOWN health semantics.
+- No runtime, scheduler, database, secret, billing, order, position, Ledger, checkpoint, or qualification mutation.
+
+## Evidence
+- Railway production services: 4; latest deployment states report SUCCESS.
+- Web deployment: `32d3b67e698b13e08549e099bf4ae1c82c0e5394`.
+- vNext configured pin: `7c5bfd09297ad8497312b372f60386aeb7cfedcd`; latest deployment metadata in the evidence manifest: `8933516036f0910634fd53e97df1e81cc54637ea`.
+- S2 Shadow deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
+- v9 multiasset deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
+- Railway SUCCESS is recorded as deployment completion only; runtime health remains UNKNOWN.
 
 ## Active PRs / branches
-- PR #177 / `beta/sprint-master-plan-v2` — governing plan reconciliation.
-- PR #179 / `plan/s0-system-audit-reset` — candidate B0 evidence; must be remapped before merge.
-- PR #176 — closed baseline evidence; retain for audit.
-- PR #175 — open; requires B0.5 split/reuse/close decision.
+- Current branch: `beta/b0-frozen-baseline-evidence` — B0 evidence reconciliation.
+- PR #179: superseded candidate after evidence transfer; close only after this PR is open and diff verified.
+- PR #176: closed; retained as original B0 evidence.
+- PR #175: open; incompatible portions must not merge unchanged.
 
 ## Validation
-- PR #177 Black Oracle CI runs 862 and 863: PASS on head `94d0ab2c57a62eb4031554b7121f8734da92dfbe`.
-- PR #177 Trading CI runs 1041 and 1042: PASS on the same head.
-- PR #177 is conflict-free against `main` at gate review.
-- Vercel preview: FAILED; connected Vercel API returned 403 for deployment inspection. This documentation-only PR has no Vercel or Railway deployment target; the failure remains recorded and cannot be used as readiness evidence.
-- Railway production service process status: four services report SUCCESS, but readiness remains UNKNOWN.
-- No production deployment authorized by this documentation-only session.
+- Offline validator: PASS; returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
+- Offline negative tests: 16/16 PASS.
+- Black Oracle CI run 866: PASS on initial PR head `06b7cee43c38e6626aeb7c8650cb42e9651ff545`.
+- Trading CI run 1045: PASS on the same head.
+- Final documentation-correction head requires the same checks before merge.
+- Changed scope is limited to two documents, one JSON manifest, and two offline validator/test files; no runtime code or deployment configuration.
+- Vercel preview is not a deployment target for this audit-only package.
+- Production deployment target: NONE.
 
 ## Deployment / rollback
-- Deployment target: NONE.
-- Rollback: revert the plan reconciliation commit; no runtime rollback is required.
-- S2 Shadow remains on stale source `8c2f27aa...`; generic redeploy is prohibited because it reuses the stale snapshot.
-- vNext configured/deployed revision mismatch remains unresolved.
+- No Railway deployment.
+- Rollback: revert the B0 evidence PR; production runtime is unchanged.
+- Do not use generic Railway redeploy for S2; it is proven to reuse the stale snapshot.
 
 ## Blockers
-- Exact runtime/source ownership matrix is incomplete.
-- S2 exact latest-source deployment control is not exposed by the connected Railway surface.
-- Railway SUCCESS does not prove runtime readiness.
-- PR #179 currently uses S0 identifiers and Master Plan v3 authority; it cannot merge unchanged under B0-B9 governance.
-- Vercel preview failure requires classification before any UI/deployment-bearing PR can pass.
+1. vNext configured/deployed revision mismatch.
+2. S2 exact latest-source deployment control unavailable through the connected tool surface.
+3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
+4. Owner of `black-oracle-paper-vnext-100m-v03` is not proven.
+5. Exact service/runtime/scheduler/qualification ownership matrix remains incomplete.
+6. Future Data API grants and no-JWT custom-auth boundaries require verification.
+7. PR #175 unique-delta disposition is incomplete.
 
 ## Next safe actions
-1. Merge PR #177 only after the final status-record commit reruns required CI successfully.
-2. Remap PR #179 manifest, validator, audit document, PR contract, and active-sprint record to B0.1-B0.6.
-3. Run its offline validator, relevant tests, typecheck, and build; keep B0 IN_PROGRESS.
-4. Reconcile PR #175 without merging incompatible Marketplace/Community scope.
-5. Do not deploy until exact commit SHA and runtime-reported revision can be proven.
+1. Require final-head Black Oracle CI and Trading CI to pass, then merge only if conflict-free.
+2. Verify this PR diff contains no authority or production mutation.
+3. Close PR #179 as superseded only after its evidence is fully preserved here.
+4. Continue sanitized read-only ownership verification for B0.2/B0.3.
+5. Keep B0 IN_PROGRESS; do not begin B1 implementation until the B0 gate passes.
