@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "sprint": "B0",
+  "workPackage": "B0.6",
+  "observedAt": "2026-09-18T23:41:00Z",
+  "status": "CARRIED_FORWARD_BLOCKED",
+  "cutoverAuthorized": false,
+  "genericRedeployAuthorized": false,
+  "productionMutation": false,
+  "services": [
+    {
+      "service": "black-oracle-paper-vnext",
+      "serviceId": "5be21fe0-22a8-4e90-89f7-bc4745159ba8",
+      "configuredSource": {
+        "repository": "hanul442/Black-oracle",
+        "branch": "main",
+        "commitSha": "7c5bfd09297ad8497312b372f60386aeb7cfedcd"
+      },
+      "latestDeployment": {
+        "deploymentId": "11c37d70-0362-4687-8319-58efd066279e",
+        "commitSha": "8933516036f0910634fd53e97df1e81cc54637ea",
+        "status": "SUCCESS"
+      },
+      "revisionMatch": false,
+      "runtimeHealth": "NOT_READY",
+      "observedFailures": [
+        "HTTP_409_LEASE_CONTENTION",
+        "HTTP_500_CYCLE_FAILURE",
+        "CHECKPOINT_ABORT_ROLLBACK",
+        "LEASE_RELEASE_504"
+      ],
+      "disposition": "DO_NOT_REDEPLOY_WITH_CURRENT_TOOLING",
+      "reason": "The configured source pin and deployed metadata disagree. The available redeploy action does not select or prove an exact commit and can repeat the current snapshot.",
+      "resolutionGate": [
+        "EXACT_COMMIT_DEPLOY_CONTROL",
+        "DEPLOYMENT_SHA_EQUALS_REQUESTED_SHA",
+        "RUNTIME_REPORTED_REVISION_EQUALS_DEPLOYMENT_SHA",
+        "FRESH_PERSISTED_CHECKPOINT",
+        "ZERO_RECENT_CYCLE_ERRORS",
+        "NO_409_AS_READY",
+        "ROLLBACK_ARTIFACT_PROVEN"
+      ]
+    },
+    {
+      "service": "black-oracle-paper-s2-shadow",
+      "serviceId": "32a99fbd-fad4-41ab-a878-5851b1284d2e",
+      "configuredSource": {
+        "repository": "hanul442/Black-oracle",
+        "branch": null,
+        "commitSha": null
+      },
+      "latestDeployment": {
+        "deploymentId": "fa1c9937-32fb-482c-8260-ceef6ff44266",
+        "commitSha": "8c2f27aa53345a9738847e05f204cd38cf393d02",
+        "status": "SUCCESS",
+        "reason": "redeploy"
+      },
+      "revisionMatch": null,
+      "runtimeHealth": "DEGRADED",
+      "observedFailures": [
+        "KRX_TIMEOUT",
+        "CANONICAL_APPEND_503",
+        "CANONICAL_APPEND_521",
+        "ZERO_CANDIDATE_PARTIAL_RUN"
+      ],
+      "disposition": "DO_NOT_REDEPLOY_STALE_SNAPSHOT",
+      "reason": "The service has no branch or commit pin. Recent redeploys reuse commit 8c2f27a and cannot prove latest-source deployment.",
+      "resolutionGate": [
+        "SOURCE_BRANCH_AND_COMMIT_PINNED",
+        "EXACT_COMMIT_DEPLOY_CONTROL",
+        "DEPLOYMENT_SHA_EQUALS_REQUESTED_SHA",
+        "RUNTIME_REPORTED_REVISION_EQUALS_DEPLOYMENT_SHA",
+        "FRESH_SOURCE_BACKED_CHECKPOINT_OR_EXPLICIT_SHADOW_EVIDENCE",
+        "ZERO_RECENT_PERSISTENCE_ERRORS",
+        "ROLLBACK_ARTIFACT_PROVEN"
+      ]
+    }
+  ],
+  "carryForward": {
+    "targetSprint": "B0",
+    "blocksB1ProductionCutover": true,
+    "blocksB1NonMutatingDesignWork": false,
+    "blocksB0Exit": true,
+    "owner": "DEPLOYMENT_CONTROL",
+    "nextAction": "Obtain an exact-SHA source deployment control for the existing services; do not create replacement services or mutate protected state."
+  },
+  "rollback": {
+    "currentAction": "NO_CHANGE",
+    "futureDeploymentRequirement": "A future exact-SHA deployment must name and verify its previous exact artifact before cutover.",
+    "databaseRollbackRequired": false
+  }
+}
