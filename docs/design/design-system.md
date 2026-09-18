@@ -30,9 +30,15 @@ Avoid:
 
 The previous five-destination navigation model is no longer the final information-architecture source of truth.
 
-The redesign introduces a global product-mode switch:
+Approved primary mobile navigation:
 
-`AUTOTRADE | REPORT`
+**Home / Report / AutoTrade / Community**
+
+The redesign may also expose a fast product-mode switch:
+
+**AUTOTRADE | REPORT**
+
+The navigation establishes product destinations; the switch is a convenience for moving quickly between the two primary work modes.
 
 ### AutoTrade mode
 
@@ -62,15 +68,18 @@ Report is independent from execution authority. Reports may be referenced by Aut
 Shared infrastructure may include:
 
 - wordmark / identity,
+- Home attention surface,
 - market search,
 - instrument detail,
-- profile,
+- investor profile,
 - notifications,
-- plan/usage,
+- plan/capacity/Credit usage,
 - data freshness/status,
 - account/settings.
 
-Exact bottom-navigation labels should be validated in S2 rather than inherited blindly from older mockups.
+Bottom navigation uses **Home / Report / AutoTrade / Community** unless a later Constitution version explicitly changes it.
+
+Community can render a truthful PLANNED or limited state before social features ship; fake feeds, fake users, or fake engagement are prohibited.
 
 ---
 
@@ -154,7 +163,9 @@ Reusable primitives should include:
 - Report card / report version row
 - Monte Carlo distribution card
 - Experiment ledger row
-- Plan / credit usage meter
+- Investor mandate / profile summary
+- Strategy Library performance row with Backtest / Forward / PAPER provenance
+- Plan / capacity / Credit usage meter
 - Empty / loading / error / degraded / stale states
 
 ---
@@ -191,6 +202,14 @@ Where a number matters to a decision, show:
 - Monte Carlo, drawdown, calibration, confidence, and risk outputs expose assumptions and sample limitations.
 - Trade views should prioritize entry, current mark, stop, target, exposure, and realized/unrealized outcome.
 - Evidence markers and decision events may overlay price charts only when their timestamps and trace links are known.
+
+---
+
+## Verified external component rule
+
+Third-party visual components such as RectangleButtons may be integrated only from the approved source bundle or a license-compatible implementation whose origin and checksum can be verified.
+
+Do not recreate an external component from screenshots while claiming source fidelity. Functional accessibility, reduced motion, and product truth take precedence over visual imitation.
 
 ---
 
@@ -243,4 +262,4 @@ The mockups under `docs/design/mockups/mobile-v1/` remain useful references for:
 
 They are **not** the canonical navigation specification after the 2026-09-18 redesign.
 
-Runtime truth, accessibility, mode architecture, traceability, responsive behavior, and this v2 design system take precedence over illustrative mockup values or old navigation.
+Runtime truth, accessibility, Constitution v2, the **Home / Report / AutoTrade / Community** architecture, Report/AutoTrade authority separation, traceability, responsive behavior, and this v2 design system take precedence over illustrative mockup values or old navigation.
