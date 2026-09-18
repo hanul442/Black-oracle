@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`
-- **Session checkpoint:** 2026-09-18T20:47:59Z
+- **Canonical main at checkpoint:** `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`
+- **Session checkpoint:** 2026-09-18T20:51:07Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -42,6 +42,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Kept endpoint health `UNKNOWN`: direct, browser-mediated, and read-only SQL probes timed out from this runner and were not promoted to PASS.
 - Merged deployment-evidence PR #186 as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b` after Black Oracle CI 881 and Trading CI 1060 passed.
 - Added the B0.3 beta authority design contract, negative validator, and apply/rollback gate without applying production DDL.
+- Merged B0.3 authority-contract PR #187 as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3` after Black Oracle CI 883 and Trading CI 1062 passed.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -55,7 +56,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
 
 ## Active PRs / branches
-- B0.3 authority-contract branch — dedicated identity/namespace design and negative validation; no production DDL.
+- PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
 - PR #186 — merged runtime-status deployment evidence as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`.
 - PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
 - PR #185 — merged B0.1/B0.2 fail-closed runtime readiness as `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07`.
@@ -75,11 +76,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Local Deno check unavailable because Deno is not installed in this runner; GitHub NARS CI supplied the authoritative Edge Function typecheck.
 - PR #185 final head: Black Oracle CI 879 PASS; Trading CI 1058 PASS; NARS CI 146 PASS, including authoritative Deno typecheck.
 - PR #186 final head: Black Oracle CI 881 PASS; Trading CI 1060 PASS.
+- PR #187 final head: authority and baseline tests 44/44 PASS locally; Black Oracle CI 883 PASS; Trading CI 1062 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment: Supabase Edge Function only; no Railway service deployed.
-- Current B0.3 authority contract must pass its negative tests, baseline validation, lint, build, and GitHub CI before merge.
+- B0.3 design contract is merged but does not claim database enforcement or B0.3 completion.
 
 ## Deployment / rollback
 - No Railway deployment.
