@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateRuntimeReadiness, isPublicRuntimeId } from "./policy.ts";
 
 const DEFAULT_RUNTIME_ID = "black-oracle-paper";
 const RUNTIME_TABLE = "black_oracle_trading_runtime";
@@ -35,8 +36,8 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const runtimeId = (url.searchParams.get("runtime") || DEFAULT_RUNTIME_ID).trim();
-  if (!/^black-oracle-[a-z0-9-]+$/.test(runtimeId)) {
-    return json({ success: false, state: "UNKNOWN", error: "Invalid runtime id." }, 400);
+  if (!isPublicRuntimeId(runtimeId)) {
+    return json({ success: false, ready: false, state: "UNKNOWN", error: "Runtime status is unavailable." }, 404);
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -55,33 +56,26 @@ Deno.serve(async (req: Request) => {
   const lastCycle = loop?.lastCycle && typeof loop.lastCycle === "object" ? loop.lastCycle : null;
   const savedAt = toMs(runtime?.saved_at) ?? toMs(checkpoint?.savedAt);
   const lastInvokedAt = toMs(scheduler?.last_invoked_at);
-  const lastActivityAt = Math.max(savedAt ?? 0, lastInvokedAt ?? 0) || null;
-  const ageMs = lastActivityAt === null ? null : Math.max(0, Date.now() - lastActivityAt);
   const cycleErrors = Array.isArray(lastCycle?.errors) ? lastCycle.errors.length : 0;
   const activeEvidenceCount = Array.isArray(checkpoint?.evidence) ? checkpoint.evidence.length : 0;
   const attachmentAudit = checkpoint?.evidenceAttachmentAudit && typeof checkpoint.evidenceAttachmentAudit === "object"
     ? checkpoint.evidenceAttachmentAudit as Record<string, any>
     : null;
 
-  let state: "RUNNING" | "DEGRADED" | "STALLED" | "BLOCKED" | "UNKNOWN" = "UNKNOWN";
-  let reason = "No persisted runtime activity is available yet.";
-  if (runtimeId === DEFAULT_RUNTIME_ID && scheduler && scheduler.enabled === false) {
-    state = "BLOCKED";
-    reason = "Scheduled PAPER runtime is disabled.";
-  } else if (ageMs !== null && ageMs > STALE_AFTER_MS) {
-    state = "STALLED";
-    reason = `No persisted PAPER activity within ${Math.round(STALE_AFTER_MS / 60000)} minutes.`;
-  } else if (scheduler?.last_ok === false || cycleErrors > 0 || attachmentAudit?.status === "FAIL") {
-    state = "DEGRADED";
-    reason = scheduler?.last_ok === false
-      ? "Latest scheduler invocation reported a failure."
-      : attachmentAudit?.status === "FAIL"
-        ? "Evidence attachment invariant failed."
-        : "Latest PAPER cycle contains market errors.";
-  } else if (savedAt !== null) {
-    state = "RUNNING";
-    reason = "Persisted PAPER runtime is updating within the expected cadence.";
-  }
+  const readiness = evaluateRuntimeReadiness({
+    runtimeId,
+    now: Date.now(),
+    staleAfterMs: STALE_AFTER_MS,
+    checkpointSavedAt: savedAt,
+    scheduler: runtimeId === DEFAULT_RUNTIME_ID ? {
+      enabled: scheduler?.enabled === true ? true : scheduler?.enabled === false ? false : null,
+      lastInvokedAt,
+      lastHttpStatus: Number.isFinite(scheduler?.last_http_status) ? Number(scheduler.last_http_status) : null,
+      lastOk: scheduler?.last_ok === true ? true : scheduler?.last_ok === false ? false : null,
+    } : null,
+    cycleErrors,
+    attachmentAuditStatus: attachmentAudit?.status == null ? null : String(attachmentAudit.status),
+  });
 
   const transport = runtimeId === DEFAULT_RUNTIME_ID
     ? (typeof scheduler?.target_base_url === "string" && scheduler.target_base_url.includes("vercel.app") ? "LEGACY_VERCEL_BRIDGE" : "UNKNOWN")
@@ -89,13 +83,15 @@ Deno.serve(async (req: Request) => {
 
   return json({
     success: true,
-    version: "BO-RUNTIME-STATUS-v0.2",
-    state,
-    reason,
+    ready: readiness.ready,
+    version: "BO-RUNTIME-STATUS-v0.3",
+    state: readiness.state,
+    reason: readiness.reason,
     runtimeId,
     transport,
-    lastActivityAt,
-    ageMs,
+    lastActivityAt: savedAt,
+    ageMs: readiness.checkpointAgeMs,
+    readiness: readiness.evidence,
     cycleCount: Number.isFinite(loop?.cycleCount) ? Number(loop.cycleCount) : null,
     evidence: {
       activeCount: activeEvidenceCount,
