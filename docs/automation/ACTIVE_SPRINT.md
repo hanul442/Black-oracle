@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `e204ea6ceb290bd0a106c006a36dd9b75daf396b`
-- **Session checkpoint:** 2026-09-18T22:52:00Z
+- **Canonical main at checkpoint:** `a8f307449b81ad1a49a7b148b31ac807bc53219c`
+- **Session checkpoint:** 2026-09-18T23:41:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -17,7 +17,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - **B0.3 — IN_PROGRESS / CANDIDATE READY, NOT EXECUTED:** the design contract and candidate SQL package cover restricted roles, the beta namespace, representative legacy mutation denials, isolated beta writes, and non-cascading rollback. No Supabase branch exists, the package is not applied, and database enforcement remains absent.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
-- **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
+- **B0.6 — CARRIED_FORWARD_BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch are explicitly dispositioned with exact resolution gates. Generic redeploy and production cutover remain prohibited; the blockers still prevent B0 exit.
 
 ## Completed this session
 - Merged governing plan PR #177 as `f45d3d08f78dcd2882dafec8429ed9cb46b8024b` after Black Oracle CI 864 and Trading CI 1043 passed.
@@ -51,6 +51,10 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Confirmed through a sanitized production catalog query that the five scoped state/control tables have RLS, browser roles have no SELECT, and the canonical event Ledger is service-role INSERT/SELECT only with UPDATE/DELETE trigger denial.
 - Kept the runtime-local Paper Ledger distinct from the canonical cross-runtime event Ledger and kept scheduler/NARS/Report outside execution authority.
 - Merged B0.2 state-authority PR #191 as `e204ea6ceb290bd0a106c006a36dd9b75daf396b` after Black Oracle CI 895 and Trading CI 1074 passed.
+- Merged B0.2 checkpoint PR #192 as `a8f307449b81ad1a49a7b148b31ac807bc53219c` after Black Oracle CI 897 and Trading CI 1076 passed.
+- Re-read Railway source configuration, deployment history, and current logs for vNext and S2 without reading secret values.
+- Added a B0.6 explicit carry-forward contract: exact-SHA deployment, runtime-reported revision equality, semantic health, and verified rollback artifact are mandatory before cutover.
+- Prohibited generic vNext redeploy because it cannot select/prove the pinned commit, and prohibited S2 redeploy because it repeats the unpinned `8c2f27a…` snapshot.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -64,8 +68,11 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
 - B0.2 matrix: 10 ownership records; `PARTIAL`, with beta access limited to `READ_ONLY` or `NONE`.
 - Catalog cross-check: canonical events deny service-role UPDATE/DELETE; runtime, scheduler, and research stores remain service-role mutable and therefore protected from beta writes by contract only until B0.3 enforcement.
+- vNext config remains pinned to `7c5bfd0…` while latest deployment metadata remains `8933516…`; recent logs contain 409/500 cycles, checkpoint-abort rollback, and lease-release 504.
+- S2 has no source branch/commit pin; latest redeploy remains `8c2f27a…`; recent logs contain KRX timeout and canonical append 503/521 failures.
 
 ## Active PRs / branches
+- B0.6 deployment-blocker disposition branch — validation pending PR/CI.
 - PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
 - PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
@@ -95,6 +102,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #189 final head: Black Oracle CI 887 PASS; Trading CI 1066 PASS.
 - Current B0.2 matrix: static validator PASS; combined baseline/authority/matrix tests 59/59 PASS; TypeScript lint PASS; production build PASS.
 - PR #191 final head: Black Oracle CI 895 PASS; Trading CI 1074 PASS.
+- PR #192 final head: Black Oracle CI 897 PASS; Trading CI 1076 PASS.
+- Current B0.6 disposition: combined B0 safety tests 71/71 PASS; TypeScript lint PASS; production build PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
@@ -108,8 +117,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Do not use generic Railway redeploy for S2; it is proven to reuse the stale snapshot.
 
 ## Blockers
-1. vNext configured/deployed revision mismatch.
-2. S2 exact latest-source deployment control unavailable through the connected tool surface.
+1. vNext configured/deployed revision mismatch; exact-SHA deploy control is unavailable.
+2. S2 exact latest-source deployment control unavailable; source branch/commit is unpinned and redeploy repeats the stale snapshot.
 3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
 4. State categories are mapped, but S2/vNext/qualification writer ownership remains PARTIAL until deployed/configured revisions agree.
 5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
@@ -120,7 +129,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 10. No Supabase development branch exists; isolated execution requires explicit approval of USD 0.01344/hour branch cost.
 
 ## Next safe actions
-1. Resolve S2/vNext deployed-source mismatches, then promote only the corresponding B0.2 writer records from PARTIAL when runtime evidence agrees.
+1. Obtain exact-SHA deployment control for the existing S2/vNext services, verify runtime-reported revision and rollback artifact, then promote only matching ownership records from PARTIAL.
 2. Execute the reviewed B0.3 candidate only on an explicitly approved isolated Supabase branch, then require all negative mutation, beta-write, and RESTRICT rollback probes to pass before considering a production migration.
 3. Run independent GET probes for both allowed runtime IDs and a forbidden qualification ID from a network that can reach the Supabase endpoint; do not promote health before the responses match the v0.3 contract.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
