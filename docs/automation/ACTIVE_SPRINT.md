@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`
-- **Session checkpoint:** 2026-09-18T20:51:07Z
+- **Canonical main at checkpoint:** `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`
+- **Session checkpoint:** 2026-09-18T21:48:25Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -14,7 +14,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 ## Work-package status
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is deployed as Supabase Edge Function version 4 with an exact bundle hash, while independent HTTP response probes remain blocked by runner networking.
 - **B0.2 — IN_PROGRESS:** runtime/storage actors are catalogued; deployed source bounds public runtime enumeration and no longer accepts 409 or scheduler heartbeat as checkpoint proof, while qualification ownership and endpoint probe evidence remain incomplete.
-- **B0.3 — IN_PROGRESS / DESIGN CONTRACT READY:** a machine-checked least-privilege identity and beta namespace contract now rejects service-role use, inherited/bypass authority, direct legacy grants, browser access, and premature DDL authorization. It is not applied; database enforcement remains absent.
+- **B0.3 — IN_PROGRESS / CANDIDATE READY, NOT EXECUTED:** the design contract and candidate SQL package cover restricted roles, the beta namespace, representative legacy mutation denials, isolated beta writes, and non-cascading rollback. No Supabase branch exists, the package is not applied, and database enforcement remains absent.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
 - **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
@@ -43,6 +43,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Merged deployment-evidence PR #186 as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b` after Black Oracle CI 881 and Trading CI 1060 passed.
 - Added the B0.3 beta authority design contract, negative validator, and apply/rollback gate without applying production DDL.
 - Merged B0.3 authority-contract PR #187 as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3` after Black Oracle CI 883 and Trading CI 1062 passed.
+- Merged ACTIVE_SPRINT checkpoint PR #188 as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee` after Black Oracle CI 885 and Trading CI 1064 passed.
+- Confirmed the Supabase project has zero development branches; a new branch costs USD 0.01344/hour and was not created without explicit cost confirmation.
+- Added a non-production B0.3 candidate migration, isolated negative integration script, RESTRICT rollback, and fail-closed static validation. Nothing was added to `supabase/migrations` or applied to a database.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -57,6 +60,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 
 ## Active PRs / branches
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
+- PR #188 — merged B0 authority-contract checkpoint as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`.
 - PR #186 — merged runtime-status deployment evidence as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`.
 - PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
 - PR #185 — merged B0.1/B0.2 fail-closed runtime readiness as `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07`.
@@ -77,6 +81,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #185 final head: Black Oracle CI 879 PASS; Trading CI 1058 PASS; NARS CI 146 PASS, including authoritative Deno typecheck.
 - PR #186 final head: Black Oracle CI 881 PASS; Trading CI 1060 PASS.
 - PR #187 final head: authority and baseline tests 44/44 PASS locally; Black Oracle CI 883 PASS; Trading CI 1062 PASS.
+- PR #188 final head: Black Oracle CI 885 PASS; Trading CI 1064 PASS.
+- Current B0.3 candidate package: authority, SQL, and baseline tests 50/50 PASS; execution status remains NOT EXECUTED.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
@@ -99,10 +105,11 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 7. B0.3 is not database-enforced: the operational `service_role` has destructive access to 44 scoped legacy tables and no beta write namespace exists.
 8. Three service-only NARS views lack `security_invoker=true`; they remain non-browser-readable but require hardening before broader grants.
 9. Runtime status v0.3 is deployed and artifact-verified, but direct and browser-mediated HTTP probes and the read-only database cross-check timed out; readiness remains UNKNOWN.
+10. No Supabase development branch exists; isolated execution requires explicit approval of USD 0.01344/hour branch cost.
 
 ## Next safe actions
 1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
-2. Review the least-privilege beta identity and namespace contract, then create a separate migration only after an ephemeral database can prove prohibited legacy mutations fail.
+2. Execute the reviewed B0.3 candidate only on an explicitly approved isolated Supabase branch, then require all negative mutation, beta-write, and RESTRICT rollback probes to pass before considering a production migration.
 3. Run independent GET probes for both allowed runtime IDs and a forbidden qualification ID from a network that can reach the Supabase endpoint; do not promote health before the responses match the v0.3 contract.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
 5. Classify older pre-beta PR deltas before reuse.
