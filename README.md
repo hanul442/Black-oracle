@@ -8,6 +8,19 @@ BLACK ORACLE connects market state, evidence, competing strategies, multi-agent 
 
 The project is currently in active redesign and PAPER-stage development. Autonomous live-capital authority is **not** the current product claim.
 
+### Current product contract
+
+| Area | Status | Contract |
+| --- | --- | --- |
+| Product redesign | **DESIGN / PLANNED** | Mobile-first **Home / Report / AutoTrade / Community** shell |
+| Report | **PLANNED** | Independent research product; no execution authority |
+| AutoTrade | **PLANNED on current foundations** | Investor-profile-driven strategy portfolio; PAPER-only |
+| Trading runtime foundations | **IMPLEMENTED** | Existing Router / Risk / PAPER / Ledger foundations remain subject to S0 audit |
+| Council authority | **IMPLEMENTED / SHADOW** | May be evaluated; does not override deterministic Risk |
+| Live capital | **BLOCKED** | Separate broker, reconciliation, compliance, canary, and rollback gates required |
+
+Project documentation uses only: **DESIGN, PLANNED, IMPLEMENTED, DEPLOYED, VERIFIED, BLOCKED, DEPRECATED, ARCHIVED**.
+
 ---
 
 ## Product direction
@@ -62,6 +75,10 @@ Market / Company / Asset
 ```
 
 Reports can be referenced from AutoTrade when useful, but Report is **not a mandatory execution gate** and does not silently authorize trades.
+
+Report may use **research-grade Evidence**. AutoTrade requires a separate **execution-grade Evidence Packet** under current market state, freshness, provenance, contradiction, policy, and trace rules.
+
+> **Reuse lineage, not authority.**
 
 ---
 
@@ -182,11 +199,32 @@ BLACK ORACLE uses a credit-style grade vocabulary from `AAA+` through `F-`, but 
 
 ## Product experience
 
-The redesigned product is **mobile-first** and uses a global mode switch:
+The redesigned product is **mobile-first**.
 
-`AUTOTRADE | REPORT`
+Approved primary navigation:
 
-Design goals:
+**Home / Report / AutoTrade / Community**
+
+A fast **AutoTrade | Report** switch may coexist in the shared shell, but the two products remain independent.
+
+### Investor Profile
+
+AutoTrade begins with onboarding and remains directly editable. The governing profile can include:
+
+- risk tolerance,
+- investment horizon,
+- return objective,
+- maximum loss / drawdown tolerance,
+- intervention preference,
+- allowed assets and concentration constraints.
+
+The product maps the profile to an explainable **strategy package + risk envelope** rather than cloning one strategy into cosmetic investor types.
+
+### Strategy Library
+
+Strategy Library should expose comparable strategy performance and risk metrics with clear separation between **Backtest / Forward / PAPER** evidence. Insufficient samples remain unavailable rather than being ranked with fabricated precision.
+
+### Design goals
 
 - institutional data discipline with consumer-grade clarity,
 - premium fintech rather than cyberpunk decoration,
@@ -197,6 +235,35 @@ Design goals:
 - no mock values on production truth surfaces.
 
 Existing mobile mockups remain visual references for tone while the information architecture is rebuilt around the new product model.
+
+---
+
+## Plans, capacity, Credits, and profiles
+
+BLACK ORACLE separates four commercial concepts:
+
+| Concept | Meaning |
+| --- | --- |
+| **Plan** | Feature / entitlement boundary |
+| **Capacity** | Eligible compute and usage volume |
+| **Credits** | Meter for defined expensive work units |
+| **Profile** | Investor or workload configuration; not a hidden plan tier |
+
+Approved plan ladder:
+
+**Core → Plus → Pro → Max → Enterprise**
+
+Capacity expansion:
+
+**Pro ×2 / ×5 / ×20** keeps **Pro feature authority** and expands capacity/compute. It does not unlock Max-only features.
+
+Workload presets:
+
+**Balanced / Strategy / Research** tune resource allocation but do not silently change the plan, total entitlement, trading authority, or historical truth.
+
+Credit exhaustion must never hide or lock safety-critical state such as **positions, risk, stops, protection, Decision Replay, audit history, freshness/degraded status, or critical alerts**.
+
+Beta billing is test-only unless a separate commercial-release decision authorizes real charging.
 
 ---
 
@@ -330,9 +397,10 @@ Some legacy dependencies may remain temporarily during migration and should not 
 
 ## Governance
 
-- [Product Constitution v1](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md)
-- [Master Sprint Plan v3](docs/BLACK_ORACLE_MASTER_PLAN_V3.md)
-- [Open Core Boundary](docs/OPEN_CORE_BOUNDARY.md)
+- [Product Constitution v2](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V2.md) — canonical product, authority, personalization and commercial invariants
+- [Product Constitution v1](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md) — superseded historical baseline
+- [Master Sprint Plan v3](docs/BLACK_ORACLE_MASTER_PLAN_V3.md) — canonical implementation program
+- [Open Core Boundary](docs/OPEN_CORE_BOUNDARY.md) — public architecture vs proprietary Alpha / production boundary
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 
