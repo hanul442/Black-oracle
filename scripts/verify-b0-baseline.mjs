@@ -49,6 +49,11 @@ export function validateB0Baseline(manifest) {
 
   assert.ok(manifest.schedulerMappings.some((s) => s.runtimeId === 'black-oracle-paper-vnext-s1r2' && s.enabled));
   assert.ok(manifest.checkpointObservations.some((s) => s.runtimeId === 'black-oracle-paper-native-shadow'));
+  const v03Owner = manifest.runtimeOwners.find((s) => s.runtimeId === 'black-oracle-paper-vnext-100m-v03');
+  assert.ok(v03Owner);
+  assert.equal(v03Owner.ownerService, 'black-oracle-web');
+  assert.equal(v03Owner.status, 'VERIFIED');
+  assert.ok(manifest.operationalObservations.some((s) => s.state === 'NOT_READY'));
   assert.ok(manifest.activeCronJobs.length >= 3);
   assert.ok(Array.isArray(manifest.blockers) && manifest.blockers.length > 0);
 
