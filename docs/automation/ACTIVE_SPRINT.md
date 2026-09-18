@@ -50,7 +50,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 
 ## Active PRs / branches
 - PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
-- Current B0.1/B0.2 readiness branch: `codex/b0-runtime-readiness-contract`; PR pending creation.
+- PR #185 — B0.1/B0.2 fail-closed runtime readiness; head `28646ba9a99ec2ebc3ae965929d1ea9aee60883e` before this closing checkpoint.
 - PR #177 — merged governing B0-B9 plan.
 - PR #180 — merged B0 baseline manifest/validator/evidence package.
 - PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
@@ -65,12 +65,13 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #183 final head: Black Oracle CI 874 PASS; Trading CI 1053 PASS.
 - Current B0.1/B0.2 readiness branch: readiness/scheduler policy 17/17 PASS; baseline tests 31/31 PASS; trading regressions 314/314 PASS; TypeScript lint PASS; production build PASS.
 - Local Deno check unavailable because Deno is not installed in this runner; GitHub Trading/NARS CI must supply the authoritative Edge Function typecheck before merge.
+- PR #185 pre-checkpoint head: Black Oracle CI 878 PASS; Trading CI 1057 PASS; NARS CI 145 PASS, including authoritative Deno typecheck.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
 - This documentation-only closing checkpoint must pass GitHub CI before merge.
-- Current readiness branch has passed local baseline, policy, trading, lint, and build validation; GitHub Deno/CI evidence remains required before merge.
+- The closing checkpoint commit must pass Black Oracle, Trading, and NARS CI before PR #185 can merge.
 
 ## Deployment / rollback
 - No Railway deployment.
