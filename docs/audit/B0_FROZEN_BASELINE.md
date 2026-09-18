@@ -121,7 +121,7 @@ Deletion is forbidden until dependency and audit-history impact are proven.
 
 ## 8. Open-PR disposition
 
-- **#175** — product proposal: **ABSORB / RETIRE**. Canonical product decisions are now in Constitution v2 / Master Plan v3. Do not merge unchanged.
+- **#175** — product proposal: **SPLIT / REUSE / CLOSE**. Preserve compatible product research under Product Constitution v2 and the B0-B9 governing plan; do not merge Marketplace/Community or competing-roadmap scope unchanged.
 - **#176** — original B0 baseline: **ABSORB AS EVIDENCE**. Preserve its audit findings and validator concepts without merging the stale branch unchanged.
 - **#177** — **MERGED / GOVERNING** as `f45d3d08f78dcd2882dafec8429ed9cb46b8024b`. Its B0-B9 sequence is the sole beta delivery/gate authority.
 - **#178** — **KEEP** Product Constitution v2, design, and commercial decisions; Master Plan v3 is historical/design context for beta sequencing.
