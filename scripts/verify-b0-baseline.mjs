@@ -86,15 +86,22 @@ export function validateB0Baseline(manifest) {
   assert.deepEqual(storage.edgeFunctionsWithoutJwt.map((f) => [f.name, f.authorization, f.reviewStatus]), [
     ['nars-shadow-poll', 'CUSTOM_HASHED_HEADER', 'VERIFIED_FAIL_CLOSED'],
     ['nars-evidence-acquire', 'CUSTOM_HASHED_HEADER', 'VERIFIED_FAIL_CLOSED'],
-    ['black-oracle-runtime-status', 'PUBLIC_READ_ONLY_STATUS', 'REQUIRES_OUTPUT_AND_ENUMERATION_REVIEW']
+    ['black-oracle-runtime-status', 'PUBLIC_READ_ONLY_STATUS', 'SOURCE_AND_DEPLOYED_ARTIFACT_VERIFIED_HTTP_PROBE_BLOCKED']
   ]);
   assert.equal(storage.conclusion, 'DECLARED_READ_ONLY_NOT_DATABASE_ENFORCED');
 
   const readiness = manifest.runtimeReadinessContract;
   assert.equal(readiness.version, 'BO-RUNTIME-STATUS-v0.3');
-  assert.equal(readiness.sourceStatus, 'MERGE_AND_DEPLOY_PENDING');
-  assert.equal(readiness.productionVersion, 'BO-RUNTIME-STATUS-v0.2');
-  assert.match(readiness.productionSourceSha256, /^[a-f0-9]{64}$/);
+  assert.equal(readiness.sourceStatus, 'DEPLOYED_ARTIFACT_VERIFIED_HTTP_PROBE_BLOCKED');
+  assert.equal(readiness.productionVersion, 'BO-RUNTIME-STATUS-v0.3');
+  assert.match(readiness.mergedCommitSha, /^[a-f0-9]{40}$/);
+  assert.equal(readiness.deployedFunctionVersion, 4);
+  assert.match(readiness.deployedBundleSha256, /^[a-f0-9]{64}$/);
+  assert.match(readiness.sourceFileSha256['index.ts'], /^[a-f0-9]{64}$/);
+  assert.match(readiness.sourceFileSha256['policy.ts'], /^[a-f0-9]{64}$/);
+  assert.equal(readiness.rollbackTarget.functionVersion, 3);
+  assert.match(readiness.rollbackTarget.bundleSha256, /^[a-f0-9]{64}$/);
+  assert.equal(readiness.probeStatus, 'BLOCKED_BY_RUNNER_NETWORK');
   assert.deepEqual(readiness.publicRuntimeIds, [
     'black-oracle-paper',
     'black-oracle-paper-native-shadow'
