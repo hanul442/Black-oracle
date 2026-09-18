@@ -81,7 +81,7 @@ The active `black-oracle-native-paper-shadow` Edge Function explicitly owns runt
 
 and writes its checkpoint under PAPER_SHADOW authority. This ownership is **verified from deployed function source**.
 
-The owner of `black-oracle-paper-vnext-100m-v03` is still unresolved.
+`black-oracle-paper-vnext-100m-v03` ownership is now verified from the `black-oracle-web` Railway boot log and subsequent cycle/checkpoint logs. The gateway starts with that runtime profile and records scheduled PAPER cycles under the same runtime ID. This proves the writer service, but not runtime readiness: recent logs include 409 lease/contention responses, persistence rollbacks, upstream 503/521/522 failures, and intermittent successful checkpoint commits.
 
 ## 5. Active cron surface
 
@@ -121,7 +121,7 @@ Deletion is forbidden until dependency and audit-history impact are proven.
 
 ## 8. Open-PR disposition
 
-- **#175** — product proposal: **SPLIT / REUSE / CLOSE**. Preserve compatible product research under Product Constitution v2 and the B0-B9 governing plan; do not merge Marketplace/Community or competing-roadmap scope unchanged.
+- **#175** — **CLOSED / PARTIALLY REUSED**. Compatible Report/AutoTrade, lineage, safety, and productization concepts are preserved in PR #178 and the B0-B9 plan. Marketplace, Community, public strategy uploads/sales, broad builder/forking, competing pricing, and conflicting sprint sequence are deferred outside this Beta.
 - **#176** — original B0 baseline: **ABSORB AS EVIDENCE**. Preserve its audit findings and validator concepts without merging the stale branch unchanged.
 - **#177** — **MERGED / GOVERNING** as `f45d3d08f78dcd2882dafec8429ed9cb46b8024b`. Its B0-B9 sequence is the sole beta delivery/gate authority.
 - **#178** — **KEEP** Product Constitution v2, design, and commercial decisions; Master Plan v3 is historical/design context for beta sequencing.
@@ -134,11 +134,10 @@ Deletion is forbidden until dependency and audit-history impact are proven.
 1. vNext configured/deployed revision mismatch.
 2. S2 scheduler/checkpoint freshness ambiguity.
 3. `black-oracle-paper` and S1R2 scheduler 409 semantics vs stale durable checkpoints.
-4. ownership of `black-oracle-paper-vnext-100m-v03`.
-5. exact service/runtime/qualification identity map for all active actors.
-6. legacy PR/branch delta accounting.
-7. Data API grant/RLS exposure map for future product read models.
-8. authentication review for active no-JWT Edge Functions before reuse.
+4. exact service/runtime/qualification identity map for the remaining active actors.
+5. persistence and upstream reliability: observed 503/521/522 errors, aborted writes, and 409 contention must not be represented as healthy cycles.
+6. Data API grant/RLS exposure map for future product read models.
+7. authentication review for active no-JWT Edge Functions before reuse.
 
 ## 10. Exit gate
 

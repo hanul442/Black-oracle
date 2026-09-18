@@ -32,6 +32,13 @@ for (const [name, change] of [
     const v = m.railway.services.find(s => s.name === 'black-oracle-paper-vnext');
     v.configuredSha = v.deploymentSha;
   }],
+  ['v03 owner rewritten', m => {
+    const owner = m.runtimeOwners.find(s => s.runtimeId === 'black-oracle-paper-vnext-100m-v03');
+    owner.ownerService = 'black-oracle-paper-vnext';
+  }],
+  ['readiness invented from deployment success', m => {
+    m.operationalObservations = m.operationalObservations.filter(s => s.state !== 'NOT_READY');
+  }],
 ]) {
   test(`rejects ${name}`, () => {
     const manifest = fixture();
