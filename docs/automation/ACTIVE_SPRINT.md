@@ -5,16 +5,16 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `7c9f13832b02297378c6a1dd72991f5cd4791e94`
-- **Session checkpoint:** 2026-09-18T16:03:00Z
+- **Canonical main at checkpoint:** `5edc52837aeb06cb09fb216f8ded51886a7697d0`
+- **Session checkpoint:** 2026-09-18T16:55:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
 ## Work-package status
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; exact runtime-reported revisions remain incomplete.
-- **B0.2 — IN_PROGRESS:** `black-oracle-paper-vnext-100m-v03` owner resolved to `black-oracle-web`; remaining service/runtime/qualification ownership and readiness semantics still require proof.
-- **B0.3 — IN_PROGRESS:** protected stores are classified read-only; beta write-namespace enforcement proof remains pending.
+- **B0.2 — IN_PROGRESS:** `black-oracle-paper-vnext-100m-v03` owner resolved to `black-oracle-web`; Supabase storage/function actors are now catalogued, while remaining qualification ownership and readiness semantics still require proof.
+- **B0.3 — IN_PROGRESS / FAIL-CLOSED:** 47/47 scoped tables have RLS and no browser table grants, but `service_role` can destructively mutate 44 tables and no beta write namespace exists. The legacy read-only rule is not database-enforced.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
 - **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
@@ -29,6 +29,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Recorded current degraded evidence: 409 contention, persistence rollback/abort, upstream 503/521/522 failures, and KRX timeouts.
 - Closed PR #175 after unique-delta review; compatible concepts are already preserved, while Marketplace/Community/public uploads/sales and conflicting pricing/sprint scope remain post-beta.
 - No runtime, scheduler, database, secret, billing, order, position, Ledger, checkpoint, or qualification mutation.
+- Inspected scoped Supabase grants, RLS/policy counts, function execution grants, view security mode, and deployed no-JWT function authorization through sanitized read-only paths.
+- Recorded the B0.3 enforcement gap in `docs/audit/B0_STORAGE_AUTHORITY_BOUNDARY.md` and manifest schema v4.
+- Added negative baseline tests that reject fabricated beta isolation, hidden destructive grants, browser table exposure, hidden view-security gaps, and a falsely completed public-status auth review.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -37,9 +40,11 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - S2 Shadow deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
 - v9 multiasset deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
 - Railway SUCCESS is recorded as deployment completion only; runtime health remains UNKNOWN.
+- Supabase boundary: 47 scoped tables, 47 with RLS, 0 browser-granted, 44 destructively mutable by `service_role`, 0 beta namespaces.
+- No-JWT functions: two custom hashed-header jobs fail closed; public runtime status remains pending output/enumeration review.
 
 ## Active PRs / branches
-- No open B0 implementation PR remains from this session.
+- Current B0.2/B0.3 storage-boundary PR: pending creation from `codex/b0-storage-authority-boundary`.
 - PR #177 — merged governing B0-B9 plan.
 - PR #180 — merged B0 baseline manifest/validator/evidence package.
 - PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
@@ -50,10 +55,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #177 final head: Black Oracle CI 864 PASS; Trading CI 1043 PASS.
 - PR #180 final head: offline tests 16/16 PASS; Black Oracle CI 867 PASS; Trading CI 1046 PASS.
 - PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
+- Current B0.2/B0.3 branch: baseline tests 25/25 PASS; TypeScript lint PASS; production build PASS; trading regressions 303/303 PASS (run with `node --import tsx --test` because the `tsx` CLI IPC socket is unavailable in this sandbox).
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
+- GitHub CI must pass before this checkpoint can merge.
 
 ## Deployment / rollback
 - No Railway deployment.
@@ -67,10 +74,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 4. Exact remaining service/runtime/scheduler/qualification ownership matrix is incomplete.
 5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
 6. Future Data API grants and no-JWT custom-auth boundaries require verification.
+7. B0.3 is not database-enforced: the operational `service_role` has destructive access to 44 scoped legacy tables and no beta write namespace exists.
+8. Three service-only NARS views lack `security_invoker=true`; public runtime status still needs output/enumeration review.
 
 ## Next safe actions
 1. Continue sanitized read-only ownership verification for remaining B0.2 actors.
-2. Prove B0.3 beta write namespaces cannot mutate legacy state.
+2. Design and separately review a least-privilege beta identity plus beta write namespace; prove prohibited legacy mutations fail before applying production DDL.
 3. Define runtime readiness semantics that fail closed on persistence/upstream failure and 409 contention.
 4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
 5. Classify older pre-beta PR deltas before reuse.
