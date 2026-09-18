@@ -5,6 +5,7 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Session opened:** 2026-09-18T15:41:00Z
+- **Session checkpoint:** 2026-09-18T15:47:00Z
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
 
 ## Ready work packages
@@ -16,7 +17,7 @@
 - **B0.6:** carry S2 stale-source and vNext revision mismatches as explicit blockers until exact-source proof exists.
 
 ## Current phase
-PLAN_RECONCILIATION
+GATE_REVIEW
 
 ## This session
 - Confirmed PR #177 was closed unmerged after PR #178 introduced a competing S0-S14 execution sequence.
@@ -32,9 +33,10 @@ PLAN_RECONCILIATION
 - PR #175 — open; requires B0.5 split/reuse/close decision.
 
 ## Validation
-- PR #177 previous Black Oracle CI: PASS.
-- PR #177 previous Trading CI: PASS.
-- Vercel preview: FAILED; not accepted as irrelevant until failure cause is classified.
+- PR #177 Black Oracle CI runs 862 and 863: PASS on head `94d0ab2c57a62eb4031554b7121f8734da92dfbe`.
+- PR #177 Trading CI runs 1041 and 1042: PASS on the same head.
+- PR #177 is conflict-free against `main` at gate review.
+- Vercel preview: FAILED; connected Vercel API returned 403 for deployment inspection. This documentation-only PR has no Vercel or Railway deployment target; the failure remains recorded and cannot be used as readiness evidence.
 - Railway production service process status: four services report SUCCESS, but readiness remains UNKNOWN.
 - No production deployment authorized by this documentation-only session.
 
@@ -52,7 +54,7 @@ PLAN_RECONCILIATION
 - Vercel preview failure requires classification before any UI/deployment-bearing PR can pass.
 
 ## Next safe actions
-1. Require CI on reconciled PR #177 and merge only if checks pass and it remains conflict-free.
+1. Merge PR #177 only after the final status-record commit reruns required CI successfully.
 2. Remap PR #179 manifest, validator, audit document, PR contract, and active-sprint record to B0.1-B0.6.
 3. Run its offline validator, relevant tests, typecheck, and build; keep B0 IN_PROGRESS.
 4. Reconcile PR #175 without merging incompatible Marketplace/Community scope.
