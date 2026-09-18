@@ -56,7 +56,8 @@ for (const [name, change] of [
     m.runtimeReadinessContract.publicRuntimeIds.push('black-oracle-paper-vnext-s1r2');
   }],
   ['readiness granted execution authority', m => { m.runtimeReadinessContract.authority = 'EXECUTION'; }],
-  ['deployment falsely claimed', m => { m.runtimeReadinessContract.sourceStatus = 'DEPLOYED'; }],
+  ['deployment artifact hash hidden', m => { m.runtimeReadinessContract.deployedBundleSha256 = 'unknown'; }],
+  ['blocked HTTP probe falsely claimed passed', m => { m.runtimeReadinessContract.probeStatus = 'PASSED'; }],
 ]) {
   test(`rejects ${name}`, () => {
     const manifest = fixture();
