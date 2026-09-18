@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export function validateB0Baseline(manifest) {
-  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.schemaVersion, 4);
   assert.equal(manifest.program, 'B0_FROZEN_BASELINE');
   assert.match(manifest.baselineSha, /^[a-f0-9]{40}$/);
   assert.equal(manifest.constitution, 'BLACK_ORACLE_PRODUCT_CONSTITUTION_V2');
@@ -56,6 +56,39 @@ export function validateB0Baseline(manifest) {
   assert.ok(manifest.operationalObservations.some((s) => s.state === 'NOT_READY'));
   assert.ok(manifest.activeCronJobs.length >= 3);
   assert.ok(Array.isArray(manifest.blockers) && manifest.blockers.length > 0);
+
+  const storage = manifest.storageAuthority;
+  assert.equal(storage.inspectionMode, 'SANITIZED_READ_ONLY_METADATA');
+  assert.equal(storage.scopedPublicTables, 47);
+  assert.equal(storage.rlsEnabledTables, storage.scopedPublicTables);
+  assert.equal(storage.browserGrantedTables, 0);
+  assert.equal(storage.tablesWithPolicies, 0);
+  assert.equal(storage.serviceRoleDestructiveTables, 44);
+  assert.deepEqual(storage.appendOnlyServiceRoleTables, [
+    'black_oracle_events',
+    'research_feature_observations',
+    'research_feature_outcomes'
+  ]);
+  assert.equal(storage.betaWriteNamespace.exists, false);
+  assert.equal(storage.betaWriteNamespace.legacyMutationDeniedByDatabase, false);
+  assert.equal(storage.betaWriteNamespace.enforcementStatus, 'NOT_ENFORCED');
+  assert.equal(storage.scopedFunctions, 35);
+  assert.equal(storage.securityDefinerFunctions, 7);
+  assert.deepEqual(storage.browserExecutableFunctions, [
+    { name: 'nars_official_series_version', securityDefiner: false }
+  ]);
+  assert.deepEqual(storage.viewsWithoutSecurityInvoker, [
+    'nars_cluster_metrics_v1',
+    'nars_cluster_review_queue_v1',
+    'nars_story_wire_v1'
+  ]);
+  assert.equal(storage.viewsWithoutSecurityInvokerBrowserReadable, false);
+  assert.deepEqual(storage.edgeFunctionsWithoutJwt.map((f) => [f.name, f.authorization, f.reviewStatus]), [
+    ['nars-shadow-poll', 'CUSTOM_HASHED_HEADER', 'VERIFIED_FAIL_CLOSED'],
+    ['nars-evidence-acquire', 'CUSTOM_HASHED_HEADER', 'VERIFIED_FAIL_CLOSED'],
+    ['black-oracle-runtime-status', 'PUBLIC_READ_ONLY_STATUS', 'REQUIRES_OUTPUT_AND_ENUMERATION_REVIEW']
+  ]);
+  assert.equal(storage.conclusion, 'DECLARED_READ_ONLY_NOT_DATABASE_ENFORCED');
 
   return {
     contractValid: true,
