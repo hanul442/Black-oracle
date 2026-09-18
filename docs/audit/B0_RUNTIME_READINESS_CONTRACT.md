@@ -71,13 +71,17 @@ Do not deploy from this document or from a branch ref. Deployment requires:
 6. deployed response reports `BO-RUNTIME-STATUS-v0.3`;
 7. rollback target remains deployed v3, SHA-256 `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`.
 
-Until all seven conditions pass, production remains on v3 and B0 readiness remains unresolved.
+## Deployment result
+
+The exact merged source from `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07` was deployed as Supabase Edge Function version 4. Supabase reports the active bundle SHA-256 as `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; retrieved deployed files match the v0.3 policy and public allowlist. The rollback target remains function version 3 with bundle SHA-256 `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`.
+
+Conditions 1-4, 6, and 7 are evidenced. Condition 5 is not complete: both direct and browser-mediated HTTP probes timed out from the automation runner, and the read-only database cross-check also timed out. This is recorded as `BLOCKED_BY_RUNNER_NETWORK`, not PASS. The function is deployed, but endpoint readiness and the runtime's current health remain `UNKNOWN` until independent probes verify the two allowed IDs and the uniform 404 response for a forbidden qualification ID.
 
 ## Scope and non-scope
 
 In scope: pure readiness policy, public runtime allowlist, status response semantics, canonical scheduler classification, tests, and deployment/rollback contract.
 
-Out of scope: deploying the function, changing scheduler rows, rewriting checkpoints, granting execution authority, changing trading logic, or modifying qualification state.
+Out of scope: changing scheduler rows, rewriting checkpoints, granting execution authority, changing trading logic, or modifying qualification state.
 
 ## Authority and lineage impact
 
