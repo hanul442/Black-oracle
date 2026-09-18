@@ -44,7 +44,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - No-JWT functions: two custom hashed-header jobs fail closed; public runtime status remains pending output/enumeration review.
 
 ## Active PRs / branches
-- Current B0.2/B0.3 storage-boundary PR: pending creation from `codex/b0-storage-authority-boundary`.
+- PR #183 — B0.2/B0.3 storage-authority boundary; head `f69d88e150db016ab590f6cf27b41a2e0b7a64ef` before this closing checkpoint.
 - PR #177 — merged governing B0-B9 plan.
 - PR #180 — merged B0 baseline manifest/validator/evidence package.
 - PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
@@ -56,11 +56,12 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #180 final head: offline tests 16/16 PASS; Black Oracle CI 867 PASS; Trading CI 1046 PASS.
 - PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
 - Current B0.2/B0.3 branch: baseline tests 25/25 PASS; TypeScript lint PASS; production build PASS; trading regressions 303/303 PASS (run with `node --import tsx --test` because the `tsx` CLI IPC socket is unavailable in this sandbox).
+- PR #183 pre-checkpoint head: Black Oracle CI 873 PASS; Trading CI 1052 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
 - Production deployment target: NONE.
-- GitHub CI must pass before this checkpoint can merge.
+- The closing checkpoint commit must pass GitHub CI before PR #183 can merge.
 
 ## Deployment / rollback
 - No Railway deployment.
