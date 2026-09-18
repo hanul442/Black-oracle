@@ -1,55 +1,127 @@
 # BLACK ORACLE
 
-**An auditable AI investment operating system.**
+**An auditable AI investment operating system - rebuilt around controlled automation, replayable decisions, and a clear mobile product experience.**
 
-BLACK ORACLE is an experimental investment engine designed to connect market state, evidence, strategy selection, multi-agent review, deterministic risk, Paper execution, and realized outcomes through replayable decision lineage.
+BLACK ORACLE connects market state, evidence, competing strategies, multi-agent review, deterministic risk, PAPER execution, and realized outcomes through one canonical decision lineage.
 
-> **Evidence → Strategy Factory → Router → AI Council → Red Team → Arbiter → Risk → Execution → Outcome**
->
-> Every important decision should be explainable after the fact from the information available at the time.
+> **Market -> Evidence -> Strategies Compete -> Router -> Council -> Arbiter -> Risk -> Execution -> Outcome -> Learning**
 
-**Current stage:** active development · PAPER qualification · AI Council remains shadow-only · no claim of production-live autonomous capital authority.
+The project is currently in active redesign and PAPER-stage development. Autonomous live-capital authority is **not** the current product claim.
 
----
+### Current product contract
 
-## Why BLACK ORACLE exists
+| Area | Status | Contract |
+| --- | --- | --- |
+| Product redesign | **DESIGN / PLANNED** | Mobile-first **Home / Report / AutoTrade / Community** shell |
+| Report | **PLANNED** | Independent research product; no execution authority |
+| AutoTrade | **PLANNED on current foundations** | Investor-profile-driven strategy portfolio; PAPER-only |
+| Trading runtime foundations | **IMPLEMENTED** | Existing Router / Risk / PAPER / Ledger foundations remain subject to S0 audit |
+| Council authority | **IMPLEMENTED / SHADOW** | May be evaluated; does not override deterministic Risk |
+| Live capital | **BLOCKED** | Separate broker, reconciliation, compliance, canary, and rollback gates required |
 
-Most trading systems show the result of a decision. BLACK ORACLE is being built to preserve the **decision itself**.
-
-For each meaningful candidate, the target system records:
-
-- what the market looked like,
-- which evidence was available,
-- which strategies were eligible or rejected,
-- why the Router selected a strategy or `NO_TRADE`,
-- what independent Council agents believed before debate,
-- what the Red Team challenged,
-- what the Arbiter concluded,
-- what deterministic Risk allowed or rejected,
-- what order/fill actually occurred,
-- and what happened afterward.
-
-The goal is not an AI that merely says **BUY** or **SELL**. The goal is an investment operating system that can answer:
-
-> **Why did you take this risk, what information did you use, what could have invalidated the decision, and which layer added or destroyed value?**
+Project documentation uses only: **DESIGN, PLANNED, IMPLEMENTED, DEPLOYED, VERIFIED, BLOCKED, DEPRECATED, ARCHIVED**.
 
 ---
 
-## Core architecture
+## Product direction
+
+BLACK ORACLE is being organized into two independent product modes.
+
+### AutoTrade
+
+AutoTrade is the execution-oriented investment engine.
+
+It is designed to configure and operate a portfolio of strategies according to an investor's:
+
+- risk tolerance,
+- investment horizon,
+- return objective,
+- loss limits,
+- intervention preference,
+- and current market constraints.
+
+Target flow:
+
+```text
+Investor Profile
+  -> Strategy Package
+  -> Market State + Evidence
+  -> Strategy Factory / Vault
+  -> Strategy Router
+  -> AI Council
+  -> Independent Red Team
+  -> Arbiter
+  -> Deterministic Risk
+  -> PAPER Execution
+  -> Position / Outcome
+  -> Decision Replay / Calibration
+```
+
+AutoTrade is not a single-strategy signal bot. `LONG`, `SHORT`, and `NO_TRADE` are first-class decisions.
+
+### Report
+
+Report is an independent research and market-intelligence product.
+
+Target flow:
+
+```text
+Market / Company / Asset
+  -> Data + Evidence
+  -> Research pipeline
+  -> AI analysis
+  -> Versioned Report
+  -> Archive / Compare / Reference
+```
+
+Reports can be referenced from AutoTrade when useful, but Report is **not a mandatory execution gate** and does not silently authorize trades.
+
+Report may use **research-grade Evidence**. AutoTrade requires a separate **execution-grade Evidence Packet** under current market state, freshness, provenance, contradiction, policy, and trace rules.
+
+> **Reuse lineage, not authority.**
+
+---
+
+## Core principle: preserve the decision, not only the result
+
+For every meaningful execution-side decision, BLACK ORACLE aims to preserve:
+
+- the market state that existed at the time,
+- the Evidence that was available,
+- eligible and rejected strategies,
+- Router selection and `NO_TRADE` reasoning,
+- Council and Red Team analysis,
+- Arbiter output,
+- deterministic Risk decisions,
+- order/fill/protection events,
+- realized outcomes,
+- and later calibration/attribution.
+
+The system should be able to answer:
+
+> **Why did this risk exist, what information was used, what could have invalidated it, and which layer added or destroyed value?**
+
+---
+
+## Canonical architecture
 
 ```mermaid
 flowchart TD
-    M[Market State] --> E[NARS / Evidence Fabric]
-    M --> F[Strategy Factory]
+    P[Investor Profile] --> PKG[Strategy Package / Risk Envelope]
+    M[Market State] --> E[Evidence Fabric]
+    M --> F[Strategy Factory / Vault]
     E --> F
-    F --> R[Strategy Router]
-    R --> C[AI Council - Round 0]
+    PKG --> R[Strategy Router]
+    F --> R
+    R --> C[AI Council]
     C --> RT[Independent Red Team]
-    RT --> RV[Revisions]
-    RV --> A[Evidence-Gated Arbiter]
+    RT --> A[Arbiter]
     A --> K[Deterministic Risk]
-    K --> X[Paper Execution]
-    X --> O[Outcome]
+    PKG --> K
+    K --> X[PAPER Execution]
+    X --> POS[Position / Protection]
+    POS --> O[Outcome]
+    O --> CAL[Calibration / Attribution]
 
     E --> L[Canonical Event Ledger]
     F --> L
@@ -59,136 +131,209 @@ flowchart TD
     A --> L
     K --> L
     X --> L
+    POS --> L
     O --> L
 
     L --> D[Decision Replay]
-    O --> CAL[Calibration / Attribution]
-    D --> CAL
+
+    M --> RP[Report Research Pipeline]
+    E --> RP
+    RP --> REP[Versioned Report]
+    REP -. optional reference .-> C
 ```
 
-`LONG`, `SHORT`, and `NO_TRADE` are first-class decisions. Missing evidence is represented as a data gap rather than silently fabricated.
+Missing data is represented explicitly as a data gap. It must never be fabricated to make the interface look complete.
 
 ---
 
-## What is implemented now
+## Authority model
 
-### Strategy intelligence
-
-- Strategy Factory and strategy candidate lifecycle
-- Strategy Router
-- Challenger / Shadow concepts with hard-gated promotion direction
-- Monte Carlo and validation utilities
-- crypto PAPER runtime
-- KRX equity PAPER path
-
-### AI Council v3
-
-The Council is structured as a **Primary Team + Independent Red Team + Evidence-Gated Arbiter**, not a simple majority vote.
-
-Core roles include:
-
-- Chief Market Strategist
-- Evidence Intelligence Officer
-- Quant & Model Validation Lead
-- Trade Architect
-- Director of Adversarial Research — independent Red Team
-- dynamic specialists for macro, fundamentals, microstructure, derivatives, and portfolio context
-
-The Council separates `FACT`, `INFERENCE`, `ASSUMPTION`, `COUNTEREVIDENCE`, and `DATA_GAP`. Its current authority is deliberately **shadow-only** so it can be evaluated against outcomes without silently gaining execution authority.
-
-### Canonical Event Ledger
-
-Paper observations and execution history are projected into an append-oriented canonical audit layer, including:
-
-- `EVIDENCE`
-- `STRATEGY`
-- `RISK`
-- `ORDER`
-- `TRADE`
-- `OUTCOME`
-- `SYSTEM`
-
-The design separates recovery state from long-lived audit history so a runtime checkpoint does not need to be the only source of truth.
-
-### Decision Replay v2
-
-Decision Replay reconstructs the path around a decision and its outcome. Current calibration primitives include:
-
-- source-backed directional forecast extraction,
-- outcome-linked Brier score,
-- absolute probability error,
-- directional correctness,
-- empirical return distributions for sufficiently sampled probability buckets,
-- explicit sample gates that return unavailable values instead of inventing statistics.
-
-### Runtime integrity
-
-The runtime is being hardened around:
-
-- process liveness separated from deep trading health,
-- durable Paper checkpoints,
-- bounded persistence retries,
-- atomic in-memory rollback when a checkpoint cannot commit,
-- scheduler and persistence latency telemetry,
-- canonical event retry windows,
-- frozen qualification-cohort protection.
-
----
-
-## Safety and authority model
-
-BLACK ORACLE treats authority as something that must be **earned by evidence**.
+BLACK ORACLE separates **intelligence** from **authority**.
 
 1. New intelligence layers begin in `SHADOW`.
 2. AI Council does not override deterministic Risk.
-3. Strategy, risk, sizing, or execution semantics are never silently changed inside an existing qualification cohort.
-4. Missing data is displayed as missing.
-5. Promotion is hard-gated by prospective evidence, not by a polished UI or a single profitable period.
-6. Historical decisions are not retrospectively rewritten as if a newer policy had existed.
-7. PAPER → Canary Live requires explicit validation and operational gates.
-
-The monthly performance objective used internally is a target, **not proof of edge and not a substitute for risk/validation gates**.
+3. Strategy grades do not directly authorize execution.
+4. Reports do not directly authorize execution.
+5. Material strategy, sizing, risk, or execution-policy changes require an explicit version boundary.
+6. Historical decisions are not rewritten using newer policy.
+7. PAPER qualification and live-capital authority are separate stages.
+8. Degraded data blocks unsafe new risk rather than inventing certainty.
 
 ---
 
-## Qualification philosophy
+## Strategy intelligence
 
-A strategy or full-system candidate should not reach higher authority only because win rate looks good.
+The target strategy lifecycle is:
 
-The validation model is designed to consider, where available:
+```text
+IDEA
+-> CANDIDATE
+-> TESTED
+-> REJECTED or CHALLENGER
+-> SHADOW
+-> CHAMPION_CANDIDATE
+-> HUMAN / POLICY PROMOTION REVIEW
+-> CHAMPION
+-> DEGRADE / RETIRE
+```
 
-- out-of-sample / walk-forward performance,
+Validation can include, where statistically meaningful:
+
+- out-of-sample and walk-forward performance,
 - expectancy and payoff ratio,
-- max drawdown,
+- maximum drawdown,
 - Sharpe / Sortino,
 - Monte Carlo survival,
 - regime stability,
 - parameter robustness,
 - sample size,
-- evidence quality,
-- reproducibility,
-- execution sensitivity,
 - calibration,
+- execution sensitivity,
+- data quality,
+- reproducibility,
 - and operational reliability.
 
-BLACK ORACLE uses a credit-style grade vocabulary (`AAA+` through `F-`) as a common language, but grades are intended to remain **composite and hard-gated**, never cosmetic conversions of win rate.
+BLACK ORACLE uses a credit-style grade vocabulary from `AAA+` through `F-`, but grades remain composite and hard-gated rather than cosmetic conversions of win rate.
 
 ---
 
-## Product surface
+## Product experience
 
-The current mobile operating surface follows an `Oracle → Decision → Replay → Outcome` flow and consumes real read-only runtime contracts where available.
+The redesigned product is **mobile-first**.
 
-| Surface | Purpose |
+Approved primary navigation:
+
+**Home / Report / AutoTrade / Community**
+
+A fast **AutoTrade | Report** switch may coexist in the shared shell, but the two products remain independent.
+
+### Investor Profile
+
+AutoTrade begins with onboarding and remains directly editable. The governing profile can include:
+
+- risk tolerance,
+- investment horizon,
+- return objective,
+- maximum loss / drawdown tolerance,
+- intervention preference,
+- allowed assets and concentration constraints.
+
+The product maps the profile to an explainable **strategy package + risk envelope** rather than cloning one strategy into cosmetic investor types.
+
+### Strategy Library
+
+Strategy Library should expose comparable strategy performance and risk metrics with clear separation between **Backtest / Forward / PAPER** evidence. Insufficient samples remain unavailable rather than being ranked with fabricated precision.
+
+### Design goals
+
+- institutional data discipline with consumer-grade clarity,
+- premium fintech rather than cyberpunk decoration,
+- one primary question per screen,
+- full-page drill-down for deep work,
+- explicit data freshness and degraded states,
+- code-rendered charts and financial visuals,
+- no mock values on production truth surfaces.
+
+Existing mobile mockups remain visual references for tone while the information architecture is rebuilt around the new product model.
+
+---
+
+## Plans, capacity, Credits, and profiles
+
+BLACK ORACLE separates four commercial concepts:
+
+| Concept | Meaning |
 | --- | --- |
-| **Oracle** | market state, current decisions, trade map, system state |
-| **Decision** | Router, Council, Red Team/Arbiter, deterministic Risk |
-| **Replay / Traces** | canonical event lineage and historical reconstruction |
-| **Portfolio** | Paper equity, active risk, positions, realized outcomes |
-| **System** | runtime, persistence, scheduler, ledger, data and qualification health |
-| **Strategy Vault** | experiments, candidates, challengers, grades and lifecycle |
+| **Plan** | Feature / entitlement boundary |
+| **Capacity** | Eligible compute and usage volume |
+| **Credits** | Meter for defined expensive work units |
+| **Profile** | Investor or workload configuration; not a hidden plan tier |
 
-Design direction: **institutional data discipline with consumer-grade clarity**. The interface should never hide missing data behind decorative certainty.
+Approved plan ladder:
+
+**Core → Plus → Pro → Max → Enterprise**
+
+Capacity expansion:
+
+**Pro ×2 / ×5 / ×20** keeps **Pro feature authority** and expands capacity/compute. It does not unlock Max-only features.
+
+Workload presets:
+
+**Balanced / Strategy / Research** tune resource allocation but do not silently change the plan, total entitlement, trading authority, or historical truth.
+
+Credit exhaustion must never hide or lock safety-critical state such as **positions, risk, stops, protection, Decision Replay, audit history, freshness/degraded status, or critical alerts**.
+
+Beta billing is test-only unless a separate commercial-release decision authorizes real charging.
+
+---
+
+## Master development program
+
+The canonical redesign roadmap is defined in:
+
+**[BLACK ORACLE Master Sprint Plan v3](docs/BLACK_ORACLE_MASTER_PLAN_V3.md)**
+
+Current program:
+
+| Sprint | Scope |
+| --- | --- |
+| **S0** | System Audit & Reset |
+| **S1** | Canonical Data Foundation |
+| **S2** | New Mobile App Shell |
+| **S3** | Markets & Evidence |
+| **S4** | AutoTrade Core |
+| **S5** | Strategy Factory & Router |
+| **S6** | Council & Arbiter |
+| **S7** | Risk & Execution |
+| **S8** | Trade, Portfolio & Decision Replay |
+| **S9** | Report Product |
+| **S10** | Investor Profile & Personalization |
+| **S11** | Lab & Validation |
+| **S12** | Pricing, Credits & Entitlements |
+| **S13** | Realtime, PWA & Notifications |
+| **S14** | Production Hardening |
+
+Each Sprint is completed through code, tests, real runtime contracts, degraded-state handling, mobile QA, deployment/preview verification, and explicit acceptance criteria.
+
+---
+
+## Legacy policy
+
+The redesign is allowed to replace obsolete code and UI aggressively, but it does **not** treat historical truth as disposable.
+
+Protected assets include:
+
+- PAPER orders, fills, positions, and outcomes,
+- canonical event history,
+- Strategy versions and experiments,
+- qualification cohorts,
+- Evidence provenance,
+- Council/Arbiter decisions where recorded,
+- validation and Monte Carlo outputs,
+- runtime incidents,
+- calibration observations.
+
+Legacy navigation, duplicate dashboards, obsolete demo data, old mobile entrypoints, stale Firebase-era assumptions, and abandoned stacked implementations may be retired after dependency review and replacement parity.
+
+**Preserve truth; replace obsolete presentation and orchestration.**
+
+---
+
+## Current implementation foundations
+
+The repository already contains substantial foundations, including:
+
+- Strategy Factory and Strategy Router concepts,
+- deterministic risk and PAPER execution paths,
+- AI Council / Red Team / Arbiter architecture,
+- canonical event and replay concepts,
+- Evidence/NARS integration work,
+- crypto and KRX PAPER infrastructure,
+- experiment and Monte Carlo utilities,
+- mobile product iterations,
+- Railway-oriented deployment packaging.
+
+The current redesign focuses on consolidating these into one coherent architecture instead of continuing parallel product versions.
 
 ---
 
@@ -208,7 +353,7 @@ npm install
 cp .env.example .env
 ```
 
-Use placeholder/local-safe values in `.env`. Never commit API keys or Supabase service-role credentials.
+Never commit API keys, broker credentials, or Supabase service-role secrets.
 
 ### Development
 
@@ -216,13 +361,13 @@ Use placeholder/local-safe values in `.env`. Never commit API keys or Supabase s
 npm run dev
 ```
 
-Trading development entrypoint:
+Trading development:
 
 ```bash
 npm run dev:trading
 ```
 
-### Validation
+### Verification
 
 ```bash
 npm run lint
@@ -235,81 +380,42 @@ npm run build
 
 ## Technology
 
-Current repository dependencies and runtime include:
+Current repository foundations include:
 
 - React 19 + TypeScript
 - Vite
 - Tailwind CSS
 - Node.js / Express
-- Supabase-backed durable trading state and canonical event storage
-- OpenAI server-side model routing for AI analysis layers
-- D3 / Recharts / custom visualizations
-- Railway-oriented production packaging
+- Supabase-backed durable state and canonical storage
+- server-side AI model routing
+- D3 / Recharts / custom financial visualizations
+- Railway-oriented production deployment
 
-Some older Firebase-era code/dependencies may still exist while legacy surfaces are being retired. The canonical product direction is defined in the governance documents below.
-
----
-
-## Governance and architecture
-
-- [`docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md`](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md) — product and authority principles
-- [`docs/BLACK_ORACLE_MASTER_PLAN_V2.md`](docs/BLACK_ORACLE_MASTER_PLAN_V2.md) — canonical development program
-- [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md) — public project vs private Alpha boundary
-- [`docs/GITHUB_LAUNCH_PLAYBOOK.md`](docs/GITHUB_LAUNCH_PLAYBOOK.md) — public launch playbook
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow and safety constraints
-- [`SECURITY.md`](SECURITY.md) — vulnerability reporting
+Some legacy dependencies may remain temporarily during migration and should not be interpreted as target architecture.
 
 ---
 
-## Open-core direction
+## Governance
 
-The public repository exposes the **auditable investment-system architecture** without requiring future proprietary Alpha to be published.
-
-Public/open-core candidates include UI and observability surfaces, canonical lineage contracts, Decision Replay, Council / Red Team framework, Paper-trading framework, sample strategies, research interfaces, and safety architecture where disclosure is appropriate.
-
-Private/proprietary candidates include production credentials, private data contracts, live capital configuration, proprietary strategy parameters/weights, non-public Alpha models, and sensitive production-only controls.
-
-See [`docs/OPEN_CORE_BOUNDARY.md`](docs/OPEN_CORE_BOUNDARY.md).
-
----
-
-## Roadmap
-
-- **S0 — Runtime Integrity**
-- **S1 — Canonical Architecture**
-- **S2 — Decision Engine Completion**
-- **S3 — Strategy Intelligence**
-- **S4 — Decision Replay, Attribution & Learning**
-- **S5 — High-End Product Surface**
-- **S6 — PAPER Qualification**
-- **S7 — Canary Live**
-
-The project advances only when the current layer produces enough evidence for the next authority level.
+- [Product Constitution v2](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V2.md) — canonical product, authority, personalization and commercial invariants
+- [Product Constitution v1](docs/BLACK_ORACLE_PRODUCT_CONSTITUTION_V1.md) — superseded historical baseline
+- [Master Sprint Plan v3](docs/BLACK_ORACLE_MASTER_PLAN_V3.md) — canonical implementation program
+- [Open Core Boundary](docs/OPEN_CORE_BOUNDARY.md) — public architecture vs proprietary Alpha / production boundary
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
 ---
 
-## Contributing
+## Disclaimer
 
-BLACK ORACLE is especially interested in contributions around quantitative validation, event lineage, calibration, market microstructure, multi-agent decision systems, deterministic risk, mobile financial-data UX, and runtime reliability.
+BLACK ORACLE is experimental research and software infrastructure. It is **not financial advice**, does not guarantee profitability, and should not be treated as evidence that PAPER or historical results will transfer to live markets.
 
-Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR. Changes affecting Paper qualification, strategy semantics, risk, sizing, or execution must preserve cohort integrity and explicitly describe authority impact.
-
----
-
-## Important disclaimer
-
-BLACK ORACLE is experimental research and software infrastructure. It is **not financial advice**, does not guarantee profitability, and should not be treated as evidence that any strategy will perform similarly in live markets.
-
-Current public development is centered on PAPER qualification, traceability, validation, and runtime safety. Any future live-capital authority should require separate credentials, policies, capital limits, validation gates, and rollback procedures.
+Any future real-capital authority requires separate credentials, policies, validation gates, capital limits, incident procedures, and explicit rollout approval.
 
 ---
 
 ## License
 
-Licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
-
-The license applies to code and documentation published in this repository. Private Alpha, credentials, private datasets, and non-public production configuration are outside this repository and are not made public by this license.
-
----
+Licensed under the **Apache License 2.0**. See [LICENSE](LICENSE).
 
 <p align="center"><strong>BLACK ORACLE</strong><br/>Evidence in. Decisions traced. Outcomes learned.</p>
