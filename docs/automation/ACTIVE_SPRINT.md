@@ -1,67 +1,61 @@
 # BLACK ORACLE Active Sprint
 
 ## Sprint
-- **ID:** BO-P0-KRX-TRUTH-01
-- **Title:** Korea Equity canonical producer truth and production verification
+- **ID:** B0
+- **Title:** Frozen Baseline
+- **Status:** IN_PROGRESS
+- **Session opened:** 2026-09-18T15:41:00Z
+- **Session checkpoint:** 2026-09-18T15:47:00Z
+- **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
 
-## Objective
-Make the KRX account-free research path truthfully distinguish upstream/source emptiness, filtering/Committee emptiness, nomination blocking, and canonical persistence failures, then verify that truth on the isolated S2 Shadow production runtime without changing trading authority or the protected S1R2 qualification runtime.
-
-## User-visible outcome
-Korea Equity observability no longer conflates `0 Committee candidates` with `0 KRX instruments`, and operator/runtime state reports whether failure is in research or canonical persistence before downstream Markets repair continues.
-
-## Acceptance criteria
-- KRX scheduler distinguishes SOURCE_EMPTY, VOLUME_PREFILTER_EMPTY, PROFILE_EMPTY, COMMITTEE_EMPTY, NOMINATION_BLOCKED, and NOMINATION_READY.
-- Research-cycle failures and canonical-append failures are reported separately.
-- A research cycle is promoted to latest successful scheduler truth only after canonical events persist successfully.
-- Existing market-data provenance and execution-suitability semantics remain unchanged.
-- Risk, Router, Council authority, execution gates, portfolio authority, and protected S1R2 qualification state remain unchanged.
-- Relevant CI/typecheck/trading/runtime/build checks are green.
-- S2 Shadow runs an exact revision containing PR #173 and production telemetry is verified before this sprint is DONE.
+## Ready work packages
+- **B0.1:** reconcile deployed SHA, configured revision, branch, scheduler, and health semantics.
+- **B0.2:** verify runtime/checkpoint/order/position/Ledger/NARS ownership through sanitized read-only evidence.
+- **B0.3:** prove legacy read-only and beta-write namespace separation.
+- **B0.4:** preserve PAPER-only, rollback, and protected qualification boundaries.
+- **B0.5:** reconcile PRs #175, #176, #178, and #179 with the governing B0-B9 sequence.
+- **B0.6:** carry S2 stale-source and vNext revision mismatches as explicit blockers until exact-source proof exists.
 
 ## Current phase
-DEPLOY
+GATE_REVIEW
 
-## Completed checkpoints
-- DISCOVER: Production logs showed `0 candidate(s)` was Committee output, not proof of an empty KRX universe; canonical append also showed Supabase/Cloudflare failures.
-- PLAN: Limited repair to scheduler truth/observability; no source/filter/threshold/execution semantic changes.
-- IMPLEMENT: Added KRX research truth classification and canonical-persistence-aware scheduler state.
-- TEST: Black Oracle CI and Trading CI passed, including typecheck, trading core/regression tests, Supabase function typecheck, runtime bundle, scheduler smoke tests, and production build.
-- REVIEW: Diff constrained to KRX scheduler truth and regression coverage; protected invariants unchanged.
-- MERGE: PR #173 merged as `520270c467da3d15cc46262fda836e26fefca755`.
-- STATE: Canonical scheduler state file created and is persistent.
-- DEPLOY DISCOVERY: S2 Shadow remained SUCCESS on stale `8c2f27aa53345a9738847e05f204cd38cf393d02`.
-- DEPLOY BLOCKER PROOF: On 2026-09-16, a low-risk S2-only Railway redeploy was used specifically to test whether the service would refresh its GitHub source. Railway created deployments `1dc14e37-29c7-47db-b33b-121b5dc10f0e` and `fa1c9937-32fb-482c-8260-ceef6ff44266`; both metadata explicitly resolve to commit `8c2f27aa53345a9738847e05f204cd38cf393d02`, proving generic redeploy reuses the stale source snapshot and cannot satisfy exact-revision deployment. No further generic redeploy should be attempted for this blocker.
-- DEPLOY PATH DISCOVERY: Railway's current official GitHub autodeploy documentation explicitly distinguishes generic redeploy from **Deploy Latest Commit**. For a service linked to a GitHub branch, Command Palette (`CMD + K`) -> `Deploy Latest Commit` creates a deployment from the latest commit on the connected branch. The same docs say a linked service should autodeploy on new branch commits and list disabled autodeploy/GitHub permissions/watch paths as troubleshooting causes when it does not. This identifies the correct fresh-source mechanism and the likely integration fault class.
+## This session
+- Confirmed PR #177 was closed unmerged after PR #178 introduced a competing S0-S14 execution sequence.
+- Preserved Product Constitution v2, Report/AutoTrade independence, PAPER-only authority, design decisions, and commercial semantics from PR #178.
+- Added explicit reconciliation: B0-B9 is the sole beta delivery/gate sequence; S0 artifacts and PR #179 are reusable only as B0 evidence after remapping.
+- Reopened the plan path for CI and merge review.
+- No runtime, scheduler, database, secret, billing, position, order, Ledger, checkpoint, or qualification mutation.
 
-## Next checkpoint
-Execute Railway **Deploy Latest Commit** for the existing S2 Shadow service (not generic redeploy), then verify deployment metadata contains a GitHub revision that includes PR #173. If that control is unavailable or fails, repair/reconnect S2's GitHub autodeploy integration in Railway service settings without changing secrets/runtime variables. Once exact revision is proven, inspect KRX disposition plus `RESEARCH_CYCLE` / `CANONICAL_APPEND` telemetry.
+## Active PRs / branches
+- PR #177 / `beta/sprint-master-plan-v2` — governing plan reconciliation.
+- PR #179 / `plan/s0-system-audit-reset` — candidate B0 evidence; must be remapped before merge.
+- PR #176 — closed baseline evidence; retain for audit.
+- PR #175 — open; requires B0.5 split/reuse/close decision.
+
+## Validation
+- PR #177 Black Oracle CI runs 862 and 863: PASS on head `94d0ab2c57a62eb4031554b7121f8734da92dfbe`.
+- PR #177 Trading CI runs 1041 and 1042: PASS on the same head.
+- PR #177 is conflict-free against `main` at gate review.
+- Vercel preview: FAILED; connected Vercel API returned 403 for deployment inspection. This documentation-only PR has no Vercel or Railway deployment target; the failure remains recorded and cannot be used as readiness evidence.
+- Railway production service process status: four services report SUCCESS, but readiness remains UNKNOWN.
+- No production deployment authorized by this documentation-only session.
+
+## Deployment / rollback
+- Deployment target: NONE.
+- Rollback: revert the plan reconciliation commit; no runtime rollback is required.
+- S2 Shadow remains on stale source `8c2f27aa...`; generic redeploy is prohibited because it reuses the stale snapshot.
+- vNext configured/deployed revision mismatch remains unresolved.
 
 ## Blockers
-- **ACTIVE / TOOL-SURFACE:** The connected Railway tool exposes generic `redeploy` but does not expose the documented `Deploy Latest Commit` control or GitHub autodeploy enable/reconnect settings for an existing service.
-- **PROVEN:** Generic redeploy reuses S2's stale `8c2f27aa...` source snapshot and must not be used again for this purpose.
-- S2 has not autodeployed on recent `main` commits despite Railway documentation stating linked GitHub services normally do; likely fault classes are disabled autodeploy, GitHub permission/integration state, or watch-path configuration. Exact cause requires the Railway service-settings control surface.
-- Do not treat deployment SUCCESS as revision correctness.
-- Do not mutate secrets, S1R2, qualification logic, or trading authority to work around this blocker.
+- Exact runtime/source ownership matrix is incomplete.
+- S2 exact latest-source deployment control is not exposed by the connected Railway surface.
+- Railway SUCCESS does not prove runtime readiness.
+- PR #179 currently uses S0 identifiers and Master Plan v3 authority; it cannot merge unchanged under B0-B9 governance.
+- Vercel preview failure requires classification before any UI/deployment-bearing PR can pass.
 
-## Relevant PR / branch
-- PR #173 — merged.
-- Merge commit: `520270c467da3d15cc46262fda836e26fefca755`.
-- Current GitHub main at deployment-path discovery: `8307d563a303181fd92c7e2e9b0b55880776b169` (contains #173).
-- Protected qualification work such as PR #115 remains isolated and is not part of this sprint.
-
-## Validation status
-GREEN for merged #173 scope. Production verification pending exact-revision S2 deployment. Generic redeploy behavior is empirically verified as stale-snapshot reuse; official Railway documentation now identifies `Deploy Latest Commit` as the required fresh-source operation.
-
-## Deploy status
-BLOCKED ON RAILWAY CONTROL SURFACE. S2 latest successful redeploy `fa1c9937-32fb-482c-8260-ceef6ff44266` is stale commit `8c2f27aa53345a9738847e05f204cd38cf393d02`. No further deployment mutation was performed after identifying the documented fresh-source operation because the available connector does not expose it.
-
-## Protected invariants
-- Protected ₩100M S1R2 Paper qualification runtime/sample untouched.
-- No real-money trading authority changes.
-- No Risk/Router/Council/Execution hard-gate relaxation.
-- No fabricated market data, Evidence, Council participation, Monte Carlo metrics, prices, or lineage.
-- No destructive migration, secret mutation, portfolio/account mutation, or canonical-ledger semantic rewrite.
-
-## Next action
-Stay in DEPLOY. Use Railway's documented **Deploy Latest Commit** operation for S2 Shadow when that service-settings/Command Palette surface is available; otherwise restore S2 GitHub autodeploy integration (enable/reconnect/permissions/watch-path check) without changing secrets. Then verify exact deployed SHA, inspect KRX telemetry, and advance to VERIFY/DONE only if acceptance criteria pass.
+## Next safe actions
+1. Merge PR #177 only after the final status-record commit reruns required CI successfully.
+2. Remap PR #179 manifest, validator, audit document, PR contract, and active-sprint record to B0.1-B0.6.
+3. Run its offline validator, relevant tests, typecheck, and build; keep B0 IN_PROGRESS.
+4. Reconcile PR #175 without merging incompatible Marketplace/Community scope.
+5. Do not deploy until exact commit SHA and runtime-reported revision can be proven.
