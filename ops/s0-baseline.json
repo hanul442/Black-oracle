@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 2,
+  "program": "S0_SYSTEM_AUDIT_RESET",
+  "observedOn": "2026-09-18",
+  "baselineSha": "55be5181d807bae3f4044c1cb3d39650506266f3",
+  "constitution": "BLACK_ORACLE_PRODUCT_CONSTITUTION_V2",
+  "masterPlan": "BLACK_ORACLE_MASTER_PLAN_V3",
+  "s0Status": "IN_PROGRESS",
+  "policy": {
+    "tradingMode": "PAPER_ONLY",
+    "reportRequiredForOrder": false,
+    "reportCanAuthorizeExecution": false,
+    "reportEvidenceAuthority": "RESEARCH_GRADE_ONLY",
+    "executionEvidenceRequiresRevalidation": true,
+    "deterministicRiskSovereign": true,
+    "historicalAuditMutation": "FORBIDDEN",
+    "performanceStreams": ["BACKTEST", "FORWARD", "PAPER"],
+    "missingPerformance": "UNKNOWN",
+    "plans": ["Core", "Plus", "Pro", "Max", "Enterprise"],
+    "proCapacityMultipliers": [1, 2, 5, 20],
+    "capacityChangesEntitlements": false,
+    "workloadPresets": ["Balanced", "Strategy", "Research"],
+    "creditSafetyExemptSurfaces": [
+      "POSITIONS",
+      "RISK",
+      "STOPS",
+      "PROTECTION",
+      "DECISION_REPLAY",
+      "AUDIT_HISTORY",
+      "FRESHNESS_STATUS",
+      "CRITICAL_ALERTS"
+    ]
+  },
+  "railway": {
+    "project": "Black Oracle",
+    "environment": "production",
+    "services": [
+      {
+        "name": "black-oracle-web",
+        "sourceBranch": "main",
+        "configuredSha": null,
+        "deploymentSha": "32d3b67e698b13e08549e099bf4ae1c82c0e5394",
+        "deploymentStatus": "SUCCESS",
+        "runtimeHealth": "UNKNOWN"
+      },
+      {
+        "name": "black-oracle-paper-vnext",
+        "sourceBranch": "main",
+        "configuredSha": "7c5bfd09297ad8497312b372f60386aeb7cfedcd",
+        "deploymentSha": "8933516036f0910634fd53e97df1e81cc54637ea",
+        "deploymentStatus": "SUCCESS",
+        "runtimeHealth": "UNKNOWN"
+      },
+      {
+        "name": "black-oracle-paper-s2-shadow",
+        "sourceBranch": null,
+        "configuredSha": null,
+        "deploymentSha": "8c2f27aa53345a9738847e05f204cd38cf393d02",
+        "deploymentStatus": "SUCCESS",
+        "runtimeHealth": "UNKNOWN"
+      },
+      {
+        "name": "black-oracle-paper-v9-multiasset",
+        "sourceBranch": null,
+        "configuredSha": null,
+        "deploymentSha": "8c2f27aa53345a9738847e05f204cd38cf393d02",
+        "deploymentStatus": "SUCCESS",
+        "runtimeHealth": "UNKNOWN"
+      }
+    ]
+  },
+  "schedulerMappings": [
+    {
+      "runtimeId": "black-oracle-paper",
+      "enabled": true,
+      "targetService": "black-oracle-web",
+      "lastInvokedAt": "2026-09-18T09:00:13.345Z",
+      "lastHttpStatus": 409,
+      "lastOk": true
+    },
+    {
+      "runtimeId": "black-oracle-paper-s2-shadow",
+      "enabled": true,
+      "targetService": "black-oracle-paper-s2-shadow",
+      "lastInvokedAt": "2026-09-10T06:45:58.949Z",
+      "lastHttpStatus": 200,
+      "lastOk": true
+    },
+    {
+      "runtimeId": "black-oracle-paper-vnext",
+      "enabled": false,
+      "targetService": "black-oracle-paper-vnext",
+      "lastInvokedAt": "2026-09-09T11:30:34.934Z",
+      "lastHttpStatus": 200,
+      "lastOk": true
+    },
+    {
+      "runtimeId": "black-oracle-paper-vnext-s1r2",
+      "enabled": true,
+      "targetService": "black-oracle-paper-vnext",
+      "lastInvokedAt": "2026-09-18T14:00:01.641Z",
+      "lastHttpStatus": 409,
+      "lastOk": true
+    }
+  ],
+  "checkpointObservations": [
+    {"runtimeId":"black-oracle-paper","savedAt":"2026-09-13T06:15:18.046Z","reason":"scheduled-paper-cycle"},
+    {"runtimeId":"black-oracle-paper-native-shadow","savedAt":"2026-09-18T08:45:16.590Z","reason":"supabase-native-shadow-cycle"},
+    {"runtimeId":"black-oracle-paper-s2-shadow","savedAt":"2026-09-10T08:53:00.346Z","reason":"scheduled-paper-cycle"},
+    {"runtimeId":"black-oracle-paper-vnext","savedAt":"2026-09-09T11:30:11.955Z","reason":"scheduled-paper-cycle"},
+    {"runtimeId":"black-oracle-paper-vnext-100m-v03","savedAt":"2026-09-18T08:45:12.159Z","reason":"scheduled-paper-cycle"},
+    {"runtimeId":"black-oracle-paper-vnext-s1r2","savedAt":"2026-09-13T05:45:23.364Z","reason":"scheduled-paper-cycle"}
+  ],
+  "activeCronJobs": [
+    {"name":"black-oracle-native-shadow-15m","schedule":"*/15 * * * *"},
+    {"name":"black-oracle-paper-scheduler-15m","schedule":"*/15 * * * *"},
+    {"name":"black-oracle-paper-vnext-s1r2-scheduler-15m","schedule":"*/15 * * * *"},
+    {"name":"black-oracle-strategy-factory-daily","schedule":"10 4 * * *"},
+    {"name":"nars-calibrate-hourly","schedule":"7 * * * *"},
+    {"name":"nars-cluster-5m","schedule":"*/5 * * * *"},
+    {"name":"nars-evidence-acquire-10m","schedule":"4-59/10 * * * *"},
+    {"name":"nars-primary-evidence-match-10m","schedule":"7-59/10 * * * *"},
+    {"name":"nars-score-5m","schedule":"2-59/5 * * * *"},
+    {"name":"nars-shadow-poll-10m","schedule":"*/10 * * * *"}
+  ],
+  "blockers": [
+    "Production web deployment SHA differs from canonical main SHA; runtime behavior must be evaluated by code delta, not branch label alone",
+    "vNext configured commit pin differs from latest Railway deployment metadata",
+    "S2 scheduler telemetry has not advanced since 2026-09-10 despite the service remaining deployed",
+    "black-oracle-paper and vnext-s1r2 show recent scheduler 409 responses treated as successful while durable checkpoints have not advanced since 2026-09-13; semantics require explicit reconciliation",
+    "black-oracle-paper-vnext-100m-v03 has a fresh checkpoint but no matching scheduler_config row; writer ownership is not yet proven",
+    "Legacy open PRs and stacked branches must be classified before closure or reuse",
+    "Supabase security advisor reports service-role-style RLS tables without policies as INFO; grants and intended exposure must be verified before product-facing Data API use",
+    "Several Edge Functions intentionally or historically run with verify_jwt=false; custom authentication boundaries require code-level review before reuse"
+  ]
+}
