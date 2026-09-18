@@ -37,6 +37,16 @@ No production DDL is authorized by this document. A later B0.3 implementation PR
 6. proof that the runtime role cannot inherit, bypass RLS, own objects, or assume an operational role;
 7. a rollback rehearsal that revokes the beta role and drops only beta-owned objects.
 
+## Candidate implementation package
+
+The repository contains a non-production candidate package under `ops/supabase/`:
+
+- `b0_beta_authority_candidate.sql` creates the restricted roles and empty beta namespace without credentials or legacy grants;
+- `b0_beta_authority_negative_test.sql` proves a beta-owned write succeeds while representative legacy INSERT, UPDATE, DELETE, TRUNCATE, CREATE, and ownership operations fail;
+- `b0_beta_authority_rollback.sql` uses `RESTRICT` so rollback stops rather than cascading into data.
+
+These files are not placed in `supabase/migrations` and are not authorized for production application. The connected Supabase project currently has no development branch. Creating one costs USD 0.01344 per hour and requires explicit cost confirmation, so this automation did not create it or execute the candidate SQL.
+
 ## Rollback
 
 This design PR is rolled back by reverting its files. A future applied implementation must be reversible without deleting, rewriting, re-keying, or reseeding any protected legacy data.
