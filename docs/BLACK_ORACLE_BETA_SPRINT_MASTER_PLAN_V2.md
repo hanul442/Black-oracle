@@ -1,6 +1,6 @@
 # BLACK ORACLE v1.0.0-beta.1 Sprint Master Plan v2
 
-**Status:** PROPOSED  
+**Status:** GOVERNING ON MERGE  
 **Target:** `v1.0.0-beta.1` private beta  
 **Execution mode:** hourly development sessions, evidence-gated  
 **Trading boundary:** PAPER ONLY
@@ -12,6 +12,14 @@ This document is the governing delivery plan for the Report + AutoTrade beta. Af
 It supersedes `docs/BLACK_ORACLE_SPRINT_ROADMAP_V1.md` only for the `v1.0.0-beta.1` product delivery sequence. The older roadmap remains historical architecture context; it does not authorize Live execution or override this beta scope.
 
 Existing production and qualification work remains valid evidence. In particular, `docs/automation/ACTIVE_SPRINT.md` is an unresolved legacy runtime/deployment checkpoint that B0 must preserve and reconcile, not silently mark complete.
+
+### 1.1 Reconciliation with the 2026-09-18 redesign baseline
+
+PR #178's Product Constitution v2, product navigation, design system, open-core boundary, and safety/commercial decisions remain valid. For `v1.0.0-beta.1` delivery order, acceptance gates, stop conditions, and Sprint IDs, this file is the sole authority after merge.
+
+`docs/BLACK_ORACLE_MASTER_PLAN_V3.md` is retained as design and historical planning context, but its S0-S14 sequence does not run in parallel with B0-B9. Existing S0 audit artifacts and PR #179 are reusable B0 evidence only after their manifests, validators, PR metadata, and active-sprint records are mapped to B0 work-package IDs. They do not independently advance a beta gate.
+
+PR #176 remains the original B0 baseline execution record. PR #179 may supersede its implementation only through an explicit B0 reconciliation that preserves all evidence and closes duplicate branches without rewriting protected runtime history.
 
 ## 2. Release outcome
 
