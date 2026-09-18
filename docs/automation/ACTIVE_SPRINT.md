@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `1ffc8f78856c735962985799ccefe9c71f12385e`
-- **Session checkpoint:** 2026-09-18T22:42:00Z
+- **Canonical main at checkpoint:** `e204ea6ceb290bd0a106c006a36dd9b75daf396b`
+- **Session checkpoint:** 2026-09-18T22:52:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -50,6 +50,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Added the B0.2 state authority matrix and negative validator without changing runtime code or production data.
 - Confirmed through a sanitized production catalog query that the five scoped state/control tables have RLS, browser roles have no SELECT, and the canonical event Ledger is service-role INSERT/SELECT only with UPDATE/DELETE trigger denial.
 - Kept the runtime-local Paper Ledger distinct from the canonical cross-runtime event Ledger and kept scheduler/NARS/Report outside execution authority.
+- Merged B0.2 state-authority PR #191 as `e204ea6ceb290bd0a106c006a36dd9b75daf396b` after Black Oracle CI 895 and Trading CI 1074 passed.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -65,7 +66,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Catalog cross-check: canonical events deny service-role UPDATE/DELETE; runtime, scheduler, and research stores remain service-role mutable and therefore protected from beta writes by contract only until B0.3 enforcement.
 
 ## Active PRs / branches
-- B0.2 state-authority matrix branch — validation complete; PR/merge evidence pending.
+- PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
 - PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
 - PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
 - PR #188 — merged B0 authority-contract checkpoint as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`.
@@ -93,6 +94,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Current B0.3 candidate package: authority, SQL, and baseline tests 50/50 PASS; execution status remains NOT EXECUTED.
 - PR #189 final head: Black Oracle CI 887 PASS; Trading CI 1066 PASS.
 - Current B0.2 matrix: static validator PASS; combined baseline/authority/matrix tests 59/59 PASS; TypeScript lint PASS; production build PASS.
+- PR #191 final head: Black Oracle CI 895 PASS; Trading CI 1074 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
