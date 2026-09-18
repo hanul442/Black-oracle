@@ -6,17 +6,17 @@
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
 - **Canonical main at branch:** `f45d3d08f78dcd2882dafec8429ed9cb46b8024b`
-- **Session checkpoint:** 2026-09-18T15:50:00Z
+- **Session checkpoint:** 2026-09-18T15:58:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
 ## Work-package status
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; exact runtime-reported revisions remain incomplete.
-- **B0.2 — IN_PROGRESS:** sanitized checkpoint, scheduler, cron, and native-shadow ownership evidence inherited from PR #179; one runtime owner remains unresolved.
+- **B0.2 — IN_PROGRESS:** `black-oracle-paper-vnext-100m-v03` owner resolved to `black-oracle-web`; remaining service/runtime/qualification ownership and readiness semantics still require proof.
 - **B0.3 — IN_PROGRESS:** protected stores are classified read-only; beta write-namespace enforcement proof remains pending.
 - **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
-- **B0.5 — IN_PROGRESS:** PR #177 merged; PR #179 evidence remapped here; PR #175 still requires split/reuse/close disposition.
+- **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
 - **B0.6 — BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch remain open.
 
 ## Completed this session
@@ -25,6 +25,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Created a fresh B0 branch from governing `main`; did not merge the conflicting S0 branch.
 - Remapped PR #179's useful audit manifest, validator, and negative tests to B0.1-B0.6.
 - Preserved Report/AutoTrade independence, PAPER-only authority, Risk sovereignty, protected historical state, and explicit UNKNOWN health semantics.
+- Verified from Railway boot/cycle logs that `black-oracle-web` owns `black-oracle-paper-vnext-100m-v03`.
+- Recorded current degraded evidence: 409 contention, persistence rollback/abort, upstream 503/521/522 failures, and KRX timeouts.
+- Closed PR #175 after unique-delta review; compatible concepts are already preserved, while Marketplace/Community/public uploads/sales and conflicting pricing/sprint scope remain post-beta.
 - No runtime, scheduler, database, secret, billing, order, position, Ledger, checkpoint, or qualification mutation.
 
 ## Evidence
@@ -60,14 +63,13 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 1. vNext configured/deployed revision mismatch.
 2. S2 exact latest-source deployment control unavailable through the connected tool surface.
 3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
-4. Owner of `black-oracle-paper-vnext-100m-v03` is not proven.
-5. Exact service/runtime/scheduler/qualification ownership matrix remains incomplete.
+4. Exact remaining service/runtime/scheduler/qualification ownership matrix is incomplete.
+5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
 6. Future Data API grants and no-JWT custom-auth boundaries require verification.
-7. PR #175 unique-delta disposition is incomplete.
 
 ## Next safe actions
 1. Require final-head Black Oracle CI and Trading CI to pass, then merge only if conflict-free.
 2. Verify this PR diff contains no authority or production mutation.
-3. Close PR #179 as superseded only after its evidence is fully preserved here.
-4. Continue sanitized read-only ownership verification for B0.2/B0.3.
+3. Continue sanitized read-only ownership verification for B0.2/B0.3.
+4. Define runtime readiness semantics that fail closed on persistence and upstream errors.
 5. Keep B0 IN_PROGRESS; do not begin B1 implementation until the B0 gate passes.
