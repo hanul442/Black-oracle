@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "sprint": "B0",
+  "workPackage": "B0.4",
+  "observedAt": "2026-09-19T00:46:00Z",
+  "status": "CONTRACT_COMPLETE",
+  "b0Decision": "EXTEND",
+  "releaseReady": false,
+  "b1ImplementationAuthorized": false,
+  "productionMutation": false,
+  "productionCutoverAuthorized": false,
+  "baseline": {
+    "governingPlanMergeSha": "f45d3d08f78dcd2882dafec8429ed9cb46b8024b",
+    "evaluatedMainSha": "67ee2bd7968cd726432d3a74aed100aa310e5fc6",
+    "scope": "v0.x production behavior and protected legacy state"
+  },
+  "invariants": {
+    "tradingAuthority": "PAPER_ONLY",
+    "forbiddenAuthorities": [
+      "LIVE_ORDER_ROUTE",
+      "BROKER_CREDENTIAL",
+      "WITHDRAWAL_PERMISSION",
+      "REAL_MONEY_PAYMENT",
+      "LEVERAGE_AUTHORITY"
+    ],
+    "deterministicRisk": {
+      "sovereign": true,
+      "bypassSources": []
+    },
+    "report": {
+      "independentProduct": true,
+      "requiredOrderInput": false,
+      "riskOverrideAuthority": false
+    },
+    "protectedState": [
+      "positions",
+      "orders",
+      "paper-runtime-ledger",
+      "canonical-event-ledger",
+      "checkpoints",
+      "strategy-identity",
+      "qualification-cohort"
+    ],
+    "betaLegacyAccess": ["READ_ONLY", "NONE"],
+    "forbiddenLegacyMutations": ["RESET", "REKEY", "RESEED", "BULK_REWRITE", "TRUNCATE"],
+    "performanceStreams": ["BACKTEST", "FORWARD", "PAPER"],
+    "performanceAggregation": "SEPARATE_ONLY",
+    "unavailableStates": ["MISSING", "STALE", "FAILED", "PARTIAL", "UNRUN"],
+    "unavailablePresentation": "UNAVAILABLE_NOT_ZERO_OR_SUCCESS",
+    "proCapacityMultipliers": [2, 5, 20],
+    "proCapacitySemantics": "CAPACITY_ONLY",
+    "proWorkloadProfiles": ["BALANCED", "STRATEGY", "RESEARCH"],
+    "proWorkloadProfileSemantics": "WORKLOAD_ONLY_NOT_ENTITLEMENT"
+  },
+  "rollback": {
+    "code": {
+      "exactPriorCommitOrArtifactRequired": true,
+      "runtimeRevisionMustBeVerifiable": true,
+      "genericRailwayRedeployAllowed": false
+    },
+    "database": {
+      "legacyDownMigrationAllowed": false,
+      "legacyDataRewriteAllowed": false,
+      "cascadeAllowed": false,
+      "dropBehavior": "RESTRICT",
+      "protectedStateMutationAllowed": false,
+      "betaNamespaceRemoval": "EMPTY_AND_DEPENDENCY_CHECKED_ONLY"
+    },
+    "supabaseRuntimeStatus": {
+      "activeVersion": 4,
+      "activeBundleSha256": "b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0",
+      "rollbackVersion": 3,
+      "rollbackBundleSha256": "02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb"
+    },
+    "b0_3Candidate": {
+      "executed": false,
+      "rollbackExecuted": false,
+      "productionRollbackRequired": false
+    }
+  },
+  "stopConditions": [
+    "SECRET_EXPOSURE",
+    "LIVE_TRADING_OR_REAL_PAYMENT",
+    "IRREVERSIBLE_PROTECTED_STATE_MUTATION",
+    "UNVERIFIABLE_DEPLOYMENT_SHA",
+    "FAILED_REQUIRED_CI",
+    "UNKNOWN_OR_DEGRADED_RUNTIME_HEALTH"
+  ],
+  "exitGate": [
+    {
+      "criterion": "SERVICE_SOURCE_TRUTH",
+      "result": "BLOCKED",
+      "evidence": "vNext configured/deployed SHAs disagree; S2 source is unpinned and stale"
+    },
+    {
+      "criterion": "STATE_OWNERSHIP_AND_SCHEDULER_TARGETS",
+      "result": "PARTIAL",
+      "evidence": "sanitized ownership matrix exists; S2/vNext/qualification writer revisions remain unresolved"
+    },
+    {
+      "criterion": "BETA_NAMESPACE_CANNOT_MUTATE_LEGACY",
+      "result": "BLOCKED",
+      "evidence": "candidate is statically validated but isolated database execution is NOT RUN"
+    },
+    {
+      "criterion": "ROLLBACK_AND_PROTECTED_QUALIFICATION_DOCUMENTED",
+      "result": "PASS",
+      "evidence": "this B0.4 contract plus B0.2/B0.3 authority contracts"
+    },
+    {
+      "criterion": "VALIDATOR_REGRESSION_TYPECHECK_BUILD",
+      "result": "PASS",
+      "evidence": "required local validation must pass before merge"
+    },
+    {
+      "criterion": "NO_PRODUCTION_CUTOVER_BY_DOCUMENTATION",
+      "result": "PASS",
+      "evidence": "productionCutoverAuthorized=false and productionMutation=false"
+    }
+  ],
+  "remainingBlockers": [
+    "B0.3_ISOLATED_DATABASE_EXECUTION_NOT_RUN",
+    "RAILWAY_EXACT_SHA_DEPLOY_CONTROL_UNAVAILABLE",
+    "RUNTIME_STATUS_EXTERNAL_HTTP_PROBE_UNKNOWN",
+    "VNEXT_AND_S2_RUNTIME_ERRORS_UNRESOLVED"
+  ]
+}
