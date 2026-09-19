@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `20452029e0ebdde20103db7782089d799314c6b0`
-- **Session checkpoint:** 2026-09-18T23:49:00Z
+- **Canonical main at checkpoint:** `67ee2bd7968cd726432d3a74aed100aa310e5fc6`
+- **Session checkpoint:** 2026-09-19T00:46:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -15,7 +15,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is deployed as Supabase Edge Function version 4 with an exact bundle hash, while independent HTTP response probes remain blocked by runner networking.
 - **B0.2 — IN_PROGRESS / MATRIX PARTIAL:** positions, Paper order/fill identity, runtime Ledger, canonical event Ledger, checkpoint, strategy identity, qualification cohort, Strategy Factory, scheduler control, and NARS now have an explicit fail-closed ownership matrix. v03 ownership and production catalog grants are verified; S2/vNext/qualification ownership remains partial because source revisions disagree.
 - **B0.3 — IN_PROGRESS / CANDIDATE READY, NOT EXECUTED:** the design contract and candidate SQL package cover restricted roles, the beta namespace, representative legacy mutation denials, isolated beta writes, and non-cascading rollback. No Supabase branch exists, the package is not applied, and database enforcement remains absent.
-- **B0.4 — IN_PROGRESS:** PAPER-only, deterministic Risk, performance-stream separation, rollback, and qualification invariants encoded in the offline validator.
+- **B0.4 — CONTRACT COMPLETE / B0 GATE BLOCKED:** PAPER-only, deterministic Risk, Report independence, performance-stream separation, protected-state freeze, fail-closed rollback, and commercial-capacity invariants are machine validated. The B0 exit decision remains `EXTEND` because B0.1-B0.3/B0.6 blockers remain.
 - **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
 - **B0.6 — CARRIED_FORWARD_BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch are explicitly dispositioned with exact resolution gates. Generic redeploy and production cutover remain prohibited; the blockers still prevent B0 exit.
 
@@ -56,6 +56,9 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Added a B0.6 explicit carry-forward contract: exact-SHA deployment, runtime-reported revision equality, semantic health, and verified rollback artifact are mandatory before cutover.
 - Prohibited generic vNext redeploy because it cannot select/prove the pinned commit, and prohibited S2 redeploy because it repeats the unpinned `8c2f27a…` snapshot.
 - Merged B0.6 blocker-disposition PR #193 as `20452029e0ebdde20103db7782089d799314c6b0` after Black Oracle CI 899 and Trading CI 1078 passed.
+- Merged B0.6 checkpoint PR #194 as `67ee2bd7968cd726432d3a74aed100aa310e5fc6` after Black Oracle CI 901 and Trading CI 1080 passed.
+- Added the B0.4 freeze and rollback contract, exit-gate assessment, and negative validator without changing runtime code, database authority, or production state.
+- Fixed the B0 exit decision at `EXTEND`: service/source truth and database-enforced beta isolation remain blocked, ownership remains partial, and B1 implementation is not authorized.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -73,6 +76,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - S2 has no source branch/commit pin; latest redeploy remains `8c2f27a…`; recent logs contain KRX timeout and canonical append 503/521 failures.
 
 ## Active PRs / branches
+- Current B0.4 branch — freeze/rollback and exit-gate contract; documentation, manifest, and offline validation only.
+- PR #194 — merged B0.6 checkpoint as `67ee2bd7968cd726432d3a74aed100aa310e5fc6`.
 - PR #193 — merged B0.6 deployment-blocker disposition as `20452029e0ebdde20103db7782089d799314c6b0`; blockers remain carried forward and cutover-blocking.
 - PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
 - PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
@@ -106,6 +111,8 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #192 final head: Black Oracle CI 897 PASS; Trading CI 1076 PASS.
 - Current B0.6 disposition: combined B0 safety tests 71/71 PASS; TypeScript lint PASS; production build PASS.
 - PR #193 final head: Black Oracle CI 899 PASS; Trading CI 1078 PASS.
+- PR #194 final head: Black Oracle CI 901 PASS; Trading CI 1080 PASS.
+- Current B0.4 contract: combined B0 safety tests 87/87 PASS; TypeScript lint PASS; production build PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
@@ -117,6 +124,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Supabase runtime-status deployment: ACTIVE version 4, bundle `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`.
 - Rollback: redeploy the recorded version 3 source bundle `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`; no scheduler or database row mutation is required.
 - Do not use generic Railway redeploy for S2; it is proven to reuse the stale snapshot.
+- B0.4 introduced no deployable artifact. Rollback is removal/revert of the documentation, manifest, and validators; no runtime or database rollback is required.
 
 ## Blockers
 1. vNext configured/deployed revision mismatch; exact-SHA deploy control is unavailable.
