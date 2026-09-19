@@ -1,6 +1,6 @@
 # BLACK ORACLE Re-foundation — Product Source of Truth
 
-> **Status:** DRAFT v0.1  
+> **Status:** DRAFT v0.2 — current-state audit integrated  
 > **Date:** 2026-09-19  
 > **Purpose:** BLACK ORACLE의 제품 정체성, 구조조정 기준, 신규 사용자 경험, Council/Expert/Method/Marketplace/Forecast 방향을 고정하기 위한 기준 문서.  
 > **Rule:** 이 문서의 `CONFIRMED` 항목은 이후 설계·개발의 기본 기준으로 사용한다. 기존 구현과 충돌할 경우 즉시 삭제하지 않고 Audit에서 KEEP / REDESIGN / MERGE / ARCHIVE / DELETE 판정을 내린 뒤 변경한다.
@@ -960,4 +960,21 @@ BLACK ORACLE의 최종 제품 경험은 다음 문장으로 설명할 수 있어
 
 전문가와 Method는 사용자가 직접 만들 수 있고, 검증 조건을 통과하면 Marketplace에서 다른 사용자와 경쟁하고 공유할 수 있다.
 
-이 문서는 2026-09-19 Re-foundation의 기준본이며, 다음 단계인 Current-state Audit 결과에 따라 v0.2로 갱신한다.
+이 문서는 2026-09-19 Re-foundation의 기준본이다.
+
+## v0.2 Audit Integration
+
+Current-state audit: [BLACK_ORACLE_CURRENT_STATE_AUDIT_2026-09-19.md](./BLACK_ORACLE_CURRENT_STATE_AUDIT_2026-09-19.md)
+
+Audit에서 확정된 active-architecture 방향:
+
+- **KEEP / STRENGTHEN:** Market data truth, NARS, Canonical Event Ledger, Decision Replay, Forecast Calibration, AI Usage Ledger, Volume/Large Participant analytics, Method validation infrastructure.
+- **REDESIGN:** Council → 6 Core + invited Experts, Strategy validation → Method validation, Trade Map → Report Scenario Map, Decision Replay → chart-native Oracle History, NARS → Event Intelligence.
+- **REMOVE FROM ACTIVE ARCHITECTURE:** AutoTrade, Strategy Router, Arbiter, standalone Hard Gate/Risk product layer, 24-member always-on Council.
+- **ARCHIVE BEFORE DELETION:** PAPER broker/portfolio/protection/runtime/schedulers and legacy execution paths. Historical truth and simulation assets remain protected.
+- **REPLACE:** Lab → Marketplace; current mobile navigation → Market / Reports / Council / Marketplace / Me; legacy Report → versioned Report v2.
+- **NEW BUILD:** Expert Creator, Method Creator, Marketplace qualification/leagues, immutable future-price paths, chart Report/Forecast markers, new Plans/Credits layer.
+
+Prior AutoTrade-centered README, Product Constitution v2 and Master Plan v3 remain historical migration evidence but no longer define the forward product target. They require a separate superseding update after the new target architecture and migration contracts are finalized.
+
+Supabase live catalog re-verification remains pending because the live database connector timed out during this audit. No database or Railway resource deletion is authorized from this document alone.
