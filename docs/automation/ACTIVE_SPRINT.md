@@ -5,8 +5,8 @@
 - **Title:** Frozen Baseline
 - **Status:** IN_PROGRESS
 - **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `67ee2bd7968cd726432d3a74aed100aa310e5fc6`
-- **Session checkpoint:** 2026-09-19T00:46:00Z
+- **Canonical main at checkpoint:** `acc5e0172d382bddd51d0af966b1a0f8c547969d`
+- **Session checkpoint:** 2026-09-19T00:53:00Z
 
 ## Objective
 Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
@@ -59,6 +59,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - Merged B0.6 checkpoint PR #194 as `67ee2bd7968cd726432d3a74aed100aa310e5fc6` after Black Oracle CI 901 and Trading CI 1080 passed.
 - Added the B0.4 freeze and rollback contract, exit-gate assessment, and negative validator without changing runtime code, database authority, or production state.
 - Fixed the B0 exit decision at `EXTEND`: service/source truth and database-enforced beta isolation remain blocked, ownership remains partial, and B1 implementation is not authorized.
+- Merged B0.4 freeze/rollback and exit-gate PR #195 as `acc5e0172d382bddd51d0af966b1a0f8c547969d` after Black Oracle CI 903 and Trading CI 1082 passed.
 
 ## Evidence
 - Railway production services: 4; latest deployment states report SUCCESS.
@@ -76,7 +77,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - S2 has no source branch/commit pin; latest redeploy remains `8c2f27a…`; recent logs contain KRX timeout and canonical append 503/521 failures.
 
 ## Active PRs / branches
-- Current B0.4 branch — freeze/rollback and exit-gate contract; documentation, manifest, and offline validation only.
+- PR #195 — merged B0.4 freeze/rollback and exit-gate contract as `acc5e0172d382bddd51d0af966b1a0f8c547969d`; overall B0 remains `EXTEND`.
 - PR #194 — merged B0.6 checkpoint as `67ee2bd7968cd726432d3a74aed100aa310e5fc6`.
 - PR #193 — merged B0.6 deployment-blocker disposition as `20452029e0ebdde20103db7782089d799314c6b0`; blockers remain carried forward and cutover-blocking.
 - PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
@@ -113,6 +114,7 @@ Prove deployed-source truth, state ownership, legacy read-only boundaries, rollb
 - PR #193 final head: Black Oracle CI 899 PASS; Trading CI 1078 PASS.
 - PR #194 final head: Black Oracle CI 901 PASS; Trading CI 1080 PASS.
 - Current B0.4 contract: combined B0 safety tests 87/87 PASS; TypeScript lint PASS; production build PASS.
+- PR #195 final head: Black Oracle CI 903 PASS; Trading CI 1082 PASS.
 - Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
 - Merged session scope is documentation, manifests, and offline validators/tests only.
 - Browser verification: not applicable; no UI change.
