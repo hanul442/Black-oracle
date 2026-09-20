@@ -1,8 +1,7 @@
 import type { UpbitUniverseSnapshotRecord } from './upbitUniverseSnapshotRecord';
 import {
-  DEFAULT_UPBIT_UNIVERSE_FRESHNESS_POLICY,
-  evaluateUpbitUniverseFreshness,
-  type UpbitUniverseFreshnessPolicy,
+  evaluateUniverseFreshness,
+  type UniverseFreshnessPolicy,
 } from './upbitUniverseFreshness';
 
 export interface UpbitUniverseSnapshotRepository {
@@ -24,15 +23,15 @@ export interface UpbitUniverseReadModel {
 export const readLatestUpbitUniverse = async (
   repository: UpbitUniverseSnapshotRepository,
   now: Date = new Date(),
-  policy: UpbitUniverseFreshnessPolicy = DEFAULT_UPBIT_UNIVERSE_FRESHNESS_POLICY,
+  policy: UniverseFreshnessPolicy = { maxAgeMs: 5 * 60_000, maxFutureSkewMs: 30_000 },
 ): Promise<UpbitUniverseReadModel> => {
   const record = await repository.latest();
   if (!record) return { record: null, scannerEligible: false, reason: 'NO_SNAPSHOT' };
 
-  const freshness = evaluateUpbitUniverseFreshness(record.snapshot, now, policy);
+  const freshness = evaluateUniverseFreshness(record.snapshot, now, policy);
   return {
     record,
-    scannerEligible: freshness.scannerEligible,
+    scannerEligible: freshness.usable,
     reason: freshness.reason,
   };
 };
