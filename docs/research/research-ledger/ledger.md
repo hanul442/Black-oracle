@@ -1,6 +1,6 @@
 # BLACK ORACLE Research Ledger
 
-Last updated: 2026-09-20 — Cycle 005
+Last updated: 2026-09-20 — Cycle 006
 
 | ID | Domain | Topic | Evidence | Status | Experiment | Production impact |
 |---|---|---|---|---|---|---|
@@ -11,6 +11,8 @@ Last updated: 2026-09-20 — Cycle 005
 | AIML-002 | AI/ML + Evidence | AI decision provenance / TEVV envelope for Council & Router | A process precedent | TEST / REFERENCE | EXP-AIML002 | None |
 | AIML-003 | AI/ML + Infrastructure | Vendor-neutral Council/Router trace envelope with stable BO IDs | A- infrastructure precedent | TEST / REFERENCE | EXP-AIML003 | None |
 | AIML-004 | AI/ML + Infrastructure | Two-tier GenAI trace envelope: metadata by default, sensitive content opt-in | A- official OTel precedent; evolving conventions | TEST / REFERENCE | EXP-AIML004 | None |
+| AIML-005 | AI/ML + Quant | LLM executable Alpha Factory + multimodal factor screening | B+ peer-reviewed empirical paper; BO reproduction pending | TEST | EXP-AIML005 | None |
+| AIML-006 | AI/ML + Evidence | Trading-firm-style Council topology: specialists → Bull/Bear → risk → portfolio approval | A- architecture/code precedent; performance evidence B | TEST / REFERENCE | EXP-AIML006 | None |
 | DI-001 | Data Infrastructure + Evidence | Canonical `bo.experiment.v1` Experiment Ledger schema | A- infrastructure precedent; BO fields require test | ADOPT-SCHEMA-CANDIDATE | EXP-DI001 | None |
 | DI-002 | Data Infrastructure | Dataset/run/feature lineage inspired by OpenLineage | A official spec precedent | TEST / REFERENCE | EXP-DI002 | None |
 | DI-003 | Data Infrastructure + Evidence | Point-in-time feature availability contract | A- official implementation precedent | TEST | EXP-DI003 | None |
@@ -21,6 +23,7 @@ Last updated: 2026-09-20 — Cycle 005
 | EV-004 | Evidence/Validation + Quant | Purged / embargoed temporal validation | B pending primary implementation review | TEST (method verification required) | EXP-EV004 | None |
 | EV-005 | Evidence/Validation + Quant | Probability of Backtest Overfitting / CSCV + research-budget accounting | A- peer-reviewed methodology | TEST | EXP-EV005 | None |
 | Q-001 | Quant + Evidence | Regime-aware/adaptive conformal uncertainty calibration | B recent theory + empirical preprint/benchmark | TEST | EXP-Q001 | None |
+| Q-002 | Quant + AI/ML | Hierarchical RL / sentiment fusion and dynamic strategy aggregation | B empirical preprint; BO reproduction pending | TEST | EXP-Q002 | None |
 
 ## Lineage rule
 Every experiment result must link back to its research ID. An `ADOPT` decision requires recorded result evidence and implementation scope. `REJECT` must preserve the reason so the same idea is not repeatedly rediscovered. `REVISIT` must record the condition that would justify another test.
@@ -46,26 +49,43 @@ Forecast confidence is an evidence artifact, not an intrinsic property of a mode
 ### AI trace privacy rule added in Cycle 005
 BLACK ORACLE internal decision/trace IDs remain canonical. External OpenTelemetry/GenAI conventions are versioned adapters. Model/tool metadata may be captured by default; full prompts, completions, tool arguments and tool results require an explicit capture policy because they may contain sensitive content.
 
+### Alpha Factory rule added in Cycle 006
+LLM-generated factors are research hypotheses, not strategies. Every generated, repaired, rejected and promoted candidate must remain attached to a trial-family ID, generator/config fingerprint, executable definition, point-in-time input contract and OOS result. Generation breadth must be treated as part of the multiple-testing budget.
+
+### Council topology rule added in Cycle 006
+Council structure is an experimental variable. Flat voting, specialist synthesis, Bull/Bear debate, risk veto and portfolio approval must be compared under matched evidence and inference budgets. More agents or longer debate are not considered improvements unless they measurably improve calibration, risk control, decision stability or auditability.
+
+### Sentiment availability rule added in Cycle 006
+Sentiment features must preserve publication time, availability/ingestion time, aggregation window, source coverage, duplicate handling and fallback behavior. Backtests must use what was actually knowable at the decision timestamp; sentiment accuracy does not excuse temporal contamination.
+
 ## Current queue
 1. **EXP-DI001 + EXP-DI003** — implement the minimal `bo.experiment.v1` validator and point-in-time feature manifest; blind-replay a representative KRX experiment with seeded leakage.
-2. **EXP-DI004** — compare mutable-source replay vs snapshot-addressable replay after a deliberate source correction; decide whether snapshot fields graduate into the canonical schema.
-3. **EXP-EV001** — independent backtest reproducibility using the canonical record.
-4. **EXP-EV003 / EXP-EV005** — reproduce DSR and PBO/CSCV examples, then test null vs stable-signal families with complete trial accounting.
-5. **EXP-Q001** — archived-forecast conformal calibration benchmark: static vs adaptive vs regime-aware, scored by coverage and interval efficiency.
-6. **EXP-EV004** — leakage-positive-control test; bind information horizons and exact split manifests into the canonical record.
-7. **EXP-DI002** — instrument one KRX and one crypto data path with dataset/transformation lineage and seeded change-impact tests.
-8. **EXP-AIML003 / AIML004 / AIML002** — trace/replay a sandbox Council/Router decision with stable BO IDs and compare metadata-only vs redacted/full-content policies.
-9. **EXP-D003** — accessible/mobile financial-chart wrapper prototype.
-10. **EXP-EV002** — robustness-gate prototype on archived candidates.
-11. **EXP-D001** — shared context/persistent research-card UX prototype.
-12. **EXP-AIML001** — lineage + redundancy sandbox after validation harness is trustworthy.
+2. **EXP-AIML005** — minimal Alpha Factory sandbox: typed factor DSL, full generated/rejected candidate accounting, leakage gates, redundancy analysis and untouched OOS evaluation.
+3. **EXP-AIML006** — Council topology ablation: flat vote vs specialist synthesis vs Bull/Bear debate vs risk veto/portfolio approval under matched evidence.
+4. **EXP-Q002** — hierarchical/dynamic Router benchmark: static weights vs hard routing vs soft dynamic weighting vs hierarchical aggregation, with point-in-time sentiment ablations.
+5. **EXP-DI004** — compare mutable-source replay vs snapshot-addressable replay after a deliberate source correction; decide whether snapshot fields graduate into the canonical schema.
+6. **EXP-EV001** — independent backtest reproducibility using the canonical record.
+7. **EXP-EV003 / EXP-EV005** — reproduce DSR and PBO/CSCV examples, then test null vs stable-signal families with complete trial accounting.
+8. **EXP-Q001** — archived-forecast conformal calibration benchmark: static vs adaptive vs regime-aware, scored by coverage and interval efficiency.
+9. **EXP-EV004** — leakage-positive-control test; bind information horizons and exact split manifests into the canonical record.
+10. **EXP-DI002** — instrument one KRX and one crypto data path with dataset/transformation lineage and seeded change-impact tests.
+11. **EXP-AIML003 / AIML004 / AIML002** — trace/replay a sandbox Council/Router decision with stable BO IDs and compare metadata-only vs redacted/full-content policies.
+12. **EXP-D003** — accessible/mobile financial-chart wrapper prototype.
+13. **EXP-EV002** — robustness-gate prototype on archived candidates.
+14. **EXP-D001** — shared context/persistent research-card UX prototype.
+15. **EXP-AIML001** — lineage + redundancy sandbox after validation harness is trustworthy.
 
-## Cycle 005 decision
-This cycle deliberately did not add another alpha generator. Three adjacent gaps were more important: (1) uncertainty calibration under regime/distribution shift, (2) retaining an addressable historical data state for blind replay, and (3) making Council/Router observability useful without default capture of sensitive model/tool content. Q-001, DI-004 and AIML-004 are therefore TEST/REFERENCE candidates, not production changes.
+## Cycle 006 decision
+Kou et al., TradingAgents, and HARLF materially strengthen the research rationale for BLACK ORACLE's Strategy Factory → Council → Router → Portfolio direction. The useful conclusion is architectural, not a performance claim.
 
-DuckDB/Iceberg is treated only as a reference implementation for snapshot replay. BO's canonical schema should remain storage-neutral. Likewise OpenTelemetry is an export adapter, not the source of truth for BO evidence identity. The new conformal-calibration work is an evidence-quality layer and must not be conflated with expected return or trade promotion.
+Cycle 006 therefore adds three sandbox experiments:
+- **EXP-AIML005** for executable LLM-generated alpha candidates with full research-budget accounting.
+- **EXP-AIML006** for Council topology and adversarial/risk-review ablations.
+- **EXP-Q002** for static vs dynamic vs hierarchical routing with point-in-time sentiment.
+
+The strongest shared warning across the three references is that sophisticated agentic architecture cannot compensate for weak temporal integrity, hidden trial selection, or contaminated backtests. For that reason, **EXP-DI001 + EXP-DI003 remain the prerequisite and highest-priority engineering action**.
 
 No production or paper-trading behavior was changed.
 
 ## Highest-priority next action
-Stop expanding the schema on paper and execute **EXP-DI001 + EXP-DI003**. Implement the minimal validator/manifest, select one archived KRX experiment, seed future/delayed/revised/session-boundary leakage, and require a blind replay to reconstruct the exact data/split/output lineage. If that fixture succeeds, run EXP-DI004 on the same case to measure the incremental value of immutable snapshot addressing before adopting any storage technology.
+Implement **EXP-DI001 + EXP-DI003** first. Once the canonical experiment record and point-in-time manifest pass blind-replay/leakage fixtures, open **EXP-AIML005** as the first strategy-generation experiment. That sequence prevents a larger Alpha Factory search space from amplifying research debt before the evidence substrate can account for it.
