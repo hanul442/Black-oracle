@@ -1,5 +1,6 @@
 export * from './assets';
 export * from './assetPolicy';
+export * from './authorityMode';
 export * from './config';
 export * from './evidence';
 export * from './evidenceCoverage';
