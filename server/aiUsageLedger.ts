@@ -8,6 +8,11 @@ export type OpenAIUsageContext = {
   market?: string | null;
   strategyId?: string | null;
   evidenceId?: string | null;
+  reportId?: string | null;
+  analystId?: string | null;
+  debateId?: string | null;
+  creditJobId?: string | null;
+  creditActionType?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -98,7 +103,14 @@ export const recordOpenAIUsage = async (usagePayload: any, context: OpenAIUsageC
       market: context.market ?? null,
       strategy_id: context.strategyId ?? null,
       evidence_id: context.evidenceId ?? null,
-      metadata: context.metadata ?? {},
+      metadata: {
+        ...(context.metadata ?? {}),
+        reportId: context.reportId ?? null,
+        analystId: context.analystId ?? null,
+        debateId: context.debateId ?? null,
+        creditJobId: context.creditJobId ?? null,
+        creditActionType: context.creditActionType ?? null,
+      },
     }),
   });
   if (!response.ok) {
