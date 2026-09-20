@@ -50,5 +50,6 @@ export * from './types';
 export * from './upbitKrwUniverse';
 export * from './upbitPublicMarketCollector';
 export * from './upbitUniverseFreshness';
+export * from './upbitUniverseSnapshotRecord';
 export * from './volumeProfile';
 export * from './waveTheory';
