@@ -13,7 +13,7 @@ test('creates auditable public-universe persistence metadata', () => {
 
   const record = toUpbitUniverseSnapshotRecord(snapshot, recordedAt);
   assert.equal(record.schemaVersion, 1);
-  assert.equal(record.source, 'UPBIT_PUBLIC_MARKETS');
+  assert.equal(record.source, 'UPBIT_MARKET_ALL');
   assert.equal(record.observedAt, observedAt.toISOString());
   assert.equal(record.recordedAt, recordedAt.toISOString());
   assert.equal(record.entryCount, 2);
