@@ -52,7 +52,7 @@ export const appendReportVersion = async (report: ReportVersion) =>
     as_of: new Date(report.asOf).toISOString(),
     evidence_cutoff: new Date(report.evidenceCutoff).toISOString(),
     created_at: new Date(report.createdAt).toISOString(),
-    published_at: report.publishedAt == null ? null : new Date(report.publishedAt).toISOString(),
+    published_at: new Date(report.publishedAt).toISOString(),
     grade: report.grade,
     confidence: report.confidence,
     one_line_assessment: report.oneLineAssessment,
@@ -137,7 +137,7 @@ export const readReportVersions = async (reportId: string, limit = 50): Promise<
 export const readReportCards = async (limit = 50): Promise<ReportCardProjection[]> => {
   const safeLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
   const rows = await readRows(
-    `black_oracle_reports?status=eq.PUBLISHED&select=report_id,version,report_type,subject_id,grade,one_line_assessment,published_at,payload&order=published_at.desc&limit=${safeLimit}`,
+    `black_oracle_reports?status=in.(PUBLISHED,CORRECTED)&select=report_id,version,report_type,subject_id,grade,one_line_assessment,published_at,payload&order=published_at.desc&limit=${safeLimit}`,
   );
 
   return rows.map((row) => {
