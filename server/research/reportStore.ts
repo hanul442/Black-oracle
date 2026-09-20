@@ -174,3 +174,63 @@ export const readReportCards = async (limit = 50): Promise<ReportCardProjection[
     };
   });
 };
+
+
+export const readAnalystReviews = async (
+  reportId: string,
+  reportVersion: number,
+): Promise<AnalystReview[]> => {
+  const rows = await readRows(
+    `black_oracle_analyst_reviews?report_id=eq.${encodeURIComponent(reportId)}&report_version=eq.${Math.max(1, Math.trunc(reportVersion))}&select=payload&order=recorded_at.asc`,
+  );
+  return rows.map((row) => row.payload).filter(Boolean);
+};
+
+export const readDebateSession = async (
+  reportId: string,
+  reportVersion: number,
+): Promise<DebateSession | null> => {
+  const rows = await readRows(
+    `black_oracle_debate_sessions?report_id=eq.${encodeURIComponent(reportId)}&report_version=eq.${Math.max(1, Math.trunc(reportVersion))}&select=payload&order=recorded_at.desc&limit=1`,
+  );
+  return rows[0]?.payload ?? null;
+};
+
+export const readLeadSynthesis = async (
+  reportId: string,
+  reportVersion: number,
+): Promise<DomainLeadSynthesis | null> => {
+  const rows = await readRows(
+    `black_oracle_lead_syntheses?report_id=eq.${encodeURIComponent(reportId)}&report_version=eq.${Math.max(1, Math.trunc(reportVersion))}&select=payload&order=recorded_at.desc&limit=1`,
+  );
+  return rows[0]?.payload ?? null;
+};
+
+export const readReportForecast = async (
+  reportId: string,
+  reportVersion: number,
+): Promise<ReportForecast | null> => {
+  const rows = await readRows(
+    `black_oracle_report_forecasts?report_id=eq.${encodeURIComponent(reportId)}&report_version=eq.${Math.max(1, Math.trunc(reportVersion))}&select=payload&order=recorded_at.desc&limit=1`,
+  );
+  return rows[0]?.payload ?? null;
+};
+
+export const readPublishedReportArtifacts = async (
+  reportId: string,
+  reportVersion?: number | null,
+) => {
+  const report = reportVersion == null
+    ? await readLatestReportVersion(reportId)
+    : (await readReportVersions(reportId, 200)).find((item) => item.version === reportVersion) ?? null;
+  if (!report) return null;
+
+  const [analystReviews, debate, synthesis, forecast] = await Promise.all([
+    readAnalystReviews(report.reportId, report.version),
+    readDebateSession(report.reportId, report.version),
+    readLeadSynthesis(report.reportId, report.version),
+    readReportForecast(report.reportId, report.version),
+  ]);
+
+  return { report, analystReviews, debate, synthesis, forecast };
+};
