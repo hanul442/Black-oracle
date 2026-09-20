@@ -44,11 +44,13 @@ const countAlertLeaves = (rule: AlertRule): number =>
     ? 1
     : rule.children.reduce((sum, child) => sum + countAlertLeaves(child), 0);
 
-const hasBooleanGrouping = (rule: AlertRule): boolean =>
-  rule.kind === 'GROUP' && (
-    rule.children.length > 1
-    || rule.children.some((child) => hasBooleanGrouping(child))
-  );
+const hasComplexBooleanLogic = (rule: AlertRule): boolean => {
+  if (rule.kind === 'CONDITION') return false;
+  const nestedGroup = rule.children.some((child) => child.kind === 'GROUP');
+  const mixedOr = rule.operator === 'OR';
+  const manyConditions = countAlertLeaves(rule) > 3;
+  return nestedGroup || mixedOr || manyConditions;
+};
 
 export const quoteFixedCreditAction = (input: {
   accountId: string;
@@ -102,7 +104,7 @@ export const quoteAlert = (input: AlertQuoteInput): CreditQuote => {
   if (leafCount >= 2 && leafCount <= 3) credits += 100;
   else if (leafCount >= 4) credits += 200;
 
-  if (hasBooleanGrouping(input.rule)) credits += 200;
+  if (hasComplexBooleanLogic(input.rule)) credits += 200;
   if (input.crossAsset || input.subjectCount > 1) credits += 200;
   if (input.semanticAiRequired) credits += 300;
   if (input.customEvidenceCondition) credits += 300;
