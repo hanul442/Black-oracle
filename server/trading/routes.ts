@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { assertPaperExecutionAllowed, readBotAuthorityProfile } from '../../src/trading/authorityMode';
 import { SUPPORTED_UPBIT_MINUTE_UNITS, UNIFIED_PAPER_INITIAL_EQUITY_KRW, type SupportedUpbitMinuteUnit } from '../../src/trading/config';
 import type { EvidenceDirection, EvidenceSourceType, TradingEvidence } from '../../src/trading/evidence';
 import { buildTradingSnapshot } from '../../src/trading/snapshot';
@@ -114,6 +115,8 @@ const handleRouteError = (error: unknown, res: Response) => {
   const isInputError = /must|allowed|unsupported|requires|limited|invalid|insufficient|cannot|already|disabled/i.test(message);
   return res.status(isInputError ? 400 : 502).json({ success: false, error: message });
 };
+
+const requirePaperAuthority = () => assertPaperExecutionAllowed(readBotAuthorityProfile());
 
 const requireResearchControl = (req: Request) => {
   const expected = String(process.env.TRADING_ADMIN_TOKEN ?? '').trim();
@@ -255,6 +258,7 @@ export const registerTradingRoutes = (app: Express) => {
 
   app.post('/api/trading/paper/reset', async (req: Request, res: Response) => {
     try {
+      requirePaperAuthority();
       paperLoopController.stop();
       const initialCash = parseInitialCash(req.body?.initialCash);
       const state = paperTradingSession.reset(initialCash);
@@ -267,6 +271,7 @@ export const registerTradingRoutes = (app: Express) => {
 
   app.post('/api/trading/paper/step', async (req: Request, res: Response) => {
     try {
+      requirePaperAuthority();
       const market = String(req.body?.market ?? 'KRW-BTC').toUpperCase();
       const manualScore = parseOptionalEventScore(req.body?.eventScore);
       const resolved = resolvedEventScore(market, manualScore);
@@ -284,6 +289,7 @@ export const registerTradingRoutes = (app: Express) => {
 
   app.post('/api/trading/paper/loop/start', async (req: Request, res: Response) => {
     try {
+      requirePaperAuthority();
       const config = parseLoopConfig(req.body);
       const status = paperLoopController.start(config);
       const runImmediately = req.body?.runImmediately !== false;
@@ -307,6 +313,7 @@ export const registerTradingRoutes = (app: Express) => {
 
   app.post('/api/trading/paper/loop/cycle', async (_req: Request, res: Response) => {
     try {
+      requirePaperAuthority();
       const cycle = await paperLoopController.runCycle();
       await saveRuntimeCheckpoint('paper-loop-cycle');
       return res.json({ success: true, cycle, performance: paperTradingSession.performance() });
@@ -337,6 +344,7 @@ export const registerTradingRoutes = (app: Express) => {
 
   app.post('/api/trading/equity/paper/cycle', async (req: Request, res: Response) => {
     try {
+      requirePaperAuthority();
       requireResearchControl(req);
       const cycle = await equityPaperLoop.runCycle(Number(req.body?.limit ?? 6));
       await saveRuntimeCheckpoint('equity-paper-cycle');
