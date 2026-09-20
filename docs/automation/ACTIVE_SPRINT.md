@@ -69,10 +69,13 @@ Acceptance criteria:
 
 This section must be updated at the end of every cycle.
 
-- Phase: PLAN / RESEARCH REVIEW
-- Completed this cycle: repository bootstrap documentation
-- Validation: documentation verification pending
-- PR: pending
+- Phase: **BOT-S0 DONE → BOT-S1 NEXT**
+- Completed this cycle: independent BOT README, persistent operating cycle, 2026-09-21 sprint plan, research review
+- Research reviewed: DI-001, DI-003, DI-004, EV-001, Q-002, AIML-005, AIML-006, D-005
+- Validation: **Black Oracle CI #985 PASS; Black Oracle Trading CI #1164 PASS**
+- PR: **#210 MERGED**
+- Main commit: `5141786f38cc06209e89318cdd367069545eb740`
 - Deployment: none
-- Blockers: independent BOT runtime/database still not provisioned
-- Next checkpoint: BOT-S1 — scanner repository/read-model boundary
+- Slack report: https://hanullab.slack.com/archives/C0C2Y1RJJP3/p1789945496607259
+- Blockers: independent BOT runtime/database still not provisioned; legacy A07 #209 remains unmerged and must be re-verified in the independent boundary
+- Next checkpoint: **BOT-S1 — scanner repository/read-model boundary**
