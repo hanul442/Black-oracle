@@ -14,6 +14,7 @@ import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
 import aiCostStatusHandler from './api/ai-cost-status';
 import marketChartHandler from './api/market-chart';
+import reportResearchShadowHandler from './api/report-research-shadow';
 import { tradingRuntimeProfile } from './server/trading/runtimeProfile';
 
 const gatewayPort = Number(process.env.PORT || 3000);
@@ -315,6 +316,13 @@ app.post('/api/council-debate', express.json({ limit: '1mb' }), (req, res) => {
   if (!internalSecret) return res.status(503).json({ success: false, error: 'Council internal authorization is unavailable.' });
   req.headers.authorization = `Bearer ${internalSecret}`;
   void councilDebateHandler(req, res);
+});
+
+app.post('/api/report-research-shadow', express.json({ limit: '1mb' }), (req, res) => {
+  const internalSecret = String(process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!internalSecret) return res.status(503).json({ success: false, error: 'Report research internal authorization is unavailable.' });
+  req.headers.authorization = `Bearer ${internalSecret}`;
+  void reportResearchShadowHandler(req, res);
 });
 
 app.get('/api/ai-cost-status', (req, res) => {
