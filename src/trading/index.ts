@@ -48,5 +48,6 @@ export * from './tradeMap';
 export * from './trendMomentum';
 export * from './types';
 export * from './upbitKrwUniverse';
+export * from './upbitUniverseFreshness';
 export * from './volumeProfile';
 export * from './waveTheory';
