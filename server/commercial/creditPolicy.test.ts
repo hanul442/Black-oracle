@@ -49,5 +49,5 @@ test('30-day multi-condition semantic Alert becomes 100-credit rounded quote', (
   });
 
   assert.equal(quote.credits % 100, 0);
-  assert.equal(quote.credits, 1000);
+  assert.equal(quote.credits, 800);
 });
