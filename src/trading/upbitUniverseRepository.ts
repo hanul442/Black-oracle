@@ -1,6 +1,7 @@
 import type { UpbitUniverseSnapshotRecord } from './upbitUniverseSnapshotRecord';
 import {
   evaluateUniverseFreshness,
+  type UniverseFreshnessDecision,
   type UniverseFreshnessPolicy,
 } from './upbitUniverseFreshness';
 
@@ -12,7 +13,7 @@ export interface UpbitUniverseSnapshotRepository {
 export interface UpbitUniverseReadModel {
   record: UpbitUniverseSnapshotRecord | null;
   scannerEligible: boolean;
-  reason: 'NO_SNAPSHOT' | 'FRESH' | 'STALE' | 'INVALID_TIMESTAMP' | 'FUTURE_TIMESTAMP';
+  reason: 'NO_SNAPSHOT' | UniverseFreshnessDecision['reason'];
 }
 
 /**
