@@ -496,6 +496,7 @@ export const runReportAiPipeline = async (
     grade: leadResult.data.grade,
     confidence: leadResult.data.confidence == null ? null : Math.max(0, Math.min(1, Number(leadResult.data.confidence))),
     oneLineAssessment: leadResult.data.oneLineAssessment,
+    executiveSummary: leadResult.data.executiveSummary,
     thesis: leadResult.data.thesis,
     supportingPoints: leadResult.data.supportingPoints ?? [],
     opposingPoints: leadResult.data.opposingPoints ?? [],
