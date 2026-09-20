@@ -2,6 +2,7 @@ import type {
   AnalystReview,
   DebateSession,
   ForecastEvaluation,
+  DomainLeadSynthesis,
   ReportCardProjection,
   ReportForecast,
   ReportVersion,
@@ -84,6 +85,19 @@ export const appendDebateSession = async (debate: DebateSession) =>
     started_at: debate.startedAt == null ? null : new Date(debate.startedAt).toISOString(),
     completed_at: debate.completedAt == null ? null : new Date(debate.completedAt).toISOString(),
     payload: debate,
+  });
+
+export const appendLeadSynthesis = async (synthesis: DomainLeadSynthesis) =>
+  postAppendOnly('black_oracle_lead_syntheses', {
+    synthesis_id: synthesis.synthesisId,
+    report_id: synthesis.reportId,
+    report_version: synthesis.reportVersion,
+    lead_analyst_id: synthesis.leadAnalyst.analystId,
+    as_of: new Date(synthesis.asOf).toISOString(),
+    grade: synthesis.grade,
+    confidence: synthesis.confidence,
+    one_line_assessment: synthesis.oneLineAssessment,
+    payload: synthesis,
   });
 
 export const appendForecast = async (forecast: ReportForecast) =>
