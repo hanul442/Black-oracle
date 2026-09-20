@@ -17,6 +17,7 @@ import marketChartHandler from './api/market-chart';
 import reportResearchShadowHandler from './api/report-research-shadow';
 import reportReadShadowHandler from './api/report-read-shadow';
 import creditEconomyStatusHandler from './api/credit-economy-status';
+import forecastEvaluateShadowHandler from './api/forecast-evaluate-shadow';
 import { tradingRuntimeProfile } from './server/trading/runtimeProfile';
 
 const gatewayPort = Number(process.env.PORT || 3000);
@@ -332,6 +333,13 @@ app.post('/api/report-research-shadow', express.json({ limit: '1mb' }), (req, re
   if (!internalSecret) return res.status(503).json({ success: false, error: 'Report research internal authorization is unavailable.' });
   req.headers.authorization = `Bearer ${internalSecret}`;
   void reportResearchShadowHandler(req, res);
+});
+
+app.post('/api/forecast-evaluate-shadow', express.json({ limit: '512kb' }), (req, res) => {
+  const internalSecret = String(process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!internalSecret) return res.status(503).json({ success: false, error: 'Forecast evaluation authorization is unavailable.' });
+  req.headers.authorization = `Bearer ${internalSecret}`;
+  void forecastEvaluateShadowHandler(req, res);
 });
 
 app.get('/api/credit-economy-status', (req, res) => {
