@@ -178,6 +178,7 @@ export type DomainLeadSynthesis = {
   grade: InvestmentAttractivenessGrade | null;
   confidence: number | null;
   oneLineAssessment: string;
+  executiveSummary: string;
   thesis: string;
   supportingPoints: string[];
   opposingPoints: string[];
