@@ -1,149 +1,78 @@
-# BLACK ORACLE Active Sprint
+# ACTIVE SPRINT — BOT Alpha Separation & Scanner Foundation
 
-## Sprint
-- **ID:** B0
-- **Title:** Frozen Baseline
-- **Status:** IN_PROGRESS
-- **Governing plan:** `docs/BLACK_ORACLE_BETA_SPRINT_MASTER_PLAN_V2.md`
-- **Canonical main at checkpoint:** `acc5e0172d382bddd51d0af966b1a0f8c547969d`
-- **Session checkpoint:** 2026-09-19T00:53:00Z
+Date: **2026-09-21**
+Target release: **2026-10-20 — Alpha v0.1**
+Repository: `hanul442/black_oracle_bot`
+Status: **IN PROGRESS**
 
 ## Objective
-Prove deployed-source truth, state ownership, legacy read-only boundaries, rollback targets, and protected qualification boundaries before B1 implementation.
 
-## Work-package status
-- **B0.1 — IN_PROGRESS:** Railway service/deployment/source inventory captured; fail-closed runtime readiness v0.3 is deployed as Supabase Edge Function version 4 with an exact bundle hash, while independent HTTP response probes remain blocked by runner networking.
-- **B0.2 — IN_PROGRESS / MATRIX PARTIAL:** positions, Paper order/fill identity, runtime Ledger, canonical event Ledger, checkpoint, strategy identity, qualification cohort, Strategy Factory, scheduler control, and NARS now have an explicit fail-closed ownership matrix. v03 ownership and production catalog grants are verified; S2/vNext/qualification ownership remains partial because source revisions disagree.
-- **B0.3 — IN_PROGRESS / CANDIDATE READY, NOT EXECUTED:** the design contract and candidate SQL package cover restricted roles, the beta namespace, representative legacy mutation denials, isolated beta writes, and non-cascading rollback. No Supabase branch exists, the package is not applied, and database enforcement remains absent.
-- **B0.4 — CONTRACT COMPLETE / B0 GATE BLOCKED:** PAPER-only, deterministic Risk, Report independence, performance-stream separation, protected-state freeze, fail-closed rollback, and commercial-capacity invariants are machine validated. The B0 exit decision remains `EXTEND` because B0.1-B0.3/B0.6 blockers remain.
-- **B0.5 — COMPLETED:** PR #177 merged; PR #179 evidence remapped and closed; PR #175 compared, compatible concepts preserved, excluded/conflicting scope documented, and PR closed.
-- **B0.6 — CARRIED_FORWARD_BLOCKED:** S2 stale source and vNext configured/deployed revision mismatch are explicitly dispositioned with exact resolution gates. Generic redeploy and production cutover remain prohibited; the blockers still prevent B0 exit.
+Convert the newly separated repository into the canonical BLACK ORACLE BOT home, remove product-boundary ambiguity, and resume the Alpha build from the migrated A02–A06 foundation without coupling back to the legacy combined runtime.
 
-## Completed this session
-- Merged governing plan PR #177 as `f45d3d08f78dcd2882dafec8429ed9cb46b8024b` after Black Oracle CI 864 and Trading CI 1043 passed.
-- Revalidated Railway production service configuration and recent deployment metadata without reading secret values.
-- Created a fresh B0 branch from governing `main`; did not merge the conflicting S0 branch.
-- Remapped PR #179's useful audit manifest, validator, and negative tests to B0.1-B0.6.
-- Preserved Report/AutoTrade independence, PAPER-only authority, Risk sovereignty, protected historical state, and explicit UNKNOWN health semantics.
-- Verified from Railway boot/cycle logs that `black-oracle-web` owns `black-oracle-paper-vnext-100m-v03`.
-- Recorded current degraded evidence: 409 contention, persistence rollback/abort, upstream 503/521/522 failures, and KRX timeouts.
-- Closed PR #175 after unique-delta review; compatible concepts are already preserved, while Marketplace/Community/public uploads/sales and conflicting pricing/sprint scope remain post-beta.
-- No runtime, scheduler, database, secret, billing, order, position, Ledger, checkpoint, or qualification mutation.
-- Inspected scoped Supabase grants, RLS/policy counts, function execution grants, view security mode, and deployed no-JWT function authorization through sanitized read-only paths.
-- Recorded the B0.3 enforcement gap in `docs/audit/B0_STORAGE_AUTHORITY_BOUNDARY.md` and manifest schema v4.
-- Added negative baseline tests that reject fabricated beta isolation, hidden destructive grants, browser table exposure, hidden view-security gaps, and a falsely completed public-status auth review.
-- Implemented `BO-RUNTIME-STATUS-v0.3` readiness policy in source: fresh persisted checkpoint, recent scheduler 2xx where required, zero cycle errors, and no Evidence attachment failure.
-- Restricted unauthenticated runtime status to the legacy and native-shadow PWA IDs; internal and qualification IDs share a 404 response.
-- Hardened canonical scheduler health so HTTP 409 or missing status cannot be reported HEALTHY.
-- Added readiness policy regression tests and a deployment/rollback contract.
-- Merged PR #185 as `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07` after Black Oracle CI 879, Trading CI 1058, and NARS CI 146 passed.
-- Deployed that exact merged v0.3 source as Supabase Edge Function version 4; retrieved ACTIVE artifact bundle SHA-256 is `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`.
-- Preserved rollback to function version 3 / bundle `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`.
-- Kept endpoint health `UNKNOWN`: direct, browser-mediated, and read-only SQL probes timed out from this runner and were not promoted to PASS.
-- Merged deployment-evidence PR #186 as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b` after Black Oracle CI 881 and Trading CI 1060 passed.
-- Added the B0.3 beta authority design contract, negative validator, and apply/rollback gate without applying production DDL.
-- Merged B0.3 authority-contract PR #187 as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3` after Black Oracle CI 883 and Trading CI 1062 passed.
-- Merged ACTIVE_SPRINT checkpoint PR #188 as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee` after Black Oracle CI 885 and Trading CI 1064 passed.
-- Confirmed the Supabase project has zero development branches; a new branch costs USD 0.01344/hour and was not created without explicit cost confirmation.
-- Added a non-production B0.3 candidate migration, isolated negative integration script, RESTRICT rollback, and fail-closed static validation. Nothing was added to `supabase/migrations` or applied to a database.
-- Merged candidate-package PR #189 as `447a92eaa3141bc48459296c0fa861e306617db8` after Black Oracle CI 887 and Trading CI 1066 passed.
-- Added the B0.2 state authority matrix and negative validator without changing runtime code or production data.
-- Confirmed through a sanitized production catalog query that the five scoped state/control tables have RLS, browser roles have no SELECT, and the canonical event Ledger is service-role INSERT/SELECT only with UPDATE/DELETE trigger denial.
-- Kept the runtime-local Paper Ledger distinct from the canonical cross-runtime event Ledger and kept scheduler/NARS/Report outside execution authority.
-- Merged B0.2 state-authority PR #191 as `e204ea6ceb290bd0a106c006a36dd9b75daf396b` after Black Oracle CI 895 and Trading CI 1074 passed.
-- Merged B0.2 checkpoint PR #192 as `a8f307449b81ad1a49a7b148b31ac807bc53219c` after Black Oracle CI 897 and Trading CI 1076 passed.
-- Re-read Railway source configuration, deployment history, and current logs for vNext and S2 without reading secret values.
-- Added a B0.6 explicit carry-forward contract: exact-SHA deployment, runtime-reported revision equality, semantic health, and verified rollback artifact are mandatory before cutover.
-- Prohibited generic vNext redeploy because it cannot select/prove the pinned commit, and prohibited S2 redeploy because it repeats the unpinned `8c2f27a…` snapshot.
-- Merged B0.6 blocker-disposition PR #193 as `20452029e0ebdde20103db7782089d799314c6b0` after Black Oracle CI 899 and Trading CI 1078 passed.
-- Merged B0.6 checkpoint PR #194 as `67ee2bd7968cd726432d3a74aed100aa310e5fc6` after Black Oracle CI 901 and Trading CI 1080 passed.
-- Added the B0.4 freeze and rollback contract, exit-gate assessment, and negative validator without changing runtime code, database authority, or production state.
-- Fixed the B0 exit decision at `EXTEND`: service/source truth and database-enforced beta isolation remain blocked, ownership remains partial, and B1 implementation is not authorized.
-- Merged B0.4 freeze/rollback and exit-gate PR #195 as `acc5e0172d382bddd51d0af966b1a0f8c547969d` after Black Oracle CI 903 and Trading CI 1082 passed.
+## Today — ordered plan
 
-## Evidence
-- Railway production services: 4; latest deployment states report SUCCESS.
-- Web deployment: `32d3b67e698b13e08549e099bf4ae1c82c0e5394`.
-- vNext configured pin: `7c5bfd09297ad8497312b372f60386aeb7cfedcd`; latest deployment metadata in the evidence manifest: `8933516036f0910634fd53e97df1e81cc54637ea`.
-- S2 Shadow deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
-- v9 multiasset deployment: `8c2f27aa53345a9738847e05f204cd38cf393d02`.
-- Railway SUCCESS is recorded as deployment completion only; runtime health remains UNKNOWN.
-- Supabase boundary: 47 scoped tables, 47 with RLS, 0 browser-granted, 44 destructively mutable by `service_role`, 0 beta namespaces.
-- No-JWT functions: two custom hashed-header jobs fail closed; public runtime status v0.3 has a verified deployed allowlist artifact but still lacks independent HTTP response probes.
-- Runtime status production: v0.3 / function version 4 / bundle SHA-256 `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`; current endpoint/runtime health remains UNKNOWN.
-- B0.2 matrix: 10 ownership records; `PARTIAL`, with beta access limited to `READ_ONLY` or `NONE`.
-- Catalog cross-check: canonical events deny service-role UPDATE/DELETE; runtime, scheduler, and research stores remain service-role mutable and therefore protected from beta writes by contract only until B0.3 enforcement.
-- vNext config remains pinned to `7c5bfd0…` while latest deployment metadata remains `8933516…`; recent logs contain 409/500 cycles, checkpoint-abort rollback, and lease-release 504.
-- S2 has no source branch/commit pin; latest redeploy remains `8c2f27a…`; recent logs contain KRX timeout and canonical append 503/521 failures.
+### BOT-S0 — Repository boundary bootstrap
+Acceptance criteria:
+- BOT-only README.
+- Persistent operating-cycle document.
+- Current Alpha sprint stored in-repo.
+- Research inputs for this sprint recorded.
+- No BOR product UI/runtime ownership claimed by BOT.
 
-## Active PRs / branches
-- PR #195 — merged B0.4 freeze/rollback and exit-gate contract as `acc5e0172d382bddd51d0af966b1a0f8c547969d`; overall B0 remains `EXTEND`.
-- PR #194 — merged B0.6 checkpoint as `67ee2bd7968cd726432d3a74aed100aa310e5fc6`.
-- PR #193 — merged B0.6 deployment-blocker disposition as `20452029e0ebdde20103db7782089d799314c6b0`; blockers remain carried forward and cutover-blocking.
-- PR #191 — merged B0.2 state-authority matrix as `e204ea6ceb290bd0a106c006a36dd9b75daf396b`.
-- PR #189 — merged B0.3 isolated authority candidate package as `447a92eaa3141bc48459296c0fa861e306617db8`; execution remains NOT RUN.
-- PR #187 — merged dedicated beta identity/namespace design and negative validation as `2e0f71d7b16f31aeffd5b808a7b058d3723dfbd3`; no production DDL.
-- PR #188 — merged B0 authority-contract checkpoint as `3d2fba0be0d9b74d2ef23d14b5f356e2e9d594ee`.
-- PR #186 — merged runtime-status deployment evidence as `74fd9d5514e0986ffafbb0c091ed2ecf3c79216b`.
-- PR #183 — merged B0.2/B0.3 storage-authority boundary as `93fa639b2e9d6af837c8d0afa9edf45aebb11a59`.
-- PR #185 — merged B0.1/B0.2 fail-closed runtime readiness as `7ec3770a3bcb1e0227cd40e08a8fe9cbf0df9b07`.
-- PR #177 — merged governing B0-B9 plan.
-- PR #180 — merged B0 baseline manifest/validator/evidence package.
-- PR #181 — merged v03 ownership proof and legacy-plan reconciliation.
-- PRs #175, #176, and #179 — closed with evidence/disposition preserved.
-- Older pre-beta PRs remain open historical candidates and require separate B0 delta classification before reuse; none is authorized for merge by this checkpoint.
+### BOT-S1 — Scanner input boundary
+Acceptance criteria:
+- Re-implement the A07 repository/read-model boundary cleanly in this repository.
+- Collector → canonical KRW universe → freshness → snapshot → repository/read model becomes one deterministic scanner input path.
+- No stale snapshot may become scanner-eligible.
+- Typecheck, trading tests and build green.
 
-## Validation
-- PR #177 final head: Black Oracle CI 864 PASS; Trading CI 1043 PASS.
-- PR #180 final head: offline tests 16/16 PASS; Black Oracle CI 867 PASS; Trading CI 1046 PASS.
-- PR #181 final head: offline tests 18/18 PASS; Black Oracle CI 869 PASS; Trading CI 1048 PASS.
-- Current B0.2/B0.3 branch: baseline tests 25/25 PASS; TypeScript lint PASS; production build PASS; trading regressions 303/303 PASS (run with `node --import tsx --test` because the `tsx` CLI IPC socket is unavailable in this sandbox).
-- PR #183 final head: Black Oracle CI 874 PASS; Trading CI 1053 PASS.
-- Current B0.1/B0.2 readiness branch: readiness/scheduler policy 17/17 PASS; baseline tests 31/31 PASS; trading regressions 314/314 PASS; TypeScript lint PASS; production build PASS.
-- Local Deno check unavailable because Deno is not installed in this runner; GitHub NARS CI supplied the authoritative Edge Function typecheck.
-- PR #185 final head: Black Oracle CI 879 PASS; Trading CI 1058 PASS; NARS CI 146 PASS, including authoritative Deno typecheck.
-- PR #186 final head: Black Oracle CI 881 PASS; Trading CI 1060 PASS.
-- PR #187 final head: authority and baseline tests 44/44 PASS locally; Black Oracle CI 883 PASS; Trading CI 1062 PASS.
-- PR #188 final head: Black Oracle CI 885 PASS; Trading CI 1064 PASS.
-- Current B0.3 candidate package: authority, SQL, and baseline tests 50/50 PASS; execution status remains NOT EXECUTED.
-- PR #189 final head: Black Oracle CI 887 PASS; Trading CI 1066 PASS.
-- Current B0.2 matrix: static validator PASS; combined baseline/authority/matrix tests 59/59 PASS; TypeScript lint PASS; production build PASS.
-- PR #191 final head: Black Oracle CI 895 PASS; Trading CI 1074 PASS.
-- PR #192 final head: Black Oracle CI 897 PASS; Trading CI 1076 PASS.
-- Current B0.6 disposition: combined B0 safety tests 71/71 PASS; TypeScript lint PASS; production build PASS.
-- PR #193 final head: Black Oracle CI 899 PASS; Trading CI 1078 PASS.
-- PR #194 final head: Black Oracle CI 901 PASS; Trading CI 1080 PASS.
-- Current B0.4 contract: combined B0 safety tests 87/87 PASS; TypeScript lint PASS; production build PASS.
-- PR #195 final head: Black Oracle CI 903 PASS; Trading CI 1082 PASS.
-- Baseline validator returns `contractValid=true`, `releaseReady=false`, `b0Status=IN_PROGRESS`.
-- Merged session scope is documentation, manifests, and offline validators/tests only.
-- Browser verification: not applicable; no UI change.
-- Production deployment: Supabase Edge Function only; no Railway service deployed.
-- B0.3 design contract is merged but does not claim database enforcement or B0.3 completion.
+### BOT-S2 — Independent runtime/database boundary
+Acceptance criteria:
+- Define BOT runtime/deployment contract and DB ownership.
+- Preserve legacy PAPER sample as read-only migration evidence.
+- No destructive migration and no automatic LIVE authority.
+- Railway/Supabase binding only after exact ownership and rollback are documented.
 
-## Deployment / rollback
-- No Railway deployment.
-- Supabase runtime-status deployment: ACTIVE version 4, bundle `b4b5f8145fc0fe10b16157a2e53432d099700b7be0396ab9a81486ef715f0ed0`.
-- Rollback: redeploy the recorded version 3 source bundle `02c0896d442d39acf77b898c001678ba692f8d1b4de9ad6a86d590d99c8f48bb`; no scheduler or database row mutation is required.
-- Do not use generic Railway redeploy for S2; it is proven to reuse the stale snapshot.
-- B0.4 introduced no deployable artifact. Rollback is removal/revert of the documentation, manifest, and validators; no runtime or database rollback is required.
+### BOT-S3 — Validation core
+Acceptance criteria:
+- Strategy registry/factory inputs are versioned.
+- Backtest / OOS / Walk-Forward / Monte Carlo evidence is distinguishable.
+- Begin canonical experiment manifest work before expanding strategy count.
 
-## Blockers
-1. vNext configured/deployed revision mismatch; exact-SHA deploy control is unavailable.
-2. S2 exact latest-source deployment control unavailable; source branch/commit is unpinned and redeploy repeats the stale snapshot.
-3. Scheduler HTTP 409-as-success semantics do not prove checkpoint persistence.
-4. State categories are mapped, but S2/vNext/qualification writer ownership remains PARTIAL until deployed/configured revisions agree.
-5. Persistence/upstream 503/521/522 failures and 409 contention prevent readiness claims.
-6. Future Data API grants require verification; the two custom-token no-JWT jobs are reviewed, while runtime-status v0.3 still needs independent HTTP response probes.
-7. B0.3 is not database-enforced: the operational `service_role` has destructive access to 44 scoped legacy tables and no beta write namespace exists.
-8. Three service-only NARS views lack `security_invoker=true`; they remain non-browser-readable but require hardening before broader grants.
-9. Runtime status v0.3 is deployed and artifact-verified, but direct and browser-mediated HTTP probes and the read-only database cross-check timed out; readiness remains UNKNOWN.
-10. No Supabase development branch exists; isolated execution requires explicit approval of USD 0.01344/hour branch cost.
+## Research inputs reviewed
 
-## Next safe actions
-1. Obtain exact-SHA deployment control for the existing S2/vNext services, verify runtime-reported revision and rollback artifact, then promote only matching ownership records from PARTIAL.
-2. Execute the reviewed B0.3 candidate only on an explicitly approved isolated Supabase branch, then require all negative mutation, beta-write, and RESTRICT rollback probes to pass before considering a production migration.
-3. Run independent GET probes for both allowed runtime IDs and a forbidden qualification ID from a network that can reach the Supabase endpoint; do not promote health before the responses match the v0.3 contract.
-4. Resolve or explicitly carry forward vNext revision mismatch and S2 exact-source blocker under B0.6.
-5. Classify older pre-beta PR deltas before reuse.
-6. Keep B0 IN_PROGRESS; do not begin B1 implementation until the complete B0 exit gate passes.
+- **DI-001 / DI-003** — canonical experiment record + point-in-time feature availability are the highest-priority validation bottleneck.
+- **DI-004** — immutable snapshot replay supports later Decision Replay and scanner audit.
+- **Q-002 / EV-001** — execution-cost risk and engine reproducibility must be tested separately.
+- **AIML-005 / AIML-006** — Council changes require a frozen task baseline and budget-matched ablation; more agents are not assumed better.
+- **D-005** — product surfaces should follow Decision → Why → Audit progressive disclosure.
+
+## Safety invariants
+
+- Unrestricted LIVE remains blocked.
+- `LIVE_CANARY` is readiness-only until explicit qualification.
+- Deterministic Risk cannot be bypassed.
+- Broker secrets cannot reach frontend/agent contexts.
+- Stale/restricted market data fails closed.
+- Existing working PAPER behavior and historical lineage are preserved.
+
+## Current known state
+
+- BOT-A02 Authority model: merged.
+- BOT-A03 Upbit KRW universe: merged.
+- BOT-A04 freshness gate: merged.
+- BOT-A05 public collector: merged.
+- BOT-A06 universe snapshot boundary: merged.
+- Legacy A07 PR was not merged because of TypeScript CI failure; it should be re-implemented and verified cleanly in this independent repository rather than blindly copied.
+
+## Cycle exit record
+
+This section must be updated at the end of every cycle.
+
+- Phase: PLAN / RESEARCH REVIEW
+- Completed this cycle: repository bootstrap documentation
+- Validation: documentation verification pending
+- PR: pending
+- Deployment: none
+- Blockers: independent BOT runtime/database still not provisioned
+- Next checkpoint: BOT-S1 — scanner repository/read-model boundary
