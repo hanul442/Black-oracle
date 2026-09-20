@@ -24,13 +24,8 @@ export const REPORT_TYPES = [
 export type ReportType = (typeof REPORT_TYPES)[number];
 
 export const REPORT_STATUSES = [
-  'DRAFT',
-  'REVIEWING',
   'PUBLISHED',
   'CORRECTED',
-  'SUPERSEDED',
-  'ARCHIVED',
-  'BLOCKED',
 ] as const;
 
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
@@ -258,7 +253,7 @@ export type ReportVersion = {
   asOf: number;
   evidenceCutoff: number;
   createdAt: number;
-  publishedAt: number | null;
+  publishedAt: number;
   correctedAt?: number | null;
   supersedesReportVersionId?: string | null;
   correctionReason?: string | null;
