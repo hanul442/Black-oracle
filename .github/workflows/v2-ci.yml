@@ -32,5 +32,8 @@ jobs:
       - name: Typecheck
         run: npm run lint
 
+      - name: Report-first policy tests
+        run: npm run test:report
+
       - name: Production build
         run: npm run build
