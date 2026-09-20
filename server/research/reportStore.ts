@@ -234,3 +234,11 @@ export const readPublishedReportArtifacts = async (
 
   return { report, analystReviews, debate, synthesis, forecast };
 };
+
+
+export const readForecastById = async (forecastId: string): Promise<ReportForecast | null> => {
+  const rows = await readRows(
+    `black_oracle_report_forecasts?forecast_id=eq.${encodeURIComponent(forecastId)}&select=payload&limit=1`,
+  );
+  return rows[0]?.payload ?? null;
+};
