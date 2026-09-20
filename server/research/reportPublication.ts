@@ -71,7 +71,12 @@ export const publishResearchBundleShadow = async (input: {
   }
   if (input.bundle.debate) await appendDebateSession(input.bundle.debate);
   await appendLeadSynthesis(input.bundle.synthesis);
-  if (input.bundle.forecast) await appendForecast(input.bundle.forecast);
+  if (input.bundle.forecast) {
+    await appendForecast({
+      ...input.bundle.forecast,
+      publishedAt: report.publishedAt,
+    });
+  }
   await appendReportVersion(report);
 
   return report;
