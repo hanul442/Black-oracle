@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { assertAlphaAuthoritySafe, readBotAuthorityProfile } from './src/trading/authorityMode';
 import { registerTradingRoutes } from './server/trading/routes';
 import { buildRuntimeHealth } from './server/trading/runtimeHealth';
 import {
@@ -11,7 +12,8 @@ import {
 
 const app = express();
 const port = process.env.TRADING_PORT ? Number(process.env.TRADING_PORT) : 3100;
-const resumeLoop = process.env.TRADING_RESUME_LOOP !== 'false';
+const authority = assertAlphaAuthoritySafe(readBotAuthorityProfile());
+const resumeLoop = process.env.TRADING_RESUME_LOOP !== 'false' && authority.capabilities.canPaperExecute;
 const autosaveIntervalMs = process.env.TRADING_AUTOSAVE_MS ? Number(process.env.TRADING_AUTOSAVE_MS) : 60_000;
 
 await restoreRuntimeCheckpoint(resumeLoop);
@@ -26,7 +28,7 @@ app.get('/health', (_req, res) => {
 });
 
 const server = app.listen(port, '0.0.0.0', () => {
-  console.log(`Black Oracle trading gateway listening on http://localhost:${port}`);
+  console.log(`Black Oracle trading gateway listening on http://localhost:${port} (authority=${authority.mode})`);
 });
 
 let shuttingDown = false;
