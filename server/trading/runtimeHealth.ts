@@ -1,3 +1,4 @@
+import { readBotAuthorityProfile } from '../../src/trading/authorityMode';
 import { DEFAULT_RISK_LIMITS, TRADING_STRATEGY_VERSION } from '../../src/trading/config';
 import { buildMarketDataFreshness } from './marketDataFreshness';
 import { paperLoopController } from './paperLoop';
@@ -8,6 +9,7 @@ const bootedAt = Date.now();
 
 export const buildRuntimeHealth = () => {
   const now = Date.now();
+  const authority = readBotAuthorityProfile();
   const loop = paperLoopController.status();
   const session = paperTradingSession.state();
   const persistence = runtimePersistenceStatus();
@@ -31,7 +33,14 @@ export const buildRuntimeHealth = () => {
     status: healthy ? 'OK' as const : 'DEGRADED' as const,
     service: 'black-oracle-trading-gateway',
     strategyVersion: TRADING_STRATEGY_VERSION,
-    mode: 'PAPER' as const,
+    mode: authority.mode,
+    authority: {
+      alphaAllowed: authority.alphaAllowed,
+      hardBlocked: authority.hardBlocked,
+      requiresQualification: authority.requiresQualification,
+      capabilities: { ...authority.capabilities },
+      reasons: authority.reasons.slice(),
+    },
     now,
     uptimeMs: now - bootedAt,
     persistence: {
