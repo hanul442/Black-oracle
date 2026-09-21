@@ -1,7 +1,7 @@
 # BOT-S4 Validation Result Research Review
 
 Date: 2026-09-21
-Status: TEST
+Status: ADOPT
 
 ## Research → Hypothesis → Experiment → Result → Adopt/Reject
 
@@ -18,20 +18,16 @@ Status: TEST
 A small immutable result schema plus explicit caller-supplied gate outcomes can close the manifest → result lineage without smuggling unvalidated thresholds or trading authority into the runtime.
 
 ### Experiment — BOT-S4-E1
-Implement `bot.validation-stage-result.v1` and `bot.validation-evaluation.v1` with:
-1. exact parent manifest lineage,
-2. one declared result per required stage,
-3. deterministic output fingerprints supplied by the producing engine,
-4. finite/non-negative validation of metrics and sample counts,
-5. explicit `PASS | BLOCKED | INSUFFICIENT_DATA` gate outcomes supplied by the evaluation caller,
-6. fail-closed aggregate status,
-7. all promotion/execution/capital authority fixed false.
+Implemented `bot.validation-stage-result.v1` and `bot.validation-evaluation.v1` with exact parent lineage, one result per required stage, output fingerprints, finite metrics, explicit caller-supplied gates, fail-closed aggregation and all authority flags fixed false.
 
 ### Production boundary
-No thresholds from the research ledger are copied into production behavior. S4 records/evaluates evidence structure only; Strategy Factory, Router, Risk and PAPER remain unchanged.
+No thresholds from the research ledger were copied into production behavior. S4 records/evaluates evidence structure only; Strategy Factory, Router, Risk and PAPER remain unchanged.
 
 ### Result
-Pending implementation and CI.
+**PASS.** PR #215 head `c5602f1c8206929f367a50ceb1c415e01406a70f` passed:
+- Black Oracle CI #998: typecheck + production build PASS.
+- Black Oracle Trading CI #1177: typecheck, trading core tests, Supabase trading function typecheck, runtime bundle, PAPER scheduler smoke, Strategy Factory scheduler smoke and production build PASS.
+- Tests verify lineage mismatch, non-finite metrics, authority escalation, missing/duplicate stages and empty gate sets fail closed.
 
-### Adopt / Reject gate
-ADOPT only if repository tests and both BOT CI workflows pass and no result/evaluation object can grant promotion, capital or execution authority. Otherwise revise/reject without changing S0-S3 or PAPER.
+### Adopt / Reject
+**ADOPT for Alpha validation-evidence contract use.** Quantitative gate thresholds remain TEST/REFERENCE; this adoption does not promote a strategy, allocate capital or change execution authority.
