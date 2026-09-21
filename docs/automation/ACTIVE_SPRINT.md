@@ -1,9 +1,9 @@
-# ACTIVE SPRINT — BOT Alpha Risk / Execution Boundary
+# ACTIVE SPRINT — BOT Alpha Execution Safety
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S8 COMPLETE / S9 ACTIVE**
+Status: **S9 COMPLETE / S10 QUEUED**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -15,47 +15,56 @@ Status: **S8 COMPLETE / S9 ACTIVE**
 - BOT-S5 end-to-end Upbit KRW scanner flow — merged #216.
 - BOT-S6 Strategy Factory validation integration — merged #219.
 - BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE — merged #220.
-- BOT-S8 Council / Red Team / Arbiter governance — merged #221 as `70735bc9765cab9be9021ce5f430d2c849da3e2e`.
+- BOT-S8 Council / Red Team / Arbiter governance — merged #221.
+- BOT-S9 deterministic Risk + PAPER/LIVE_SHADOW execution boundary — merged #224 as `f74f0b78df43c42a784fa3ec6dafa75c5e9fe8ff`.
 
-## BOT-S9 — deterministic Risk + PAPER/LIVE_SHADOW execution boundary
+## BOT-S9 final record
+
+### Delivered
+Added additive authority-free `bot.risk-execution-boundary.v1` after S8 governance. Governance `NO_TRADE` remains terminal; deterministic Risk is mandatory; stale/missing/future/mismatched evidence, kill switch, duplicate intent, stale market data and failed limits fail closed. Alpha modes remain `PAPER | LIVE_SHADOW`; unrestricted LIVE is rejected. No broker submission, secret exposure, capital authority, risk bypass, runtime mutation or database migration was introduced.
+
+### Research reviewed
+EV-006/EXP-EV006, DI-003/EXP-DI003, DI-004/EXP-DI004, AIML-002/EXP-AIML002, S8 precedent, Event Ledger / Decision Replay lineage precedent. No research threshold/model score/external strategy was promoted into production behavior.
+
+### Verification
+- PR #224 final head: `98573ba838920eec87d3977a378788ac2d6b25e6`
+- Black Oracle CI #1030 — **PASS**
+- Black Oracle Trading CI #1209 — **PASS**
+- squash merge: `f74f0b78df43c42a784fa3ec6dafa75c5e9fe8ff`
+- deployment/runtime/database mutation: none
+
+### Rollback
+Repository-only revert of merge #224. S0-S8 and existing PAPER/runtime/database state remain unchanged.
+
+## Next work package — BOT-S10 Upbit adapter + order dry-run / reconciliation safety contract
 
 ### Objective
-Bind S8 governance outcomes to an explicit deterministic Risk decision contract and mode-aware execution boundary. `NO_TRADE` remains terminal. Governance approval alone never authorizes an order. Alpha exposes bounded PAPER/LIVE_SHADOW intent only, with auditable lineage and fail-closed freshness/identity handling.
+Define the next bounded execution-adapter layer after S9 without granting unrestricted LIVE authority: explicit Upbit adapter request/response envelopes, dry-run-only order construction, deterministic reconciliation identity, kill-switch propagation, idempotency/duplicate protection, event-ledger lineage and fail-closed stale/missing-data behavior.
 
 ### Acceptance criteria
-- deterministic Risk is mandatory after governance and cannot be bypassed by agents, Council, Router or frontend inputs.
-- `NO_TRADE` / governance rejection cannot be upgraded downstream.
-- missing, stale, future or identity-mismatched risk inputs fail closed.
-- Alpha execution mode is explicit and restricted to `PAPER | LIVE_SHADOW`; unrestricted LIVE is rejected.
-- resulting order intent is non-broker-authoritative and carries `executionAuthority=false`, `capitalAuthority=false`, `liveAuthority=false`.
-- risk/governance/router/strategy lineage and reason codes are replayable.
-- no broker secret appears in the contract.
-- existing PAPER runtime behavior remains untouched by S9.
+- adapter boundary never exposes broker secrets to agents/frontend.
+- dry-run cannot submit an order and cannot be upgraded to LIVE by payload input.
+- S9 deterministic Risk approval and identity lineage are mandatory inputs; `NO_TRADE` remains terminal.
+- stale/missing/future/mismatched inputs, kill switch, reconciliation mismatch and duplicate/idempotency conflict fail closed.
+- PAPER and LIVE_SHADOW remain bounded and explicit; unrestricted LIVE remains unavailable.
+- dry-run/reconciliation/event-ledger records are deterministic and replayable.
+- existing working PAPER behavior remains preserved; no destructive DB/runtime migration.
 
 ### Safety boundary
-No unrestricted LIVE, no broker-secret exposure, no agent-controlled risk override, no implicit capital authority, no destructive runtime/database migration, no broker submission, and no mutation of the existing PAPER runtime. Fail closed on stale or missing data.
+No unrestricted LIVE, no actual broker submission, no broker-secret exposure, no new financial authority, no agent/frontend risk override, no destructive runtime/database mutation. Fail closed on stale or missing data.
 
 ### Rollback path
-Repository-only revert of the S9 branch/merge. S0-S8 and existing PAPER/runtime/database state remain unchanged.
-
-### Research constraints recorded before implementation
-- **EV-006 / EXP-EV006** — bounded autonomy requires a separately testable deterministic pre-trade gate; strategy/Council/router/LLM cannot bypass it.
-- **DI-003 / EXP-DI003** — point-in-time freshness/knowledge semantics must be explicit and fail closed.
-- **DI-004 / EXP-DI004** — decision evidence must remain snapshot-addressable/replayable.
-- **AIML-002 / EXP-AIML002** — provenance/TEVV evidence is trace data, not execution authority.
-- **S8 precedent** — governance `APPROVE` only means evidence is sufficient for the next deterministic gate; it is not order authorization.
-- Existing Event Ledger and Decision Replay implementations are precedents for lineage/replay only; S9 does not silently wire them into production runtime.
-
-No research threshold, model score, external strategy, or claimed performance result is promoted into production behavior.
+Repository-only revert of S10 changes; S0-S9 and existing PAPER/runtime/database state remain recoverable and unchanged.
 
 ### Exact next gate
-Implement one additive authority-free `bot.risk-execution-boundary.v1` contract + deterministic tests → document the contract/research disposition → verify exact commit and both required CI workflows → merge only if green. Deployment only if a verified runtime change is required; S9 is designed not to require one.
+Read Upbit adapter, order/dry-run, reconciliation, kill-switch, Event Ledger and Decision Replay research/precedents plus current implementations; record constraining research IDs/experiments; inspect open PRs/CI/deployment ownership; implement one additive dry-run/reconciliation contract with deterministic tests; verify exact commit and both required CI; merge only when green. Deployment only if a separately verified runtime change is required.
 
 ## Current deployment state
-No S9 deployment planned. Existing legacy Railway/PAPER services remain unchanged; BOT repository/runtime/database separation remains preserved.
+No S9 deployment required. Existing legacy Railway/PAPER services remain unchanged; BOT repository/runtime/database separation remains preserved.
 
-## Cycle state
-- Phase: **BOT-S9 PLAN + RESEARCH REVIEW COMPLETE / IMPLEMENTING**
-- Open unrelated PRs observed: #222 UI Thinking Orbs; legacy/report/research PRs remain outside frozen BOT Alpha S9 scope.
-- Blockers: none for additive S9 contract.
-- Single next priority: **implement deterministic authority-free Risk + PAPER/LIVE_SHADOW boundary and verify CI**.
+## Cycle exit record
+- Phase: **BOT-S9 COMPLETE / MERGED**
+- Tests: Black Oracle CI #1030 PASS; Trading CI #1209 PASS
+- Blockers: none for S9
+- Alpha status: S0-S9 complete; S10 queued
+- Single next priority: **BOT-S10 Upbit adapter + order dry-run / reconciliation safety contract**
