@@ -1,6 +1,6 @@
 # BLACK ORACLE Research Ledger
 
-Last updated: 2026-09-21 — Cycle 009
+Last updated: 2026-09-22 — Cycle 010
 
 | ID | Domain | Topic | Evidence | Status | Experiment | Production impact |
 |---|---|---|---|---|---|---|
@@ -25,6 +25,7 @@ Last updated: 2026-09-21 — Cycle 009
 | EV-004 | Evidence/Validation + Quant | Purged / embargoed temporal validation | B pending primary implementation review | TEST | EXP-EV004 | None |
 | EV-005 | Evidence/Validation + Quant | PBO / CSCV + research-budget accounting | A- peer-reviewed | TEST | EXP-EV005 | None |
 | EV-006 | Evidence/Validation + Autotrade | Independent deterministic pre-trade order gate / bounded autonomy | A regulatory precedent + B conceptual agentic-finance evidence | TEST | EXP-EV006 | None |
+| EV-007 | Evidence/Validation + AI/ML | Canonical per-run portfolio-agent audit bundle | B+ recent research + released benchmark artifacts | TEST / REFERENCE | EXP-EV007 | None |
 | Q-001 | Quant + Evidence | Regime-aware/adaptive conformal uncertainty | B | TEST | EXP-Q001 | None |
 | Q-002 | Quant + Execution | Execution-cost model risk | B | TEST | EXP-Q002 | None |
 | Q-003 | Quant + Evidence | Market-neutrality intent vs measured realized exposure constraints | B+ peer-reviewed recent paper | REFERENCE / TEST | EXP-Q003 | None |
@@ -43,23 +44,29 @@ Names such as `market_neutral`, `hedged`, `low_beta` or `defensive` are hypothes
 ### Failure-domain diversity rule added in Cycle 009
 Agent-role diversity is not assumed to equal resilience. Council evaluation must record relevant model/provider/data/retrieval/tool dependencies and measure correlated error, false consensus and fault tolerance. Diversity is promotable only when controlled tests show resilience gains net of accuracy, latency, cost, privacy and operational-complexity regressions. Deterministic execution safety remains independent of Council consensus.
 
+### Audit-bundle rule added in Cycle 010
+Passing controls in isolation is insufficient for promotion. A portfolio-agent candidate should eventually emit one content-addressed `bo.audit_bundle.v1` that references the exact experiment identity, point-in-time certificate, immutable data/evidence snapshot, typed constraints and adherence, execution assumptions/cost sensitivity, agent dependency trace, order-gate evidence where applicable, exposures/turnover, result artifacts and replay pointers. The bundle is a manifest over canonical BO artifacts, not a second ledger. Validator versions and tested invariants must be explicit so a certificate cannot imply checks that were never performed.
+
 ## Current queue
 1. **EXP-DI001 + EXP-DI003** — implement minimal `bo.experiment.v1` validator and point-in-time feature manifest; blind-replay a representative KRX experiment with seeded leakage.
 2. **EXP-EV006** — implement sandbox-only `bo.order_gate.v1`; replay valid paper orders plus seeded quantity, duplicate, stale-data, outlier-price, loss-limit and retry failures. No live orders.
-3. **EXP-DI004** — mutable-source vs snapshot-addressable replay after deliberate source correction.
-4. **EXP-EV001 + EXP-Q002** — independent backtest reproducibility and execution-cost stress on the same strategies.
-5. **EXP-AIML005 + EXP-AIML006 + EXP-AIML007** — freeze 30–50 BO finance-agent tasks, baseline current configuration, ablate Council coordination under equal budgets, then inject common-mode model/provider/data/tool failures and measure false consensus/error correlation.
-6. **EXP-EV003 / EXP-EV005** — DSR and PBO/CSCV positive/negative controls with complete trial accounting.
-7. **EXP-Q003** — verify realized exposure constraints for neutral/hedged candidate strategies; do not adopt the external DRL strategy.
-8. **EXP-Q001 / EXP-EV004 / EXP-DI002** — calibration, leakage-positive controls and lineage instrumentation.
-9. **EXP-AIML002/003/004** — Council/Router trace-replay sandbox.
-10. **EXP-D003 + EXP-D004 + EXP-D001** — chart semantics/accessibility and shared-context UX after core validation infrastructure.
-11. **EXP-EV002 / EXP-AIML001** — robustness gate and strategy lineage/redundancy once the validation harness is trustworthy.
+3. **EXP-EV007** — once DI001/DI003 fixtures exist, generate `bo.audit_bundle.v1` for the same KRX run and require blind reconstruction plus detection of seeded contamination, constraint, cost and run/evidence-ID failures.
+4. **EXP-DI004** — mutable-source vs snapshot-addressable replay after deliberate source correction.
+5. **EXP-EV001 + EXP-Q002** — independent backtest reproducibility and execution-cost stress on the same strategies.
+6. **EXP-AIML005 + EXP-AIML006 + EXP-AIML007** — freeze 30–50 BO finance-agent tasks, baseline current configuration, ablate Council coordination under equal budgets, then inject common-mode model/provider/data/tool failures and measure false consensus/error correlation.
+7. **EXP-EV003 / EXP-EV005** — DSR and PBO/CSCV positive/negative controls with complete trial accounting.
+8. **EXP-Q003** — verify realized exposure constraints for neutral/hedged candidate strategies; do not adopt the external DRL strategy.
+9. **EXP-Q001 / EXP-EV004 / EXP-DI002** — calibration, leakage-positive controls and lineage instrumentation.
+10. **EXP-AIML002/003/004** — Council/Router trace-replay sandbox.
+11. **EXP-D003 + EXP-D004 + EXP-D001** — chart semantics/accessibility and shared-context UX after core validation infrastructure.
+12. **EXP-EV002 / EXP-AIML001** — robustness gate and strategy lineage/redundancy once the validation harness is trustworthy.
 
-## Cycle 009 decision
-One non-duplicative gap was added. AIML-007 extends Council coordination evaluation from nominal role diversity to actual failure-domain diversity. Recent BIS financial-sector AI guidance reinforces concentration, herding and third-party dependency as material risk channels, but is used only as institutional risk precedent. BLACK ORACLE will test whether model/provider/data/tool diversification actually reduces correlated failures before adopting additional providers or models.
+## Cycle 010 decision
+One non-duplicative integration gap was added. OpenPM is useful as a recent auditable portfolio-agent benchmark because it combines point-in-time controls, typed/enforced constraints, cost sensitivity, frozen analyst evidence and per-run audit artifacts. BLACK ORACLE will not copy its strategy, universe or performance claims. Instead EV-007 tests whether BO's existing validation components can be composed into a canonical per-run `bo.audit_bundle.v1` that a blind reviewer can use to reconstruct and challenge a candidate decision.
+
+Supporting review of Feast schema validation reinforced that structural schema checks can catch missing/type-invalid features, but those checks do not replace BO's point-in-time contamination validation.
 
 No external strategy, threshold or model parameter was copied into BLACK ORACLE. No production or paper-trading behavior was changed.
 
 ## Highest-priority next action
-Implementation still outranks further literature accumulation. Execute **EXP-DI001 + EXP-DI003**, then build **EXP-EV006 `bo.order_gate.v1` in sandbox/shadow mode**. AIML-007 should run only after AIML-005 freezes the BO-specific task set so common-mode resilience can be measured against a stable baseline.
+Implementation still outranks literature accumulation. Execute **EXP-DI001 + EXP-DI003** first. Reuse that exact KRX fixture for **EXP-EV007** rather than building a separate benchmark path; then proceed with **EXP-EV006 `bo.order_gate.v1` in sandbox/shadow mode** and fold its rejection evidence into the audit bundle.
