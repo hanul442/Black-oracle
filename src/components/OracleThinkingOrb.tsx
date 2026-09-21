@@ -40,8 +40,8 @@ type OracleThinkingOrbProps = {
 
 export const OracleThinkingOrb: React.FC<OracleThinkingOrbProps> = ({
   phase = 'reason',
-  size = 64,
-  theme = 'dark',
+  size = 64 as OrbSize,
+  theme = 'dark' as OrbTheme,
   speed = 1,
   paused = false,
   className,
