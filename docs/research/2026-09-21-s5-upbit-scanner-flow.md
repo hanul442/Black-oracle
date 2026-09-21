@@ -1,7 +1,7 @@
 # BOT-S5 Upbit Scanner Flow Research Review
 
 Date: 2026-09-21
-Status: TEST
+Status: ADOPT
 
 ## Research → Hypothesis → Experiment → Result → Adopt/Reject
 
@@ -29,7 +29,7 @@ Required failures:
 No alpha ranking, strategy promotion, execution, capital, portfolio, broker/private API or LIVE authority. This work controls scanner input integrity only.
 
 ### Result
-Pending implementation and CI verification.
+**PASS after one type-contract correction.** First CI exposed a TypeScript narrowing issue for the theoretically impossible `scannerEligible=false + reason=FRESH` combination. The flow was corrected to fail closed as a persistence read-back mismatch. Final implementation head passed Black Oracle CI #1004 and Black Oracle Trading CI #1183.
 
-### Adopt / Reject gate
-**ADOPT** only if all failure modes remain fail-closed and final scanner markets are derived exclusively from persisted/read-back canonical state.
+### Adopt / Reject
+**ADOPT for Alpha scanner-input integrity.** Final scanner markets are derived exclusively from persisted/read-back canonical state; no trading authority or alpha ranking is introduced.
