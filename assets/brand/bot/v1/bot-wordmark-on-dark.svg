@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 190" role="img" aria-labelledby="title">
+  <title id="title">BOT — Black Oracle Trading, dark surface</title>
+  <defs>
+    <linearGradient id="bot-light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F4F7FA"/>
+      <stop offset=".58" stop-color="#BCC9D7"/>
+      <stop offset="1" stop-color="#6E87A1"/>
+    </linearGradient>
+    <linearGradient id="bot-blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#45D7FF"/>
+      <stop offset=".55" stop-color="#3984FF"/>
+      <stop offset="1" stop-color="#145EDB"/>
+    </linearGradient>
+  </defs>
+  <text x="24" y="112" font-family="Inter Tight, Inter, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="-6" fill="#F4F7FA">B</text>
+  <g transform="translate(188 16) scale(.55)">
+    <path fill="url(#bot-light)" fill-rule="evenodd" d="M128 20 232 214H24L128 20Zm0 66-50 94h100l-50-94Z"/>
+    <path fill="url(#bot-blue)" d="M128 20 174 106 152 146 109 66z"/>
+  </g>
+  <text x="346" y="112" font-family="Inter Tight, Inter, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="-6" fill="#F4F7FA">T</text>
+  <text x="28" y="164" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="500" letter-spacing="8" fill="#8B96A5">BLACK ORACLE TRADING</text>
+</svg>

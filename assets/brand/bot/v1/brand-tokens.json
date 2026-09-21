@@ -1,0 +1,35 @@
+{
+  "brand": "BOT",
+  "name": "Black Oracle Trading",
+  "version": "1.0.0",
+  "status": "locked",
+  "role": "strategy-execution",
+  "colors": {
+    "obsidian": "#07090C",
+    "graphite": "#11151B",
+    "slate": "#202731",
+    "frost": "#F4F7FA",
+    "mutedSilver": "#8B96A5",
+    "executionBlue": "#3984FF",
+    "signalCyan": "#45D7FF",
+    "positive": "#34D399",
+    "warning": "#F59E0B",
+    "risk": "#EF5350"
+  },
+  "typography": {
+    "display": "Inter Tight",
+    "ui": "Inter",
+    "fallback": "Arial, sans-serif"
+  },
+  "voice": [
+    "strategy-first",
+    "execution-oriented",
+    "precise",
+    "measurable",
+    "controlled"
+  ],
+  "lockPolicy": {
+    "mutateV1": false,
+    "materialChangesRequire": "new-version-directory"
+  }
+}
