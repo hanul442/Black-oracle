@@ -54,5 +54,6 @@ export * from './upbitUniverseFreshness';
 export * from './upbitUniverseRepository';
 export * from './upbitUniverseSnapshotRecord';
 export * from './validationExperiment';
+export * from './validationStageResult';
 export * from './volumeProfile';
 export * from './waveTheory';
