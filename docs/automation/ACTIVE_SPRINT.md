@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S12 COMPLETE / S13 ACTIVE**
+Status: **S12 COMPLETE / S13 IMPLEMENTED — CI GATE**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -24,44 +24,42 @@ Status: **S12 COMPLETE / S13 ACTIVE**
 ## BOT-S13 — Alpha release readiness / fail-closed integration audit
 
 ### Objective
-Prove the Alpha decision-to-outcome contracts compose as one deterministic PAPER evidence chain and expose any contract seam that would prevent a safe deployable BOT product. The audit covers validation/Strategy Factory → Champion–Challenger Router → Council/Red Team/Arbiter → deterministic Risk → Upbit dry-run/reconciliation → authority-free canary readiness → outcome attribution/Decision Replay, while preserving the S5 scanner/Upbit KRW input boundary as an explicit upstream prerequisite.
+Prove the Alpha decision-to-outcome contracts compose as one deterministic PAPER evidence chain and expose contract seams before release. Audit path: validation/Strategy Factory → Champion–Challenger Router → Council/Red Team/Arbiter → deterministic Risk → Upbit dry-run/reconciliation → authority-free canary readiness → outcome attribution/Decision Replay. S5 scanner/Upbit KRW remains the explicit upstream market-data prerequisite.
 
-### Acceptance criteria
-- one deterministic integration fixture proves successful PAPER lineage across the implemented Alpha contracts.
-- fail-closed fixtures prove stale/missing evidence, Router/Governance NO_TRADE, kill switch, reconciliation mismatch, and lineage mismatch cannot cross the execution boundary.
-- the audit explicitly checks authority remains false at Router, Governance, Risk, dry-run, readiness, and attribution boundaries.
-- S5 scanner/Upbit KRW universe remains an upstream prerequisite; no test may fabricate scanner authority or silently bypass validation lineage.
-- repository/runtime/database ownership and broker-secret isolation remain unchanged.
-- integration gaps are recorded as bounded follow-ups; no Alpha scope expansion or unrestricted LIVE.
+### Delivered
+- Added deterministic cross-contract PAPER integration fixture covering S6-S12 composition.
+- Added fail-closed cases for stale governance evidence, Council rejection, deterministic kill switch, reconciliation mismatch, and Event Ledger lineage mismatch.
+- The success fixture asserts execution/capital/LIVE authority remain false at every downstream boundary.
+- Added `docs/research/2026-09-22-s13-alpha-integration-audit.md` with research constraints and integration findings.
 
-### Safety boundary
-Integration/readiness only. No new financial authority. Existing deterministic Risk, NO_TRADE, kill switch and fail-closed behavior remain mandatory. No exchange submission, broker credentials, secret exposure, runtime/database migration, production deployment, or unrestricted LIVE.
+### Research reviewed
+`DI-001/EXP-DI001`, `DI-003/EXP-DI003`, `DI-004/EXP-DI004`, `EV-006/EXP-EV006`, `EV-007/EXP-EV007`, plus merged S6-S12 precedents. Research remained constraint/evidence only; `bo.audit_bundle.v1` was not silently promoted into production behavior.
+
+### Integration blocker discovered
+S9 and S10 are safe individually but are not yet mechanically bound on exact order economics. S9 `BotRiskExecutionDecision` attests strategy/revision/risk-snapshot lineage, while S10 `RiskApprovedIntent` separately introduces market/side/quantity/referencePrice. Therefore the current contracts do not prove that S10 previews the exact order economics evaluated by deterministic Risk. S13 keeps this visible with a test-only adapter; it does not grant authority or hide the seam.
+
+Before any separately authorized canary, a bounded follow-up must bind canonical order-intent identity/economics into deterministic Risk input/output and require S10 to consume that exact attested identity. Existing PAPER remains authoritative; unrestricted LIVE remains prohibited.
+
+### Acceptance / safety boundary
+The integration fixture and negative gates are implemented. No exchange submission, broker credentials, secret exposure, runtime/database migration, deployment, unrestricted LIVE, Risk bypass, or new financial authority. S5 scanner remains upstream and non-authoritative.
 
 ### Rollback path
 Repository-only revert/close of the S13 branch/PR. S0-S12 and current PAPER/runtime/database state remain unchanged.
 
-### Research review
-- `DI-001 / EXP-DI001`: canonical experiment/validation identity remains a candidate until replay evidence; S13 consumes existing validation artifacts without promoting the research proposal.
-- `DI-003 / EXP-DI003`: point-in-time freshness semantics constrain stale/future evidence handling.
-- `DI-004 / EXP-DI004`: snapshot/replay identity constrains lineage and Decision Replay closure.
-- `EV-006 / EXP-EV006`: deterministic pre-trade gate and bounded autonomy; agents/Council cannot bypass Risk.
-- `EV-007 / EXP-EV007`: Cycle 010 audit-bundle precedent says isolated PASSes are insufficient; S13 tests composition but does not silently adopt `bo.audit_bundle.v1` as production behavior.
-- S6-S12 merged contracts are implementation precedents. Research remains evidence/constraint only.
-
 ### Repository / CI / deployment inspection
 - main inspected at `e2382f63d1170cb5fbc8258fa8af6da95ada24fe`.
-- latest main Black Oracle CI #1046 — PASS; Trading CI #1225 — PASS.
-- unrelated open PRs exist (#222 UI, #200 product/report-first, #198 research and legacy NARS PRs); none is required for S13 and none will be merged into this package.
-- existing legacy Railway/PAPER deployment state remains unchanged; no S13 runtime/database mutation is required.
+- latest inspected main Black Oracle CI #1046 — PASS; Trading CI #1225 — PASS.
+- unrelated open PRs (#222, #200, #198 and legacy NARS work) remain outside S13.
+- existing legacy Railway/PAPER deployment state unchanged; no S13 deployment/database mutation.
 
 ### Exact next gate
-Implement one bounded S13 integration audit/fixture on `bot/s13-alpha-integration-audit`, run deterministic success + fail-closed tests, verify the exact artifact/commit, document any contract seam, open a focused PR, and require exact-head Black Oracle CI + Trading CI green before merge. Do not deploy or enable LIVE.
+Open focused S13 PR and require exact-head Black Oracle CI + Trading CI green. If either fails, fix on the same branch and re-verify. Merge only when both are green and the PR is mergeable. After S13, the single Alpha priority is the bounded **Risk ↔ order-economics binding** follow-up; do not enable LIVE.
 
 ## Current deployment state
-Existing legacy Railway/PAPER services unchanged. No S12/S13 deployment or database mutation is required. BOT repository/runtime/database separation remains preserved.
+Existing legacy Railway/PAPER services unchanged. No S13 deployment or database mutation is required. BOT repository/runtime/database separation remains preserved.
 
 ## Cycle state
-- Phase: **BOT-S13 ACTIVE / IMPLEMENTATION**
-- Blockers: none identified
-- Alpha status: S0-S12 complete; S13 active
-- Single next priority: **implement deterministic Alpha integration fixture and fail-closed audit**
+- Phase: **BOT-S13 IMPLEMENTED / CI GATE**
+- Blocker: **release-safety seam — S9 Risk does not yet attest S10 order economics; not a PAPER regression, but blocks future canary authority**
+- Alpha status: S0-S12 complete; S13 integration audit implemented, unmerged
+- Single next priority: **verify S13 CI, merge if green, then bind canonical order economics through deterministic Risk before any canary discussion**
