@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S11 COMPLETE / S12 QUEUED**
+Status: **S11 COMPLETE / S12 ACTIVE**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -20,55 +20,33 @@ Status: **S11 COMPLETE / S12 QUEUED**
 - BOT-S10 Upbit dry-run + deterministic reconciliation safety contract — merged #225.
 - BOT-S11 authority-free Live Canary readiness + execution reconciliation gate — merged #226 as `bef5b745a18bbda4d902461e05b32ea3b4a9d123`.
 
-## BOT-S11 final record
-
-### Delivered
-Added deterministic `bot.live-canary-readiness.v1` evidence-only readiness contract. READY proves evidence completeness only; it grants no submission, execution, capital, or LIVE authority. Kill switch, unhealthy/stale/future adapter health, reconciliation mismatch, unsupported mode, and Event Ledger / Decision Replay lineage mismatch fail closed.
-
-### Research reviewed
-`EV-006/EXP-EV006`, `DI-003/EXP-DI003`, `DI-004/EXP-DI004`, S9 deterministic Risk, S10 Upbit dry-run reconciliation. Research remained evidence/constraint only and was not promoted into autonomous trading behavior.
-
-### Verification
-- PR #226 final head: `d0a8fa969c5819136f529570e5971c874aea3c9d`
-- Black Oracle CI #1038 — **PASS**
-- Black Oracle Trading CI #1217 — **PASS**
-- PR mergeable before merge: **true**
-- squash merge: `bef5b745a18bbda4d902461e05b32ea3b4a9d123`
-- deployment/runtime/database mutation: none
-
-### Safety boundary
-No unrestricted LIVE, no broker/exchange submission, no capital authority, no credential exposure, no Risk bypass, no runtime/database mutation. READY remains evidence-only.
-
-### Rollback
-Repository-only revert of merge #226. S0-S10 and existing PAPER/runtime/database state remain unchanged.
-
-## Next work package — BOT-S12 Event Ledger outcome attribution + Decision Replay closure
+## BOT-S12 — Event Ledger outcome attribution + Decision Replay closure
 
 ### Objective
-Close the Alpha evidence loop after S11 by deterministically attributing PAPER/LIVE_SHADOW outcomes to the originating scanner → strategy validation → router → governance → Risk → dry-run/reconciliation → readiness lineage, while keeping attribution observational and authority-free.
+Close the Alpha evidence loop by deterministically attributing PAPER/LIVE_SHADOW outcomes to the originating scanner → strategy validation → router → governance → Risk → dry-run/reconciliation → readiness lineage. Attribution is observational evidence only and must never acquire execution or financial authority.
 
 ### Acceptance criteria
-- attribution requires explicit Event Ledger and Decision Replay lineage IDs; missing, stale, future, duplicate, or mismatched lineage fails closed.
+- attribution requires explicit Event Ledger and Decision Replay lineage IDs plus request/idempotency identity; missing, stale, future, duplicate, or mismatched lineage fails closed.
 - outcome records are append-only evidence and cannot alter strategy selection, Risk, order submission, balances, or LIVE authority.
-- PAPER/LIVE_SHADOW lineage remains replayable from decision through reconciliation/outcome.
+- PAPER/LIVE_SHADOW lineage is replayable from decision through reconciliation/outcome.
 - deterministic tests cover success plus missing/mismatch/duplicate/future/stale/NO_TRADE paths.
 - no broker credentials, network order submission, runtime/database migration, or unrestricted LIVE enablement.
 
 ### Safety boundary
-Observability/evidence only. No new financial authority, no Risk bypass, no exchange submission, no agent/frontend override, no unrestricted LIVE. Any ambiguous lineage must fail closed.
+Observability/evidence only. No new financial authority, no Risk bypass, no exchange submission, no agent/frontend override, no unrestricted LIVE. Any ambiguous lineage fails closed. Existing PAPER behavior and persistence remain untouched.
 
 ### Rollback path
-Repository-only revert of S12 changes; S0-S11 and current PAPER/runtime/database state remain recoverable and unchanged.
+Repository-only revert of S12 changes/PR. S0-S11 and current PAPER/runtime/database state remain recoverable and unchanged.
 
 ### Exact next gate
-Read outcome-attribution, Event Ledger, Decision Replay, PAPER parity and validation research/precedents; inspect current contracts and open PR/CI/deployment state; record constraining research IDs; then implement one additive deterministic attribution contract with tests. Require exact-head Black Oracle CI + Trading CI green before merge. Do not deploy or grant LIVE authority.
+Review DI-001/EXP-DI001, DI-004/EXP-DI004, EV-006/EXP-EV006 and existing Event Ledger / Decision Replay / S9-S11 contracts; record the constraints in an S12 research note; implement one additive deterministic `bot.outcome-attribution.v1` contract with tests; require exact-head Black Oracle CI + Trading CI green before merge. Do not deploy or grant LIVE authority.
 
 ## Current deployment state
-Existing legacy Railway/PAPER services unchanged. No S11 deployment was required. BOT repository/runtime/database separation remains preserved.
+Existing legacy Railway/PAPER services unchanged. No S12 deployment is planned in this work package. BOT repository/runtime/database separation remains preserved.
 
-## Cycle exit record
-- Phase: **BOT-S11 COMPLETE / MERGED**
-- Tests: Black Oracle CI #1038 PASS; Trading CI #1217 PASS
-- Blockers: none
-- Alpha status: S0-S11 complete; S12 queued
-- Single next priority: **BOT-S12 Event Ledger outcome attribution + Decision Replay closure**
+## Cycle state
+- Phase: **BOT-S12 ACTIVE / PLAN RECORDED**
+- Open unrelated PRs observed: #222, #200, #198 and legacy NARS/product PRs; none is allowed to expand S12 scope.
+- Blockers: none at plan gate.
+- Alpha status: S0-S11 complete; S12 active.
+- Single next priority: **implement and verify authority-free outcome attribution closure**.
