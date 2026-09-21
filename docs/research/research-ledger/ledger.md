@@ -1,6 +1,6 @@
 # BLACK ORACLE Research Ledger
 
-Last updated: 2026-09-21 — Cycle 008
+Last updated: 2026-09-21 — Cycle 009
 
 | ID | Domain | Topic | Evidence | Status | Experiment | Production impact |
 |---|---|---|---|---|---|---|
@@ -14,6 +14,7 @@ Last updated: 2026-09-21 — Cycle 008
 | AIML-004 | AI/ML + Infrastructure | Two-tier GenAI trace envelope | A- | TEST / REFERENCE | EXP-AIML004 | None |
 | AIML-005 | AI/ML + Product/Evidence | BO-specific financial-agent evaluation harness | B+ | TEST | EXP-AIML005 | None |
 | AIML-006 | AI/ML + Evidence | Council coordination ablation: single vs multi-agent protocols | B | TEST | EXP-AIML006 | None |
+| AIML-007 | AI/ML + Evidence | Common-mode model/provider/data/tool dependency risk | A- institutional risk precedent | TEST / REFERENCE | EXP-AIML007 | None |
 | DI-001 | Data Infrastructure + Evidence | Canonical `bo.experiment.v1` schema | A- precedent; BO fields require test | ADOPT-SCHEMA-CANDIDATE | EXP-DI001 | None |
 | DI-002 | Data Infrastructure | Dataset/run/feature lineage | A official spec precedent | TEST / REFERENCE | EXP-DI002 | None |
 | DI-003 | Data Infrastructure + Evidence | Point-in-time feature availability contract | A- | TEST | EXP-DI003 | None |
@@ -39,12 +40,15 @@ A strategy, Council, router or LLM may propose an order but must not possess aut
 ### Strategy-property verification rule added in Cycle 008
 Names such as `market_neutral`, `hedged`, `low_beta` or `defensive` are hypotheses, not evidence. Promotion should separately measure realized exposure/constraint compliance across OOS windows and regimes, and keep that evidence distinct from return performance.
 
+### Failure-domain diversity rule added in Cycle 009
+Agent-role diversity is not assumed to equal resilience. Council evaluation must record relevant model/provider/data/retrieval/tool dependencies and measure correlated error, false consensus and fault tolerance. Diversity is promotable only when controlled tests show resilience gains net of accuracy, latency, cost, privacy and operational-complexity regressions. Deterministic execution safety remains independent of Council consensus.
+
 ## Current queue
 1. **EXP-DI001 + EXP-DI003** — implement minimal `bo.experiment.v1` validator and point-in-time feature manifest; blind-replay a representative KRX experiment with seeded leakage.
 2. **EXP-EV006** — implement sandbox-only `bo.order_gate.v1`; replay valid paper orders plus seeded quantity, duplicate, stale-data, outlier-price, loss-limit and retry failures. No live orders.
 3. **EXP-DI004** — mutable-source vs snapshot-addressable replay after deliberate source correction.
 4. **EXP-EV001 + EXP-Q002** — independent backtest reproducibility and execution-cost stress on the same strategies.
-5. **EXP-AIML005 + EXP-AIML006** — freeze 30–50 BO finance-agent tasks, baseline current configuration, then ablate Council coordination under equal budgets.
+5. **EXP-AIML005 + EXP-AIML006 + EXP-AIML007** — freeze 30–50 BO finance-agent tasks, baseline current configuration, ablate Council coordination under equal budgets, then inject common-mode model/provider/data/tool failures and measure false consensus/error correlation.
 6. **EXP-EV003 / EXP-EV005** — DSR and PBO/CSCV positive/negative controls with complete trial accounting.
 7. **EXP-Q003** — verify realized exposure constraints for neutral/hedged candidate strategies; do not adopt the external DRL strategy.
 8. **EXP-Q001 / EXP-EV004 / EXP-DI002** — calibration, leakage-positive controls and lineage instrumentation.
@@ -52,10 +56,10 @@ Names such as `market_neutral`, `hedged`, `low_beta` or `defensive` are hypothes
 10. **EXP-D003 + EXP-D004 + EXP-D001** — chart semantics/accessibility and shared-context UX after core validation infrastructure.
 11. **EXP-EV002 / EXP-AIML001** — robustness gate and strategy lineage/redundancy once the validation harness is trustworthy.
 
-## Cycle 008 decision
-Two non-duplicative gaps were added. EV-006 moves Autotrade safety from an implicit strategy concern into an independent deterministic execution boundary, using regulatory market-access controls only as architecture precedent rather than a claim about BO's legal obligations. Q-003 extracts a validation lesson from newly published market-neutral DRL research without importing the DRL strategy: intended portfolio properties must be empirically verified as constraints.
+## Cycle 009 decision
+One non-duplicative gap was added. AIML-007 extends Council coordination evaluation from nominal role diversity to actual failure-domain diversity. Recent BIS financial-sector AI guidance reinforces concentration, herding and third-party dependency as material risk channels, but is used only as institutional risk precedent. BLACK ORACLE will test whether model/provider/data/tool diversification actually reduces correlated failures before adopting additional providers or models.
 
 No external strategy, threshold or model parameter was copied into BLACK ORACLE. No production or paper-trading behavior was changed.
 
 ## Highest-priority next action
-Implementation now outranks further literature accumulation. Execute **EXP-DI001 + EXP-DI003**, then build **EXP-EV006 `bo.order_gate.v1` in sandbox/shadow mode** before any real-money Autotrade path is allowed to rely on autonomous strategy output.
+Implementation still outranks further literature accumulation. Execute **EXP-DI001 + EXP-DI003**, then build **EXP-EV006 `bo.order_gate.v1` in sandbox/shadow mode**. AIML-007 should run only after AIML-005 freezes the BO-specific task set so common-mode resilience can be measured against a stable baseline.
