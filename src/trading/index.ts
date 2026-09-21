@@ -43,6 +43,7 @@ export * from './signalFusion';
 export * from './snapshot';
 export * from './strategyFactory';
 export * from './strategyFactoryBacktest';
+export * from './strategyValidationBinding';
 export * from './technicalEvidence';
 export * from './timeframeAggregation';
 export * from './tradeMap';

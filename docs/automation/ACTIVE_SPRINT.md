@@ -1,4 +1,4 @@
-# ACTIVE SPRINT — BOT Alpha Scanner Flow
+# ACTIVE SPRINT — BOT Alpha Strategy Validation Integration
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
@@ -12,59 +12,38 @@ Status: **IN PROGRESS**
 - BOT-S3 canonical validation experiment manifest — merged.
 - CLEANUP-01 separation ownership audit — merged.
 - BOT-S4 immutable validation stage results/evaluation — merged #215 as `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`.
-- **BOT-S5 end-to-end Upbit KRW scanner flow — merged #216 as `84b267a286d22d83dd85a544804af147cb7a122f`.**
+- BOT-S5 end-to-end Upbit KRW scanner flow — merged #216 as `84b267a286d22d83dd85a544804af147cb7a122f`.
 
-## BOT-S5 final record
-
-### Objective / delivered
-Connected public Upbit market collection → canonical KRW universe → auditable snapshot record → repository persistence → read-time freshness gate → scanner-eligible KRW markets through one fail-closed cycle.
-
-### Acceptance / safety result
-- Uses only Upbit public market metadata.
-- Persists canonical `UpbitUniverseSnapshotRecord` through the injected repository and re-reads via `readLatestUpbitUniverse`.
-- Scanner output is derived from persisted/read-back state, not directly from network payload.
-- Collector error, persistence failure, stale/future read-back, identity mismatch and zero eligible markets fail closed.
-- Warning/caution exclusions remain preserved.
-- `executionAuthority=false`, `capitalAuthority=false`, `liveAuthority=false`.
-- No PAPER behavior, Strategy Factory ranking, Router, Council, deterministic Risk, order path, broker secret, private Upbit API, or LIVE behavior changed.
-
-### Research reviewed
-- **DI-003 / EXP-DI003** — point-in-time semantics and no laundering of later/stale data.
-- **DI-004 / EXP-DI004** — exact snapshot identity and replayable persisted lineage.
-- BOT bootstrap review — scanner input integrity precedes Strategy Factory/Council expansion.
-- S1 freshness/read-model contract remains canonical.
-Research record: `docs/research/2026-09-21-s5-upbit-scanner-flow.md`. No research threshold or alpha claim was promoted into production behavior.
-
-### Verification
-- PR #216 final head: `b0922f11ec84c0352aa202a76792f3465ec3eba4`
-- Black Oracle CI #1005 — **PASS**
-- Black Oracle Trading CI #1184 — **PASS**
-- squash merge: `84b267a286d22d83dd85a544804af147cb7a122f`
-- deployment/runtime/database mutation: none
-
-### Rollback
-Repository-only revert of merge #216. S0-S4 and existing PAPER/runtime remain unchanged; historical snapshot records are not deleted.
-
-## Next work package — BOT-S6 Strategy Factory validation integration
+## Active — BOT-S6 Strategy Factory validation integration
 
 ### Objective
-Bind Strategy Factory candidate evaluation to the canonical S3/S4 validation experiment/result lineage so candidates cannot become promotion-eligible without explicit Backtest/OOS/Walk-Forward/Monte Carlo/Execution-Cost evidence and fail-closed evaluation status.
+Bind Strategy Factory candidate promotion eligibility to the canonical S3/S4 validation experiment/result lineage. A candidate may be marked validation-eligible only when its exact strategy lineage has a complete canonical evaluation with status `PASS`.
+
+### Acceptance criteria
+- Add a small immutable Strategy Factory validation-binding contract; do not rewrite the legacy factory evaluator.
+- Exact `strategyId` + `strategyRevision` + `experimentId` binding is required.
+- Canonical evaluation must be `PASS`; `BLOCKED` and `INSUFFICIENT_DATA` fail closed.
+- All required S3/S4 stage-result fingerprints must be present through the canonical evaluation contract.
+- Binding output remains evidence/review only with `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`.
+- Missing/mismatched evidence cannot create `CHAMPION_CANDIDATE`, route an order, mutate PAPER, or change deterministic Risk.
+- Deterministic tests cover PASS, insufficient/blocked, lineage mismatch, authority escalation and malformed identity.
 
 ### Safety boundary
-Validation/promotion evidence only. No automatic Champion promotion, no Router/Risk bypass, no capital authority, no order submission, no unrestricted LIVE. Preserve existing PAPER behavior.
+Evidence integration only. No automatic Champion promotion, Router/Risk bypass, capital allocation, broker/private Upbit credential access, order submission, PAPER behavior change, LIVE_SHADOW activation or unrestricted LIVE authority. Existing PAPER behavior and lineage remain unchanged.
 
 ### Rollback
-Repository-only revert. Existing scanner flow and PAPER lineage remain authoritative and unchanged.
+Repository-only revert of S6. S0-S5 scanner/validation contracts and existing PAPER/runtime/database state remain authoritative and unchanged.
+
+### Research review gate
+Read Strategy Factory implementation plus `docs/research/research-ledger/ledger.md`, S3 and S4 research records before implementation. Constraining precedents: DI-001/EXP-DI001, DI-003/EXP-DI003, DI-004/EXP-DI004, EV-001/EXP-EV001, EV-002/EXP-EV002, EV-003/EXP-EV003, EV-005/EXP-EV005, Q-002/EXP-Q002. Research thresholds remain TEST/REFERENCE and are not silently promoted.
 
 ### Exact next gate
-Read Strategy Factory + validation research/ledger → write S6 acceptance criteria before implementation → implement one bounded integration contract → deterministic tests + both required CI green → merge only if verified.
+Record S6 research review → implement one bounded validation-binding contract → deterministic tests → both required CI green → merge only if verified → no deploy unless the contract changes runtime behavior (not expected).
 
 ## Current deployment state
-No deployment was required for BOT-S5; legacy Railway Black Oracle services remain unchanged. BOT repository/runtime/database separation remains preserved.
+No S6 deployment planned. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
 
-## Cycle exit record
-- Phase: **BOT-S5 COMPLETE / MERGED**
-- Tests: Black Oracle CI #1005 PASS; Trading CI #1184 PASS
-- Blockers: none for S5
-- Alpha status: S0-S5 complete; S6 queued
-- Single next priority: **BOT-S6 Strategy Factory validation integration**
+## Cycle exit target
+- Phase: PLAN COMPLETE → RESEARCH REVIEW
+- Blockers: none identified at plan time
+- Single next priority: complete S6 validation-binding implementation and verification.
