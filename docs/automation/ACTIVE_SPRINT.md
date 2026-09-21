@@ -1,4 +1,4 @@
-# ACTIVE SPRINT — BOT Alpha Strategy Validation Integration
+# ACTIVE SPRINT — BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
@@ -11,56 +11,50 @@ Status: **IN PROGRESS**
 - BOT-S2 runtime/database ownership contract — merged #212.
 - BOT-S3 canonical validation experiment manifest — merged.
 - CLEANUP-01 separation ownership audit — merged.
-- BOT-S4 immutable validation stage results/evaluation — merged #215 as `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`.
-- BOT-S5 end-to-end Upbit KRW scanner flow — merged #216 as `84b267a286d22d83dd85a544804af147cb7a122f`.
-- **BOT-S6 Strategy Factory validation integration — merged #219 as `838ca93ef97d3973c931af7d49bd5593b42ee812`.**
+- BOT-S4 immutable validation stage results/evaluation — merged #215.
+- BOT-S5 end-to-end Upbit KRW scanner flow — merged #216.
+- BOT-S6 Strategy Factory validation integration — merged #219.
 
-## BOT-S6 final record
-
-### Objective / delivered
-Added immutable `bot.strategy-validation-binding.v1` so Strategy Factory candidate validation eligibility is explicitly bound to canonical S3/S4 validation evidence rather than inferred from legacy factory scores.
-
-### Acceptance / safety result
-- Explicit strategy ID/revision and experiment identity are required.
-- Canonical validation `PASS` maps to `validationEligible=true`; `BLOCKED` and `INSUFFICIENT_DATA` fail closed.
-- Stage-result fingerprints are retained for audit/replay.
-- Lineage mismatch, malformed identity, missing fingerprints and authority escalation are rejected.
-- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`.
-- No automatic Champion promotion, Router/Risk bypass, capital allocation, PAPER mutation, order submission, broker credential use or LIVE behavior change.
-
-### Research reviewed
-DI-001/EXP-DI001, DI-003/EXP-DI003, DI-004/EXP-DI004, EV-001/EXP-EV001, EV-002/EXP-EV002, EV-003/EXP-EV003, EV-005/EXP-EV005, Q-002/EXP-Q002 plus S3/S4 records. Research thresholds remain TEST/REFERENCE; no numerical cutoff was promoted. Research record: `docs/research/2026-09-21-s6-strategy-validation-integration.md`.
-
-### Verification
-- PR #219 final head: `520f6253a322382d6f5f2065c11c726dd990078a`
-- Black Oracle CI #1015 — **PASS**
-- Black Oracle Trading CI #1194 — **PASS** including typecheck, trading tests, Supabase trading function typecheck, runtime bundle, PAPER scheduler smoke, Strategy Factory scheduler smoke and production build.
-- squash merge: `838ca93ef97d3973c931af7d49bd5593b42ee812`
-- deployment/runtime/database mutation: none
-
-### Rollback
-Repository-only revert of merge #219. S0-S5 and existing PAPER/runtime/database state remain unchanged.
-
-## Next work package — BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE
+## BOT-S7 PLAN
 
 ### Objective
-Create an authority-free Champion–Challenger comparison and deterministic Strategy Router contract that consumes validation-eligible evidence and can explicitly resolve to `NO_TRADE` when evidence, freshness, regime fit or comparison state is insufficient.
+Add an authority-free deterministic Champion–Challenger comparison and Strategy Router contract. It consumes S6 canonical validation bindings and resolves to `SELECT` only when exactly one eligible candidate is deterministically preferable under supplied evidence; otherwise it resolves explicitly to `NO_TRADE`.
+
+### Acceptance criteria
+1. Champion and Challenger identities/revisions must be distinct, non-empty, and bound to canonical S6 validation evidence.
+2. Both candidates must be `validationEligible=true` with `validationStatus=PASS`; otherwise `NO_TRADE`.
+3. Observation/freshness and regime-fit inputs are explicit, finite, bounded contract inputs; stale/missing/ambiguous state resolves `NO_TRADE`.
+4. Comparison uses only caller-supplied evidence scores and deterministic tie-breaking rules; no hidden research cutoff is introduced.
+5. Exact score ties resolve `NO_TRADE`; the router never guesses.
+6. Output carries evidence fingerprints and explicit reason codes for replay/audit.
+7. `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`, `riskBypassAuthority=false`, `liveAuthority=false` are immutable.
+8. No automatic Champion replacement, Risk bypass, order submission, capital allocation, PAPER mutation, broker credential access, or LIVE behavior change.
+9. Deterministic tests cover select, tie, stale, missing regime fit, invalid validation, identity/lineage mismatch, non-finite inputs, and authority escalation.
+10. Both required GitHub CI workflows must be green before merge.
 
 ### Safety boundary
-No automatic Champion replacement, no Risk bypass, no order authority, no capital authority, no unrestricted LIVE. Router output is proposal/evidence only and deterministic Risk remains mandatory downstream.
+S7 is proposal/evidence plumbing only. Router output cannot place or resize an order and cannot promote a Challenger. Deterministic Risk remains mandatory downstream. Existing PAPER/runtime/database/deployment behavior remains unchanged.
 
-### Rollback
-Repository-only revert; S0-S6 and PAPER behavior remain unchanged.
+### Rollback path
+Repository-only revert of the S7 merge. S0-S6, existing PAPER behavior, runtime and database remain unchanged.
 
 ### Exact next gate
-Read Champion/Challenger + Router/Council research and current implementations → define S7 acceptance criteria before implementation → bounded comparison/router contract → deterministic tests + both required CI green → merge only if verified.
+Research review recorded → implement bounded contract + deterministic tests → verify exact commit and required CI → merge only if green → no deployment unless contract integration separately requires it.
+
+## Research review constraints
+- S6 precedent: canonical validation evidence is necessary but does not itself grant promotion/execution authority.
+- DI-001 / EXP-DI001: reuse canonical experiment/evidence identity; do not create a parallel promotion truth.
+- DI-003 / EXP-DI003 and DI-004 / EXP-DI004: point-in-time inputs and exact lineage remain replayable; unsafe/stale inputs are not repaired downstream.
+- EV-001 / EXP-EV001 and EV-002 / EXP-EV002: validation identity/robustness evidence remains distinct from ranking.
+- EV-003 / EXP-EV003 and EV-005 / EXP-EV005: no DSR/PBO numerical cutoff is promoted here.
+- Q-002 / EXP-Q002: Router remains an experimental architecture surface; S7 adopts deterministic fail-closed routing mechanics, not research performance claims.
+- Legacy Sprint-7 precedent (#29) keeps Champion replacement outside automatic Vault/lifecycle authority.
 
 ## Current deployment state
-No deployment required for BOT-S6. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
+No S7 deployment is authorized or required by this bounded package. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
 
-## Cycle exit record
-- Phase: **BOT-S6 COMPLETE / MERGED**
-- Tests: Black Oracle CI #1015 PASS; Trading CI #1194 PASS
-- Blockers: none for S6
-- Alpha status: S0-S6 complete; S7 queued
-- Single next priority: **BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE**
+## Cycle state
+- Phase: **BOT-S7 PLAN COMPLETE / IMPLEMENTATION STARTING**
+- Blockers: none for bounded repository contract
+- Alpha status: S0-S6 complete; S7 active
+- Single next priority: **implement and verify deterministic Champion–Challenger Router with fail-closed NO_TRADE**
