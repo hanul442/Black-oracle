@@ -1,4 +1,4 @@
-# ACTIVE SPRINT — BOT Alpha Validation Core
+# ACTIVE SPRINT — BOT Alpha Scanner Flow
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
@@ -9,46 +9,45 @@ Status: **IN PROGRESS**
 - BOT-S0 repository boundary bootstrap.
 - BOT-S1 scanner input boundary — merged #211.
 - BOT-S2 runtime/database ownership contract — merged #212.
-- BOT-S3 canonical `bot.validation-experiment.v1` manifest — merged `147a1893f73ebaadc5b8375c9019099ff22e80db`.
-- CLEANUP-01 separation ownership audit — merged `8870dcac57a8b3735c04a3020745ba265f7a5b01`.
-- **BOT-S4 immutable validation stage results/evaluation — merged #215 as `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`.**
+- BOT-S3 canonical validation experiment manifest — merged.
+- CLEANUP-01 separation ownership audit — merged.
+- BOT-S4 immutable validation stage results/evaluation — merged #215 as `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`.
 
-## BOT-S4 final record
-
-### Delivered
-- `bot.validation-stage-result.v1` immutable child records for BACKTEST / OOS / WALK_FORWARD / MONTE_CARLO / EXECUTION_COST_STRESS.
-- exact experiment/strategy/code/data/engine lineage.
-- output fingerprints, finite metrics and explicit diagnostics.
-- exactly one result per canonical stage.
-- `bot.validation-evaluation.v1` with explicit caller-supplied `PASS / BLOCKED / INSUFFICIENT_DATA` gates.
-- aggregate precedence `BLOCKED > INSUFFICIENT_DATA > PASS`.
-- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`.
-
-### Research
-DI-001/003/004; EV-001/002/003/005; Q-002. Quantitative thresholds remain TEST/REFERENCE; no hidden threshold was promoted into trading behavior.
-Research record: `docs/research/2026-09-21-s4-validation-results.md` — **ADOPT for Alpha validation-evidence contract use**.
-
-### Verification
-- PR #215
-- final head `dc970d7c08fbf1f921b61f48516e8de15f1c547e`
-- Black Oracle CI #1000 — **PASS**
-- Black Oracle Trading CI #1179 — **PASS**
-- merge `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`
-- deployment/runtime/database mutation: none
-
-### Safety / rollback
-No PAPER behavior, Strategy Factory ranking, Router, Council, deterministic Risk, portfolio, order, broker credential or LIVE authority changed. Rollback is repository-only revert; existing PAPER/lineage remain protected.
-
-## Next work package — BOT-S5 Scanner end-to-end Upbit KRW data flow
+## Active — BOT-S5 End-to-end Upbit KRW scanner flow
 
 ### Objective
-Connect the existing public Upbit collector → canonical universe → snapshot persistence boundary → freshness-checked repository read model so the scanner has one auditable fail-closed source of KRW-market eligibility.
+Connect public Upbit market collection → canonical KRW universe → auditable snapshot record → repository persistence → read-time freshness gate → scanner-eligible KRW markets through one fail-closed cycle.
+
+### Acceptance criteria
+- Use only Upbit public market metadata.
+- Persist only canonical `UpbitUniverseSnapshotRecord` through the injected repository.
+- Re-read through `readLatestUpbitUniverse`; scanner output must come from the persisted/read-back record, not directly from the network payload.
+- HTTP/payload failure, persistence failure, stale/future read-back, read-back identity mismatch, or zero eligible KRW markets must fail closed.
+- Previous persisted record may remain visible for audit but cannot make a failed collection cycle scanner-ready.
+- Preserve warning/caution exclusions.
+- Result exposes explicit status/reason, snapshot lineage and eligible markets.
+- `executionAuthority=false`, `capitalAuthority=false`, `liveAuthority=false`.
+- No PAPER behavior, Strategy Factory ranking, Router, Council, deterministic Risk, order path, broker secret, private Upbit API, or LIVE behavior changes.
+- Add deterministic tests for success, collector failure, persistence failure, read-back mismatch, zero eligible universe and stale read-back.
+
+### Research review
+- **DI-003 / EXP-DI003** — point-in-time semantics and no laundering of later/stale data.
+- **DI-004 / EXP-DI004** — exact snapshot identity and replayable persisted lineage.
+- BOT bootstrap review — scanner input integrity precedes Strategy Factory/Council expansion.
+- Existing S1 freshness/read-model contract remains canonical.
+No research threshold or alpha claim is promoted into production behavior.
+
+### Safety boundary
+Discovery/scanner eligibility only. No execution, portfolio, broker credential, Risk bypass, PAPER/LIVE mutation or unrestricted LIVE authority.
+
+### Rollback
+Revert BOT-S5 PR. S0-S4 and existing PAPER/runtime remain unchanged; persisted historical records are not deleted.
 
 ### Exact next gate
-Plan/research review → implement end-to-end scanner data flow without execution authority → CI green → merge → Strategy Factory validation integration.
+`implement scanner flow → Black Oracle CI + Trading CI green → merge BOT-S5 → Strategy Factory validation integration`.
 
-## Cycle exit record
-- Phase: **BOT-S4 COMPLETE / MERGED**
-- Tests: CI #1000 PASS; Trading CI #1179 PASS
-- Blockers: none for S4
-- Single next priority: **BOT-S5 scanner end-to-end Upbit KRW data flow**
+## Current deployment state
+Legacy Railway Black Oracle services remain unchanged and successful. No deployment is required for this repository-only scanner contract.
+
+## Single next priority
+BOT-S5 end-to-end Upbit KRW scanner flow.
