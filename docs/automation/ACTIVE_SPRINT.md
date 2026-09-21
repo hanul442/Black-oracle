@@ -10,52 +10,59 @@ Status: **IN PROGRESS**
 - BOT-S1 scanner input boundary — merged #211.
 - BOT-S2 runtime/database ownership contract — merged #212.
 - BOT-S3 canonical `bot.validation-experiment.v1` manifest — merged `147a1893f73ebaadc5b8375c9019099ff22e80db`.
-- CLEANUP-01 BOT/BOR separation ownership audit — merged `8870dcac57a8b3735c04a3020745ba265f7a5b01`; Black Oracle CI #997 and Trading CI #1176 PASS.
+- CLEANUP-01 separation ownership audit — merged `8870dcac57a8b3735c04a3020745ba265f7a5b01`; Black Oracle CI #997 and Trading CI #1176 PASS.
 
 ## Active — BOT-S4 Immutable validation stage results / evaluation
 
 ### Objective
-Create one immutable, fail-closed result contract bound to the canonical BOT-S3 experiment manifest so Backtest, OOS, Walk-Forward, Monte Carlo and execution-cost-stress outputs can be recorded and evaluated without granting strategy promotion, capital allocation or execution authority.
+Bind Backtest, OOS, Walk-Forward, Monte Carlo and execution-cost-stress outputs to BOT-S3 through immutable fail-closed result/evaluation records without promotion, capital or execution authority.
 
-### Acceptance criteria
-- Define versioned `bot.validation-stage-result.v1` records bound to `experimentId`, strategy/code/data/engine lineage and exactly one declared validation stage.
-- Preserve output fingerprint, completion timestamp, sample/trade counts, return/drawdown/Sharpe-style diagnostics and stage-specific diagnostics without inventing missing values.
-- Require one result per required stage; duplicate, missing, mismatched or non-finite results fail closed.
-- Define aggregate `PASS / BLOCKED / INSUFFICIENT_DATA` evaluation based on explicit caller-supplied gate outcomes, not hidden research-derived thresholds.
-- Stage records and aggregate evaluation carry `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`.
-- Do not mutate PAPER behavior, deterministic Risk, Strategy Factory ranking, Router, Council, portfolio or orders.
-- Add repository-native deterministic tests and export through the trading barrel.
-- Black Oracle CI + Trading CI green before merge.
+### Acceptance criteria — IMPLEMENTED
+- `bot.validation-stage-result.v1` exact experiment/strategy/code/data/engine lineage.
+- output fingerprint, completion time, sample/trade counts and optional finite diagnostics.
+- exactly one result per required stage; missing/duplicate/mismatched/non-finite evidence fails closed.
+- `bot.validation-evaluation.v1` aggregates explicit caller-supplied `PASS / BLOCKED / INSUFFICIENT_DATA` gates; no hidden research cutoff.
+- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false` throughout.
+- deterministic tests and trading-barrel export.
+- PAPER, deterministic Risk, Strategy Factory ranking, Router, Council, portfolio and order behavior unchanged.
+
+### Research review
+DI-001/003/004; EV-001/002/003/005; Q-002. Schema/lineage constraints adopted; quantitative thresholds remain TEST/REFERENCE. Research record: `docs/research/2026-09-21-s4-validation-results.md` — **ADOPT for Alpha validation-evidence contract use**.
 
 ### Safety boundary
-Validation evidence only. No broker/private Upbit credentials, order submission, position sizing, portfolio mutation, strategy promotion, deterministic Risk bypass, PAPER/LIVE behavior change or unrestricted LIVE authority. Research thresholds remain TEST/REFERENCE until independently adopted.
+Validation evidence only. No broker/private Upbit credentials, orders, position sizing, portfolio mutation, strategy promotion, Risk bypass, PAPER/LIVE behavior change or unrestricted LIVE authority.
 
-### Rollback path
-Revert the BOT-S4 PR. S0-S3, CLEANUP-01 and existing PAPER/runtime/database state remain unchanged because S4 is additive and persistence-free.
+### Rollback
+Repository-only revert. S0-S3/CLEANUP and existing PAPER/runtime/database state remain unchanged.
+
+### Verification
+- PR: **#215**
+- Head verified before documentation close: `c5602f1c8206929f367a50ceb1c415e01406a70f`
+- Black Oracle CI **#998 PASS** — typecheck + production build.
+- Black Oracle Trading CI **#1177 PASS** — typecheck, trading tests, Supabase trading function typecheck, runtime bundle, PAPER scheduler smoke, Strategy Factory scheduler smoke, production build.
+- Deployment/runtime/database mutation: **none by design**.
 
 ### Exact next gate
-`immutable stage result contract + explicit aggregate evaluation + fail-closed tests → CI green → merge BOT-S4 → scanner end-to-end data flow / Strategy Factory validation integration`.
-
-## Research review required before implementation
-- **DI-001 / EXP-DI001:** result artifacts must bind to the canonical experiment lineage rather than form a second disconnected ledger.
-- **DI-003 / EXP-DI003:** stage outputs inherit point-in-time-safe input lineage; result recording cannot repair unsafe inputs.
-- **DI-004 / EXP-DI004:** data snapshot identity must remain replay-addressable through result lineage.
-- **EV-001 / EXP-EV001:** engine/version and output fingerprints remain explicit so cross-engine disagreement can be measured later.
-- **EV-002 / EXP-EV002:** robustness evidence stays separate from performance ranking.
-- **EV-003 / EXP-EV003 + EV-005 / EXP-EV005:** multiple-testing/PBO diagnostics may be recorded but no production cutoff is silently adopted.
-- **Q-002 / EXP-Q002:** execution-cost stress is a first-class stage; its assumptions remain bound to the experiment manifest.
-
-Research disposition: **ADOPT schema/lineage constraints only; TEST/REFERENCE for quantitative thresholds. No trading policy adoption.**
+Final documentation head CI green → merge BOT-S4 → **scanner end-to-end Upbit KRW data flow**.
 
 ## Current deployment state
-- Existing legacy PAPER behavior is preserved.
+- Existing legacy PAPER behavior remains preserved.
 - Independent BOT infrastructure remains a separate provisioning gate.
-- No deployment or runtime/database mutation is required for S4.
+- No deployment required for S4.
 
 ## Next ordered Alpha work
-1. BOT-S4 validation stage results/evaluations — ACTIVE.
-2. Scanner end-to-end Upbit KRW data flow.
-3. Strategy Factory validation integration.
-4. Champion–Challenger + Router/NO_TRADE.
-5. Council/Red Team/Arbiter evaluation.
-6. deterministic Risk / PAPER / LIVE_SHADOW / Upbit dry-run / reconciliation / kill switch / event ledger / Decision Replay hardening.
+1. Scanner end-to-end Upbit KRW data flow.
+2. Strategy Factory validation integration.
+3. Champion–Challenger + Router/NO_TRADE.
+4. Council/Red Team/Arbiter evaluation.
+5. deterministic Risk / PAPER / LIVE_SHADOW / Upbit dry-run / reconciliation / kill switch / event ledger / Decision Replay hardening.
+
+## Cycle exit record
+- Phase: **IMPLEMENT / TEST / VERIFY / DOCUMENT COMPLETE → FINAL CI/MERGE GATE**
+- Concrete change: immutable validation stage results + explicit aggregate evaluation.
+- Research: DI-001/003/004; EV-001/002/003/005; Q-002.
+- Tests: CI #998 PASS; Trading CI #1177 PASS on implementation head.
+- PR: #215.
+- Deployment: none.
+- Blockers: none for repository S4; independent infrastructure remains a separate gate.
+- Single next priority: scanner end-to-end Upbit KRW data flow.
