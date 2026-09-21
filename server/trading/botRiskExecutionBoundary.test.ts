@@ -81,9 +81,11 @@ test('identity mismatch, kill switch, duplicate intent and failed limits fail cl
 });
 
 test('LIVE is not an Alpha mode', () => {
-  const input = base() as BotRiskExecutionInput & { mode: string };
-  input.mode = 'LIVE';
-  assert.throws(() => evaluateBotRiskExecutionBoundary(input as BotRiskExecutionInput), /unrestricted LIVE/);
+  const input: unknown = { ...base(), mode: 'LIVE' };
+  assert.throws(
+    () => evaluateBotRiskExecutionBoundary(input as BotRiskExecutionInput),
+    /unrestricted LIVE/,
+  );
 });
 
 test('LIVE_SHADOW remains non-authoritative', () => {
