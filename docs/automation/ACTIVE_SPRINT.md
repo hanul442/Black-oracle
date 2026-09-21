@@ -10,59 +10,45 @@ Status: **IN PROGRESS**
 - BOT-S1 scanner input boundary — merged #211.
 - BOT-S2 runtime/database ownership contract — merged #212.
 - BOT-S3 canonical `bot.validation-experiment.v1` manifest — merged `147a1893f73ebaadc5b8375c9019099ff22e80db`.
-- CLEANUP-01 separation ownership audit — merged `8870dcac57a8b3735c04a3020745ba265f7a5b01`; Black Oracle CI #997 and Trading CI #1176 PASS.
+- CLEANUP-01 separation ownership audit — merged `8870dcac57a8b3735c04a3020745ba265f7a5b01`.
+- **BOT-S4 immutable validation stage results/evaluation — merged #215 as `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`.**
 
-## Active — BOT-S4 Immutable validation stage results / evaluation
+## BOT-S4 final record
 
-### Objective
-Bind Backtest, OOS, Walk-Forward, Monte Carlo and execution-cost-stress outputs to BOT-S3 through immutable fail-closed result/evaluation records without promotion, capital or execution authority.
+### Delivered
+- `bot.validation-stage-result.v1` immutable child records for BACKTEST / OOS / WALK_FORWARD / MONTE_CARLO / EXECUTION_COST_STRESS.
+- exact experiment/strategy/code/data/engine lineage.
+- output fingerprints, finite metrics and explicit diagnostics.
+- exactly one result per canonical stage.
+- `bot.validation-evaluation.v1` with explicit caller-supplied `PASS / BLOCKED / INSUFFICIENT_DATA` gates.
+- aggregate precedence `BLOCKED > INSUFFICIENT_DATA > PASS`.
+- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`.
 
-### Acceptance criteria — IMPLEMENTED
-- `bot.validation-stage-result.v1` exact experiment/strategy/code/data/engine lineage.
-- output fingerprint, completion time, sample/trade counts and optional finite diagnostics.
-- exactly one result per required stage; missing/duplicate/mismatched/non-finite evidence fails closed.
-- `bot.validation-evaluation.v1` aggregates explicit caller-supplied `PASS / BLOCKED / INSUFFICIENT_DATA` gates; no hidden research cutoff.
-- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false` throughout.
-- deterministic tests and trading-barrel export.
-- PAPER, deterministic Risk, Strategy Factory ranking, Router, Council, portfolio and order behavior unchanged.
-
-### Research review
-DI-001/003/004; EV-001/002/003/005; Q-002. Schema/lineage constraints adopted; quantitative thresholds remain TEST/REFERENCE. Research record: `docs/research/2026-09-21-s4-validation-results.md` — **ADOPT for Alpha validation-evidence contract use**.
-
-### Safety boundary
-Validation evidence only. No broker/private Upbit credentials, orders, position sizing, portfolio mutation, strategy promotion, Risk bypass, PAPER/LIVE behavior change or unrestricted LIVE authority.
-
-### Rollback
-Repository-only revert. S0-S3/CLEANUP and existing PAPER/runtime/database state remain unchanged.
+### Research
+DI-001/003/004; EV-001/002/003/005; Q-002. Quantitative thresholds remain TEST/REFERENCE; no hidden threshold was promoted into trading behavior.
+Research record: `docs/research/2026-09-21-s4-validation-results.md` — **ADOPT for Alpha validation-evidence contract use**.
 
 ### Verification
-- PR: **#215**
-- Head verified before documentation close: `c5602f1c8206929f367a50ceb1c415e01406a70f`
-- Black Oracle CI **#998 PASS** — typecheck + production build.
-- Black Oracle Trading CI **#1177 PASS** — typecheck, trading tests, Supabase trading function typecheck, runtime bundle, PAPER scheduler smoke, Strategy Factory scheduler smoke, production build.
-- Deployment/runtime/database mutation: **none by design**.
+- PR #215
+- final head `dc970d7c08fbf1f921b61f48516e8de15f1c547e`
+- Black Oracle CI #1000 — **PASS**
+- Black Oracle Trading CI #1179 — **PASS**
+- merge `f878f1f654c525e2e781b6a124ad1d6d7f8c4935`
+- deployment/runtime/database mutation: none
+
+### Safety / rollback
+No PAPER behavior, Strategy Factory ranking, Router, Council, deterministic Risk, portfolio, order, broker credential or LIVE authority changed. Rollback is repository-only revert; existing PAPER/lineage remain protected.
+
+## Next work package — BOT-S5 Scanner end-to-end Upbit KRW data flow
+
+### Objective
+Connect the existing public Upbit collector → canonical universe → snapshot persistence boundary → freshness-checked repository read model so the scanner has one auditable fail-closed source of KRW-market eligibility.
 
 ### Exact next gate
-Final documentation head CI green → merge BOT-S4 → **scanner end-to-end Upbit KRW data flow**.
-
-## Current deployment state
-- Existing legacy PAPER behavior remains preserved.
-- Independent BOT infrastructure remains a separate provisioning gate.
-- No deployment required for S4.
-
-## Next ordered Alpha work
-1. Scanner end-to-end Upbit KRW data flow.
-2. Strategy Factory validation integration.
-3. Champion–Challenger + Router/NO_TRADE.
-4. Council/Red Team/Arbiter evaluation.
-5. deterministic Risk / PAPER / LIVE_SHADOW / Upbit dry-run / reconciliation / kill switch / event ledger / Decision Replay hardening.
+Plan/research review → implement end-to-end scanner data flow without execution authority → CI green → merge → Strategy Factory validation integration.
 
 ## Cycle exit record
-- Phase: **IMPLEMENT / TEST / VERIFY / DOCUMENT COMPLETE → FINAL CI/MERGE GATE**
-- Concrete change: immutable validation stage results + explicit aggregate evaluation.
-- Research: DI-001/003/004; EV-001/002/003/005; Q-002.
-- Tests: CI #998 PASS; Trading CI #1177 PASS on implementation head.
-- PR: #215.
-- Deployment: none.
-- Blockers: none for repository S4; independent infrastructure remains a separate gate.
-- Single next priority: scanner end-to-end Upbit KRW data flow.
+- Phase: **BOT-S4 COMPLETE / MERGED**
+- Tests: CI #1000 PASS; Trading CI #1179 PASS
+- Blockers: none for S4
+- Single next priority: **BOT-S5 scanner end-to-end Upbit KRW data flow**
