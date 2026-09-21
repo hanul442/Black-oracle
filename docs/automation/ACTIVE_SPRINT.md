@@ -1,9 +1,9 @@
-# ACTIVE SPRINT — BOT Alpha Governance Integration
+# ACTIVE SPRINT — BOT-S8 Council / Red Team / Arbiter Governance
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S7 COMPLETE / S8 QUEUED**
+Status: **S8 IMPLEMENTED / CI GATE**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -14,53 +14,39 @@ Status: **S7 COMPLETE / S8 QUEUED**
 - BOT-S4 immutable validation stage results/evaluation — merged #215.
 - BOT-S5 end-to-end Upbit KRW scanner flow — merged #216.
 - BOT-S6 Strategy Factory validation integration — merged #219.
-- **BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE — merged #220 as `ca79421e27843f5bde9fa26f77c1c775a9136a5d`.**
+- BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE — merged #220.
 
-## BOT-S7 final record
-
-### Objective / delivered
-Added an authority-free deterministic Champion–Challenger comparison and Strategy Router contract consuming canonical S6 validation bindings. It selects only under sufficient explicit evidence and otherwise resolves to `NO_TRADE`.
-
-### Acceptance / safety result
-- Candidate identity/revision and validation eligibility are explicit.
-- stale/missing/ineligible/regime-incompatible/tied states fail closed to `NO_TRADE`.
-- evidence/reason codes remain replayable and auditable.
-- no automatic Champion replacement, Risk bypass, order authority, capital authority, PAPER mutation, broker credential use, or LIVE authority.
-- deterministic Risk remains mandatory downstream.
-
-### Research reviewed
-DI-001/EXP-DI001, DI-003/EXP-DI003, DI-004/EXP-DI004, EV-001/EXP-EV001, EV-002/EXP-EV002, EV-003/EXP-EV003, EV-005/EXP-EV005, Q-002/EXP-Q002 plus S6 and legacy Sprint-7 governance precedent. No research numerical cutoff was promoted into production behavior.
-
-### Verification
-- PR #220 final head: `a44b08d1100f2082b3df35ca18b2f0c9ddbf11fb`
-- Black Oracle CI #1018 — **PASS**
-- Black Oracle Trading CI #1197 — **PASS**
-- squash merge: `ca79421e27843f5bde9fa26f77c1c775a9136a5d`
-- deployment/runtime/database mutation: none
-
-### Rollback
-Repository-only revert of merge #220. S0-S6 and existing PAPER/runtime/database state remain unchanged.
-
-## Next work package — BOT-S8 Council / Red Team / Arbiter governance contract
+## BOT-S8 work package
 
 ### Objective
-Define an authority-free governance layer that consumes S7 Router proposals/evidence, records Council and Red Team findings, and lets a deterministic Arbiter resolve an auditable governance outcome including explicit `NO_TRADE`, without granting execution or Risk-bypass authority.
+Add an authority-free deterministic governance contract consuming S7 Router output plus explicit Council and Red Team findings. A Router selection is preserved only when required governance evidence is fresh, identity-consistent and non-vetoing; all bounded insufficiency resolves to `NO_TRADE`.
+
+### Acceptance criteria / implementation result
+- Router `NO_TRADE` is terminal and cannot be upgraded.
+- Council and Red Team findings carry source ID, strategy identity/revision, observed time, max age, verdict and evidence fingerprints.
+- missing governance evidence, stale/future evidence, identity mismatch, Council rejection and Red Team veto fail closed to `NO_TRADE`.
+- malformed evidence and any attempted authority escalation are rejected.
+- output preserves Router reason plus governance evidence for replay/audit.
+- `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`, `riskBypassAuthority=false`, `liveAuthority=false`.
+- deterministic Risk remains mandatory downstream; no order/PAPER/runtime/database/LIVE behavior changed.
+
+### Research reviewed
+AIML-002/EXP-AIML002, AIML-003/EXP-AIML003, AIML-004/EXP-AIML004, AIML-005/EXP-AIML005, AIML-006/EXP-AIML006, DI-003/EXP-DI003, DI-004/EXP-DI004, EV-006/EXP-EV006 and S7 precedent. Research record: `docs/research/2026-09-21-s8-governance-contract.md`. No research numerical cutoff, model score or external strategy was promoted.
 
 ### Safety boundary
-No order submission, no capital allocation, no unrestricted LIVE, no broker-secret exposure, no automatic Champion replacement, and no deterministic Risk bypass. Missing/stale/inconsistent governance evidence must fail closed.
+Governance `APPROVE` means only that bounded governance evidence is sufficient for the next deterministic gate; it is not execution authorization. No order submission, capital allocation, Champion mutation, broker-secret access, deterministic Risk bypass or unrestricted LIVE.
 
-### Rollback
-Repository-only revert; S0-S7 and PAPER behavior remain unchanged.
+### Rollback path
+Repository-only revert of S8. S0-S7, PAPER behavior, runtime and database remain unchanged.
 
 ### Exact next gate
-Read Council/Red Team/Arbiter research and current implementations → define S8 acceptance criteria in ACTIVE_SPRINT before implementation → implement one bounded governance contract with deterministic tests → verify exact commit and both required CI → merge only if green.
+Open PR → verify exact PR head and both required GitHub CI workflows → fix failures if any → merge only if green → update this record with exact CI/merge evidence. No deployment is required for this additive contract.
 
 ## Current deployment state
-No deployment required for BOT-S7. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
+No deployment required. Existing legacy Railway/PAPER services remain unchanged; repository/runtime/database separation remains preserved.
 
-## Cycle exit record
-- Phase: **BOT-S7 COMPLETE / MERGED**
-- Tests: Black Oracle CI #1018 PASS; Trading CI #1197 PASS
-- Blockers: none for S7
-- Alpha status: S0-S7 complete; S8 queued
-- Single next priority: **BOT-S8 Council / Red Team / Arbiter governance contract**
+## Cycle state
+- Phase: **BOT-S8 IMPLEMENTED / CI GATE**
+- Blockers: none before CI
+- Alpha status: S0-S7 complete; S8 implemented
+- Single next priority: **obtain exact-head Black Oracle CI + Trading CI green and merge S8 only when verified**
