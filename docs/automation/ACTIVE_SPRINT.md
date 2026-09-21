@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S11 COMPLETE / S12 ACTIVE**
+Status: **S11 COMPLETE / S12 IMPLEMENTED — CI GATE**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -23,30 +23,38 @@ Status: **S11 COMPLETE / S12 ACTIVE**
 ## BOT-S12 — Event Ledger outcome attribution + Decision Replay closure
 
 ### Objective
-Close the Alpha evidence loop by deterministically attributing PAPER/LIVE_SHADOW outcomes to the originating scanner → strategy validation → router → governance → Risk → dry-run/reconciliation → readiness lineage. Attribution is observational evidence only and must never acquire execution or financial authority.
+Close the Alpha evidence loop by deterministically attributing PAPER/LIVE_SHADOW outcomes to originating decision/execution evidence while remaining observational and authority-free.
 
-### Acceptance criteria
-- attribution requires explicit Event Ledger and Decision Replay lineage IDs plus request/idempotency identity; missing, stale, future, duplicate, or mismatched lineage fails closed.
-- outcome records are append-only evidence and cannot alter strategy selection, Risk, order submission, balances, or LIVE authority.
-- PAPER/LIVE_SHADOW lineage is replayable from decision through reconciliation/outcome.
-- deterministic tests cover success plus missing/mismatch/duplicate/future/stale/NO_TRADE paths.
-- no broker credentials, network order submission, runtime/database migration, or unrestricted LIVE enablement.
+### Delivered
+- Added `bot.outcome-attribution.v1` as an additive evidence-only contract.
+- Requires explicit request, idempotency, Event Ledger, Decision Replay and upstream intent/strategy/router/governance/Risk lineage.
+- Rejects missing/mismatched/duplicate/future/stale outcome lineage and terminal S11 `NO_TRADE` readiness.
+- Accepted outcomes retain realized P&L/return only as append-only evidence; rejected outcomes suppress numeric attribution.
+- No heuristic nearest-entry recovery is accepted for S12 attribution.
+
+### Research reviewed
+`DI-001/EXP-DI001`, `DI-004/EXP-DI004`, `EV-006/EXP-EV006`, S9 deterministic Risk, S10 dry-run reconciliation, S11 readiness, and existing Decision Replay/Event Ledger precedent. Research remains constraint/evidence only; no external rule or threshold was promoted.
+
+### Acceptance / test coverage
+Deterministic tests cover successful PAPER attribution, missing lineage, lineage mismatch, duplicate outcome, future outcome, stale outcome and readiness `NO_TRADE` terminal behavior. GitHub exact-head CI remains the merge gate.
 
 ### Safety boundary
-Observability/evidence only. No new financial authority, no Risk bypass, no exchange submission, no agent/frontend override, no unrestricted LIVE. Any ambiguous lineage fails closed. Existing PAPER behavior and persistence remain untouched.
+Observability/evidence only. `submissionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`, `liveAuthority=false`. No Risk bypass, exchange submission, broker credentials, runtime/database migration, deployment or unrestricted LIVE.
 
 ### Rollback path
-Repository-only revert of S12 changes/PR. S0-S11 and current PAPER/runtime/database state remain recoverable and unchanged.
+Repository-only revert/close of PR #227. S0-S11 and current PAPER/runtime/database state remain unchanged.
 
 ### Exact next gate
-Review DI-001/EXP-DI001, DI-004/EXP-DI004, EV-006/EXP-EV006 and existing Event Ledger / Decision Replay / S9-S11 contracts; record the constraints in an S12 research note; implement one additive deterministic `bot.outcome-attribution.v1` contract with tests; require exact-head Black Oracle CI + Trading CI green before merge. Do not deploy or grant LIVE authority.
+PR #227 exact-head Black Oracle CI + Trading CI must both be green. If either fails, fix on the same branch and re-verify exact head. Merge only after both pass and PR is mergeable. No deployment is required for this additive authority-free contract.
 
 ## Current deployment state
-Existing legacy Railway/PAPER services unchanged. No S12 deployment is planned in this work package. BOT repository/runtime/database separation remains preserved.
+Existing legacy Railway/PAPER services unchanged. No S12 deployment or database mutation performed.
 
 ## Cycle state
-- Phase: **BOT-S12 ACTIVE / PLAN RECORDED**
-- Open unrelated PRs observed: #222, #200, #198 and legacy NARS/product PRs; none is allowed to expand S12 scope.
-- Blockers: none at plan gate.
-- Alpha status: S0-S11 complete; S12 active.
-- Single next priority: **implement and verify authority-free outcome attribution closure**.
+- Phase: **BOT-S12 IMPLEMENTED / CI GATE**
+- PR: **#227 OPEN**
+- Initial implementation head before this documentation closeout: `10c63f1d9c675a55754396c56daf56b83e38d3a1`
+- CI at first check: no exact-head workflow runs had appeared yet.
+- Blockers: CI pending only.
+- Alpha status: S0-S11 complete; S12 implemented, unmerged.
+- Single next priority: **verify exact-head Black Oracle CI + Trading CI; fix or merge accordingly**.
