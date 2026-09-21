@@ -131,7 +131,11 @@ export async function runUpbitKrwScannerFlow(
     return blocked('NO_SNAPSHOT', null, null);
   }
   if (!audit.read.scannerEligible) {
-    return blocked(audit.read.reason, audit.read.record, null);
+    const reason: UpbitScannerFlowReason =
+      audit.read.reason === 'FRESH'
+        ? 'PERSISTENCE_READBACK_MISMATCH'
+        : audit.read.reason;
+    return blocked(reason, audit.read.record, null);
   }
 
   const persisted = audit.read.record;
