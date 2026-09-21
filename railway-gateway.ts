@@ -14,6 +14,7 @@ import eventsHandler from './api/events';
 import councilDebateHandler from './api/council-debate';
 import aiCostStatusHandler from './api/ai-cost-status';
 import marketChartHandler from './api/market-chart';
+import lseMarketDataHandler from './api/lse-market-data';
 import { tradingRuntimeProfile } from './server/trading/runtimeProfile';
 
 const gatewayPort = Number(process.env.PORT || 3000);
@@ -304,6 +305,10 @@ app.get('/api/events', (req, res) => {
 
 app.get('/api/market-chart', (req, res) => {
   void marketChartHandler(req, res);
+});
+
+app.get('/api/lse-market-data', (req, res) => {
+  void lseMarketDataHandler(req, res);
 });
 
 app.post('/api/activity-brief', express.json({ limit: '16kb' }), (req, res) => {
