@@ -1,9 +1,9 @@
-# ACTIVE SPRINT — BOT Alpha Governance Integration
+# ACTIVE SPRINT — BOT-S8 Council / Red Team / Arbiter Governance
 
 Date: **2026-09-21**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S7 COMPLETE / S8 QUEUED**
+Status: **S8 IN PROGRESS**
 
 ## Completed
 - BOT-S0 repository boundary bootstrap.
@@ -14,53 +14,43 @@ Status: **S7 COMPLETE / S8 QUEUED**
 - BOT-S4 immutable validation stage results/evaluation — merged #215.
 - BOT-S5 end-to-end Upbit KRW scanner flow — merged #216.
 - BOT-S6 Strategy Factory validation integration — merged #219.
-- **BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE — merged #220 as `ca79421e27843f5bde9fa26f77c1c775a9136a5d`.**
+- BOT-S7 Champion–Challenger + Strategy Router / NO_TRADE — merged #220 as `ca79421e27843f5bde9fa26f77c1c775a9136a5d`.
 
-## BOT-S7 final record
-
-### Objective / delivered
-Added an authority-free deterministic Champion–Challenger comparison and Strategy Router contract consuming canonical S6 validation bindings. It selects only under sufficient explicit evidence and otherwise resolves to `NO_TRADE`.
-
-### Acceptance / safety result
-- Candidate identity/revision and validation eligibility are explicit.
-- stale/missing/ineligible/regime-incompatible/tied states fail closed to `NO_TRADE`.
-- evidence/reason codes remain replayable and auditable.
-- no automatic Champion replacement, Risk bypass, order authority, capital authority, PAPER mutation, broker credential use, or LIVE authority.
-- deterministic Risk remains mandatory downstream.
-
-### Research reviewed
-DI-001/EXP-DI001, DI-003/EXP-DI003, DI-004/EXP-DI004, EV-001/EXP-EV001, EV-002/EXP-EV002, EV-003/EXP-EV003, EV-005/EXP-EV005, Q-002/EXP-Q002 plus S6 and legacy Sprint-7 governance precedent. No research numerical cutoff was promoted into production behavior.
-
-### Verification
-- PR #220 final head: `a44b08d1100f2082b3df35ca18b2f0c9ddbf11fb`
-- Black Oracle CI #1018 — **PASS**
-- Black Oracle Trading CI #1197 — **PASS**
-- squash merge: `ca79421e27843f5bde9fa26f77c1c775a9136a5d`
-- deployment/runtime/database mutation: none
-
-### Rollback
-Repository-only revert of merge #220. S0-S6 and existing PAPER/runtime/database state remain unchanged.
-
-## Next work package — BOT-S8 Council / Red Team / Arbiter governance contract
+## BOT-S8 PLAN
 
 ### Objective
-Define an authority-free governance layer that consumes S7 Router proposals/evidence, records Council and Red Team findings, and lets a deterministic Arbiter resolve an auditable governance outcome including explicit `NO_TRADE`, without granting execution or Risk-bypass authority.
+Add an authority-free deterministic governance contract that consumes an S7 Router decision plus explicit Council and Red Team findings and emits an auditable Arbiter outcome. Governance may preserve a valid router selection only when all required evidence is fresh, internally consistent and non-vetoing; otherwise it resolves to explicit `NO_TRADE`.
+
+### Acceptance criteria
+1. Input must carry an S7 `bot.champion-challenger-router.v1` decision and exact selected strategy identity when Router action is `SELECT`.
+2. Router `NO_TRADE` is terminal for S8 and cannot be upgraded by Council, Red Team or Arbiter.
+3. Council and Red Team findings have explicit source IDs, observed timestamps, max-age bounds, strategy identity/revision, verdict and evidence fingerprints.
+4. Missing, stale/future, malformed, identity-mismatched or contradictory governance evidence fails closed to `NO_TRADE`.
+5. Any Red Team veto resolves `NO_TRADE`; Arbiter cannot override it.
+6. Council non-approval or disagreement resolves `NO_TRADE`; no hidden majority or confidence threshold is introduced.
+7. Output preserves Router/Council/Red-Team lineage and deterministic reason codes for Decision Replay.
+8. `promotionAuthority=false`, `executionAuthority=false`, `capitalAuthority=false`, `riskBypassAuthority=false`, `liveAuthority=false` are immutable.
+9. No order submission, capital allocation, Champion mutation, PAPER mutation, broker-secret access, Risk bypass or unrestricted LIVE behavior.
+10. Deterministic tests cover pass-through approval, terminal Router NO_TRADE, missing/stale/future evidence, identity mismatch, Council rejection, Red Team veto, malformed evidence and authority escalation.
+11. Both required GitHub CI workflows must be green before merge.
 
 ### Safety boundary
-No order submission, no capital allocation, no unrestricted LIVE, no broker-secret exposure, no automatic Champion replacement, and no deterministic Risk bypass. Missing/stale/inconsistent governance evidence must fail closed.
+S8 is governance evidence/proposal plumbing only. It cannot create trading authority or turn research findings into production thresholds. Deterministic Risk remains mandatory downstream of any governance `APPROVE` outcome. Existing PAPER/runtime/database/deployment behavior remains unchanged.
 
-### Rollback
-Repository-only revert; S0-S7 and PAPER behavior remain unchanged.
+### Rollback path
+Repository-only revert of the S8 merge. S0-S7, existing PAPER behavior, runtime and database remain unchanged.
 
 ### Exact next gate
-Read Council/Red Team/Arbiter research and current implementations → define S8 acceptance criteria in ACTIVE_SPRINT before implementation → implement one bounded governance contract with deterministic tests → verify exact commit and both required CI → merge only if green.
+Record relevant research IDs/precedents in an S8 research review → implement one bounded governance contract + deterministic tests → verify exact PR head and both required CI → merge only if green → no deployment unless a separately verified runtime integration requires it.
+
+## Research review constraints
+Pending bounded review of AIML-002/003/004/005/006, DI-003/004, EV-006 and S7 precedent. No research numerical cutoff or model output becomes authority without a separate experiment/adoption record.
 
 ## Current deployment state
-No deployment required for BOT-S7. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
+No S8 deployment is authorized or required by this bounded repository package. Existing legacy Railway/PAPER services remain unchanged. BOT repository/runtime/database separation remains preserved.
 
-## Cycle exit record
-- Phase: **BOT-S7 COMPLETE / MERGED**
-- Tests: Black Oracle CI #1018 PASS; Trading CI #1197 PASS
-- Blockers: none for S7
-- Alpha status: S0-S7 complete; S8 queued
-- Single next priority: **BOT-S8 Council / Red Team / Arbiter governance contract**
+## Cycle state
+- Phase: **BOT-S8 PLAN COMPLETE / RESEARCH REVIEW NEXT**
+- Blockers: none for bounded repository contract
+- Alpha status: S0-S7 complete; S8 active
+- Single next priority: **complete S8 research review, implement deterministic governance fail-closed contract, then verify required CI**
