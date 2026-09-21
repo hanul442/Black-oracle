@@ -7,7 +7,10 @@ import { toUpbitUniverseSnapshotRecord } from './upbitUniverseSnapshotRecord';
 
 const makeRecord = (observedAt: string) =>
   toUpbitUniverseSnapshotRecord(
-    buildUpbitKrwUniverse([{ market: 'KRW-BTC', korean_name: '비트코인', english_name: 'Bitcoin' }], observedAt),
+    buildUpbitKrwUniverse(
+      [{ market: 'KRW-BTC', korean_name: '비트코인', english_name: 'Bitcoin' }],
+      new Date(observedAt),
+    ),
     new Date(observedAt),
   );
 
