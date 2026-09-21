@@ -37,6 +37,7 @@ export * from './protectionManager';
 export * from './protectionPlan';
 export * from './regime';
 export * from './risk';
+export * from './runtimeOwnership';
 export * from './sectorStrengthRuntime';
 export * from './signalFusion';
 export * from './snapshot';
