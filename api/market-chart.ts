@@ -1,5 +1,6 @@
 import legacyMarketChartHandler from './market-chart-kis';
 import { loadYahooKrxCandles } from '../server/trading/equity/yahooKrxMarketData';
+import { loadLseCandles, lseConfigured } from '../server/market/lseMarketData';
 
 const DAY_UNIT = 1_440;
 const MAX_CHART_UNIT = 43_200;
@@ -66,6 +67,69 @@ const runKisWithTruthContract = async (request: any, response: any, unit: number
  *   claims execution eligibility.
  */
 export default async function handler(request: any, response: any) {
+  const provider = String(request.query?.provider ?? '').trim().toUpperCase();
+  if (request.method === 'GET' && provider === 'LSE') {
+    response.setHeader('Cache-Control', 'private, max-age=5');
+    const symbol = String(request.query?.symbol ?? '').trim();
+    const unit = boundedInt(request.query?.unit, 60, 1, MAX_CHART_UNIT);
+    const count = boundedInt(request.query?.count, 120, 12, 5_000);
+    const dataset = String(request.query?.dataset ?? '').trim() || undefined;
+
+    if (!symbol) {
+      return response.status(400).json({
+        success: false,
+        available: false,
+        provider: 'LONDON_STRATEGIC_EDGE',
+        error: 'symbol is required when provider=LSE.',
+      });
+    }
+    if (!lseConfigured()) {
+      return response.status(503).json({
+        success: false,
+        available: false,
+        configured: false,
+        provider: 'LONDON_STRATEGIC_EDGE',
+        error: 'LSE_API_KEY is not configured.',
+      });
+    }
+
+    try {
+      const chart = await loadLseCandles({
+        symbol,
+        timeframeMinutes: unit,
+        count,
+        dataset,
+        start: String(request.query?.start ?? '').trim() || undefined,
+        end: String(request.query?.end ?? '').trim() || undefined,
+      });
+      const observedAt = chart.candles.at(-1)?.timestamp ?? null;
+      return response.status(200).json({
+        success: true,
+        available: chart.candles.length >= 2,
+        market: `LSE:${chart.symbol}`,
+        symbol: chart.symbol,
+        source: chart.source,
+        assetClass: dataset ? dataset.toUpperCase() : 'MULTI_ASSET',
+        configured: true,
+        unit,
+        timeframe: chart.timeframe,
+        count: chart.candles.length,
+        asOf: observedAt,
+        candles: chart.candles,
+        marketData: chart.truth,
+        warning: 'LSE Vault REST is enabled for internal research/model inputs. It does not grant execution authority and must not be republished as a downstream bulk feed.',
+      });
+    } catch (error) {
+      return response.status(502).json({
+        success: false,
+        available: false,
+        configured: true,
+        provider: 'LONDON_STRATEGIC_EDGE',
+        error: error instanceof Error ? error.message : 'Unknown LSE market data error.',
+      });
+    }
+  }
+
   const searchMode = String(request.query?.search ?? '') === '1' || request.query?.q != null;
   const market = String(request.query?.market ?? '').trim().toUpperCase();
   const isKrx = /^KRX-\d{6}$/.test(market);
