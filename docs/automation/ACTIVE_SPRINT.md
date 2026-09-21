@@ -46,7 +46,7 @@ Research disposition: **ADOPT-SCHEMA-CANDIDATE for DI-001; TEST/REFERENCE constr
 - BOT-S0 Repository boundary bootstrap — **DONE**
 - BOT-S1 Scanner input boundary — **DONE / MERGED #211**
 - BOT-S2 Independent runtime/database boundary — **DONE / MERGED #212**
-- BOT-S3 Canonical validation experiment manifest — **IN PROGRESS**
+- BOT-S3 Canonical validation experiment manifest — **IMPLEMENTED / CI GATE**
 - BOT-S4 Validation stage result/evaluation records — **QUEUED**
 
 ## Safety invariants
@@ -67,11 +67,11 @@ Research disposition: **ADOPT-SCHEMA-CANDIDATE for DI-001; TEST/REFERENCE constr
 
 ## Cycle exit record
 
-- Phase: **PLAN + RESEARCH REVIEW COMPLETE → IMPLEMENT**
-- Completed this cycle so far: verified S2 CI; merged #212; recorded S3 objective, acceptance criteria, safety boundary, rollback and research constraints before implementation
+- Phase: **IMPLEMENT + DOCUMENT COMPLETE → CI VERIFY GATE**
+- Completed this cycle: verified/merged S2; added canonical `bot.validation-experiment.v1`; added fail-closed validation tests; exported contract; recorded research lineage
 - Research reviewed: DI-001, DI-003, DI-004, EV-001, Q-002, AIML-005, AIML-006
-- Validation: S2 Black Oracle CI #992 PASS; Trading CI #1171 PASS
-- PR: #212 MERGED; S3 PR pending
+- Validation: repository CI will run on the S3 PR; merge is prohibited until Black Oracle CI and Trading CI are green
+- PR: S3 PR pending creation from `bot-s3-validation-manifest`
 - Deployment: none
-- Blockers: independent infrastructure requires a separate provider/credential mutation gate but does not block validation-core contracts
-- Next checkpoint: implement `bot.validation-experiment.v1` + fail-closed tests
+- Blockers: independent infrastructure requires a separate provider/credential mutation gate but does not block S3
+- Next checkpoint: open S3 PR → verify CI → merge only if green → BOT-S4 stage-result/evaluation records
