@@ -8,6 +8,7 @@ import {
   BrainCircuit,
   ChevronRight,
   FlaskConical,
+  GitBranch,
   Home,
   RefreshCw,
   Search,
@@ -52,7 +53,7 @@ const amber = '#a46b17';
 const blue = '#3767d6';
 const card = 'rounded-[22px] border border-[#e7e9ed] bg-white';
 
-type View = 'command' | 'markets' | 'oracle' | 'trade' | 'lab' | 'system';
+type View = 'command' | 'markets' | 'oracle' | 'trade' | 'lab' | 'system' | 'ledger';
 type Detail =
   | { kind: 'event'; event: LedgerEvent }
   | { kind: 'decision'; decision: DecisionTapeItem }
@@ -78,12 +79,11 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { id: 'command', label: 'Command', short: 'Command', icon: Home },
-  { id: 'markets', label: 'Markets', short: 'Markets', icon: Search },
-  { id: 'oracle', label: 'Oracle', short: 'Oracle', icon: BrainCircuit },
-  { id: 'trade', label: 'Trade', short: 'Trade', icon: WalletCards },
-  { id: 'lab', label: 'Lab', short: 'Lab', icon: FlaskConical },
-  { id: 'system', label: 'System', short: 'System', icon: Settings2 },
+  { id: 'command', label: 'Overview', short: 'Overview', icon: Home },
+  { id: 'lab', label: 'Strategy Lab', short: 'Lab', icon: FlaskConical },
+  { id: 'trade', label: 'Trading', short: 'Trading', icon: WalletCards },
+  { id: 'system', label: 'Risk', short: 'Risk', icon: ShieldCheck },
+  { id: 'ledger', label: 'Ledger', short: 'Ledger', icon: GitBranch },
 ];
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -159,12 +159,13 @@ const NamedPositionSummary = ({ position, portfolioEquity, compact = false }: { 
 
 const Header = ({ view, operations, loading, refresh, goSystem }: { view: View; operations: OperationsPayload | null; loading: boolean; refresh: () => void; goSystem: () => void }) => {
   const meta: Record<View, { eyebrow: string; title: string }> = {
-    command: { eyebrow: 'BLACK ORACLE', title: 'Command Center' },
+    command: { eyebrow: 'BLACK ORACLE', title: 'Overview' },
     markets: { eyebrow: 'MARKET INTELLIGENCE', title: 'Markets' },
     oracle: { eyebrow: 'DECISION ENGINE', title: 'Oracle' },
-    trade: { eyebrow: 'PAPER EXECUTION', title: 'Trade' },
-    lab: { eyebrow: 'STRATEGY FACTORY', title: 'Lab' },
-    system: { eyebrow: 'RUNTIME CONTROL', title: 'System' },
+    trade: { eyebrow: 'PAPER EXECUTION', title: 'Trading' },
+    lab: { eyebrow: 'STRATEGY FACTORY', title: 'Strategy Lab' },
+    system: { eyebrow: 'RISK & RUNTIME', title: 'Risk' },
+    ledger: { eyebrow: 'CANONICAL SYSTEM OF RECORD', title: 'Ledger' },
   };
   return <header className="sticky top-0 z-40 border-b border-[#e9ebee] bg-[#f6f7f9]/90 backdrop-blur-2xl">
     <div className="mx-auto flex max-w-[1180px] items-center justify-between px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] lg:px-7 lg:py-5">
@@ -189,7 +190,7 @@ const DesktopRail = ({ view, setView, operations }: { view: View; setView: (view
 );
 
 const MobileNav = ({ view, setView }: { view: View; setView: (view: View) => void }) => {
-  const items = navItems.filter((item) => item.id !== 'system');
+  const items = navItems;
   return <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[#e5e8eb] bg-white/96 pb-[max(env(safe-area-inset-bottom),7px)] backdrop-blur-xl lg:hidden"><div className="mx-auto grid max-w-[720px] grid-cols-5 px-2 pt-2">{items.map(({ id, short, icon: Icon }) => { const active = id === view; return <button key={id} type="button" onClick={() => setView(id)} className="flex min-h-12 flex-col items-center justify-center gap-1 active:scale-[0.97]"><Icon className="h-[18px] w-[18px]" style={{ color: active ? ink : '#a0a6ae' }} /><span className="text-[8px] font-semibold" style={{ color: active ? ink : '#a0a6ae' }}>{short}</span></button>; })}</div></nav>;
 };
 
@@ -346,15 +347,105 @@ const LabView = ({ factory, openDetail }: { factory: FactoryStatusPayload | null
   </main>;
 };
 
+const LedgerView = ({ events, openDetail }: { events: LedgerEvent[]; openDetail: (detail: Detail) => void }) => {
+  const [filter, setFilter] = useState<string>('ALL');
+  const [query, setQuery] = useState('');
+
+  const types = useMemo(() => ['ALL', ...Array.from(new Set(events.map((event) => event.eventType)))], [events]);
+  const rows = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return [...events]
+      .filter((event) => filter === 'ALL' || event.eventType === filter)
+      .filter((event) => {
+        if (!normalized) return true;
+        return [event.eventName, event.summary, event.market, event.strategyId, event.source, event.authority]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(normalized);
+      })
+      .sort((a, b) => b.occurredAt - a.occurredAt || (b.recordedAt ?? 0) - (a.recordedAt ?? 0));
+  }, [events, filter, query]);
+
+  const replayable = events.filter((event) =>
+    typeof event.trace?.traceId === 'string'
+    || typeof event.links?.traceId === 'string'
+    || typeof event.links?.entryTraceId === 'string').length;
+  const warnings = events.filter((event) => event.severity === 'WARN' || event.severity === 'ERROR' || event.severity === 'CRITICAL').length;
+  const authorities = new Set(events.map((event) => event.authority).filter(Boolean)).size;
+
+  return <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-4 lg:px-7 lg:pb-10 lg:pt-6">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <AnimatedCard><div className={cn(card, 'p-4')}><Metric label="Canonical events" value={events.length} /></div></AnimatedCard>
+      <AnimatedCard index={1}><div className={cn(card, 'p-4')}><Metric label="Replayable trace" value={replayable} accent={replayable ? green : undefined} /></div></AnimatedCard>
+      <AnimatedCard index={2}><div className={cn(card, 'p-4')}><Metric label="Warn / Error" value={warnings} accent={warnings ? amber : green} /></div></AnimatedCard>
+      <AnimatedCard index={3}><div className={cn(card, 'p-4')}><Metric label="Authority classes" value={authorities} /></div></AnimatedCard>
+    </div>
+
+    <Section title="Canonical event ledger" subtitle="System of Record를 시간순으로 봅니다. trace가 있다는 사실과 Decision Replay가 검증됐다는 사실은 구분합니다.">
+      <div className={cn(card, 'overflow-hidden')}>
+        <div className="border-b border-[#eef0f2] p-3">
+          <label className="flex min-h-11 items-center gap-2 rounded-[14px] bg-[#f6f7f9] px-3">
+            <Search className="h-4 w-4 text-[#9098a1]" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="event, market, strategy, source 검색"
+              className="min-w-0 flex-1 bg-transparent text-[10px] text-[#3f464e] outline-none placeholder:text-[#9ca3ab]"
+            />
+          </label>
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            {types.map((type) => <button key={type} type="button" onClick={() => setFilter(type)} className={cn(
+              'shrink-0 rounded-full border px-2.5 py-1.5 text-[8px] font-semibold',
+              filter === type ? 'border-[#111318] bg-[#111318] text-white' : 'border-[#e5e8eb] bg-white text-[#7e8790]',
+            )}>{type}</button>)}
+          </div>
+        </div>
+
+        <div className="divide-y divide-[#eef0f2]">
+          {rows.length ? rows.slice(0, 200).map((event) => {
+            const traceId = typeof event.trace?.traceId === 'string'
+              ? event.trace.traceId
+              : typeof event.links?.traceId === 'string'
+                ? event.links.traceId
+                : typeof event.links?.entryTraceId === 'string'
+                  ? event.links.entryTraceId
+                  : null;
+            return <button key={event.id} type="button" onClick={() => openDetail({ kind: 'event', event })} className="flex min-h-[68px] w-full items-start gap-3 px-4 py-3 text-left active:bg-[#fafbfb]">
+              <StatusDot status={event.severity === 'INFO' ? 'PASS' : event.severity} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5 text-[8px] font-semibold text-[#8e969f]">
+                  <span>{event.eventType}</span>
+                  {event.market && <><span>·</span><MarketName market={event.market} /></>}
+                  <span>· {dateTime(event.occurredAt)}</span>
+                </div>
+                <div className="mt-1 line-clamp-2 text-[10px] font-medium leading-5 text-[#454c54]">{event.summary || event.eventName}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[8px] text-[#a0a7ae]">
+                  <span>{event.source}</span><span>·</span><span>{event.authority}</span>
+                  {traceId && <><span>·</span><span className="text-[#5673a8]">TRACE AVAILABLE</span></>}
+                </div>
+              </div>
+              <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-[#b7bcc2]" />
+            </button>;
+          }) : <div className="p-6 text-center text-[10px] text-[#9299a2]">조건에 맞는 canonical event가 없습니다.</div>}
+        </div>
+      </div>
+    </Section>
+  </main>;
+};
+
 const SystemView = ({ operations, events, factory }: { operations: OperationsPayload | null; events: LedgerEvent[]; factory: FactoryStatusPayload | null }) => {
   const lastCycle = operations?.loop?.lastCycle;
+  const recentDecisions = operations?.decisionTape ?? [];
+  const riskRejects = recentDecisions.filter((decision) => String(decision.riskDisposition ?? '').toUpperCase() === 'REJECT').length;
   return <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-4 lg:px-7 lg:pb-10 lg:pt-6">
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
-      ['Runtime', operations?.status ?? 'UNKNOWN', operations?.loop?.stale ? red : green],
-      ['Canonical events', String(events.length), ink],
-      ['Evidence active', String(operations?.ingestion?.evidenceActive ?? '—'), ink],
-      ['Factory', factory?.latestRun ? 'AVAILABLE' : 'WAITING', factory?.latestRun ? green : amber],
+      ['Current drawdown', pct(operations?.portfolio?.currentDrawdownPct), (operations?.portfolio?.currentDrawdownPct ?? 0) > 0 ? amber : green],
+      ['Daily P&L', pct(operations?.portfolio?.dailyPnlPct, true), (operations?.portfolio?.dailyPnlPct ?? 0) < 0 ? red : green],
+      ['Open positions', String(operations?.portfolio?.openPositions?.length ?? 0), ink],
+      ['Risk rejects', String(riskRejects), riskRejects ? amber : green],
     ].map(([label, value, accent], index) => <AnimatedCard key={label as string} index={index}><div className={cn(card, 'p-4')}><Metric label={label as string} value={value} accent={accent as string} /></div></AnimatedCard>)}</div>
+    <p className="mt-3 text-[9px] leading-4 text-[#8d949d]">표시는 현재 runtime에서 관측된 값만 사용합니다. UI가 별도 Risk 임계값이나 거래 권한을 추정하지 않습니다.</p>
     <Section title="Runtime health" subtitle="상태의 의미를 숨기지 않고 원인과 수치를 같이 보여줍니다."><div className={cn(card, 'p-5')}><div className="grid grid-cols-2 gap-x-5 gap-y-5 lg:grid-cols-4"><Metric label="Cycle count" value={operations?.loop?.cycleCount ?? '—'} /><Metric label="Cycle age" value={operations?.loop?.ageMs == null ? '—' : `${Math.round(operations.loop.ageMs / 1000)}s`} /><Metric label="Scanned" value={lastCycle?.scanned ?? '—'} /><Metric label="Errors" value={lastCycle?.errors?.length ?? '—'} accent={(lastCycle?.errors?.length ?? 0) > 0 ? red : undefined} /><Metric label="Evidence requests" value={operations?.ingestion?.evidenceRequests ?? '—'} /><Metric label="NARS inbox" value={operations?.ingestion?.narsInboxRecent ?? '—'} /><Metric label="Council mode" value={operations?.council?.mode ?? '—'} /><Metric label="Execution authority" value={operations?.council?.executionAuthority ? 'ON' : 'OFF'} accent={operations?.council?.executionAuthority ? red : green} /></div></div></Section>
     <Section title="Execution boundary" subtitle="현재 UI는 관측·Paper 운용용이며 live 권한을 암시하지 않습니다."><div className={cn(card, 'p-5')}><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#59626c]" /><div><div className="text-[12px] font-semibold text-[#2c3137]">Paper first · explicit authority</div><p className="mt-2 text-[10px] leading-5 text-[#858d96]">표시용 종목명은 canonical market ID를 대체하지 않습니다. S1R2 qualification runtime, canonical ledger, Evidence/Council/Strategy lineage와 주문 권한은 그대로 유지됩니다.</p></div></div></div></Section>
   </main>;
@@ -447,6 +538,7 @@ export const BlackOracleMobileApp = () => {
     : view === 'oracle' ? <OracleView operations={operations} events={events} openDetail={setDetail} />
     : view === 'trade' ? <TradeView operations={operations} openMarket={setMarket} openDetail={setDetail} />
     : view === 'lab' ? <LabView factory={factory} openDetail={setDetail} />
+    : view === 'ledger' ? <LedgerView events={events} openDetail={setDetail} />
     : <SystemView operations={operations} events={events} factory={factory} />;
 
   return <MarketIdentityProvider markets={identityMarkets}>
