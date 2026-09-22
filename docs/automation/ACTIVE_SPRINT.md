@@ -3,46 +3,43 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S14 COMPLETE / UI NORMALIZATION COMPLETE / PRODUCT INTEGRATION QUEUED**
+Status: **BOT-A15 ACTIVE — CANONICAL DECISION REPLAY UI**
 
-## Completed
+## Completed baseline
 - BOT-S0 through BOT-S14 complete.
-- BOT-S14 canonical order economics ↔ deterministic Risk binding merged as PR #229 / `66681b41856fe9fcff96df388167215f4e37bbdb`.
-- final S14 head `fa61c729d75aae497dcf10fc480fd4f800fc1dfe` passed Black Oracle CI + Trading CI.
-- deterministic Risk now owns exact canonical order economics before Upbit dry-run; post-Risk caller economics injection is removed.
-- PAPER/LIVE_SHADOW remain the only Alpha modes; submission/execution/capital/live authorities remain false.
-- stale Thinking Orbs PR #222 was normalized onto post-S14 main as a single clean UI commit in PR #230.
-- PR #230 head `7b1476c6607594a02e6db283711b6036328d9258` passed Black Oracle CI + Trading CI and squash-merged as `78183f474db0938dce945d72f7a1fc7aca2bee01`.
-- original PR #222 was closed as **SUPERSEDED**.
-- boot/collect/reason/council/compose/idle runtime states now map to Thinking Orbs while preserving reduced-motion, hidden-tab/offscreen pause, DPR cap, theme, and ARIA behavior.
+- S14 merged as PR #229 / `66681b41856fe9fcff96df388167215f4e37bbdb`.
+- Thinking Orbs normalized and merged as PR #230 / `78183f474db0938dce945d72f7a1fc7aca2bee01`.
+- current product shell already exposes live-backed Command/Markets/Oracle/Trade/Lab/System views from `/api/trading-status`, `/api/strategy-factory-status`, and `/api/events`.
+
+## BOT-A15 — canonical Decision Replay UI
+
+### Gap found
+The Instrument Cockpit labelled a market-filtered event list as **Decision Replay**, but it did not call the existing canonical `/api/decision-replay` endpoint. That risks presenting contextual events as if they were a verified trace.
+
+### Objective
+Bind the Instrument Cockpit to the canonical Decision Replay API only when a replayable `traceId` exists. When no replayable trace is present, label the list truthfully as market event context rather than synthesizing lineage.
+
+### Acceptance criteria
+- detect replayable `traceId` / linked trace identity only from canonical event trace/link fields
+- call `GET /api/decision-replay` with the exact trace and runtime identity
+- render canonical replay only when API reports `canonical=true` and `found=true`
+- show replay version, requested trace, and `completeThrough`
+- if trace is absent or replay is unavailable, retain the market event list but explicitly label it **Market event context**
+- no inferred trace IDs, no fabricated lineage, no mutation of trading/runtime state
+- preserve existing Instrument Cockpit, trade map, Evidence/Council, chart, mobile/Fold behavior
+- Black Oracle CI + Trading CI must both pass before merge
 
 ## Safety boundary
-Current integration work is presentation/runtime-observability only. Do not expand trading authority, bypass deterministic Risk, introduce broker credentials, or mutate protected PAPER history.
+Read-only UI integration only. No order path, Risk, strategy, portfolio, broker, database, PAPER history, or execution authority changes.
 
-## Next priority — Alpha product integration
-Stop adding execution-contract layers unless a concrete defect requires it. Audit the actual BOT product surfaces against the 10-day Alpha plan:
-- Overview
-- Strategy Lab
-- Trading
-- Risk
-- Ledger
-- mobile/Fold full-page detail
-- empty/error/degraded states
-
-Select the highest-value live-backed vertical slice where backend truth already exists but the product does not expose it clearly. Prefer one coherent user flow over another isolated contract. All displayed metrics/state must come from real runtime/read-model fields or remain explicitly unavailable.
-
-## Exact next gate
-1. inspect current main UI and runtime-backed adapters for the five Alpha BOT surfaces
-2. identify the largest truth/coverage gap
-3. plan one bounded product-integration slice with acceptance criteria and rollback
-4. implement only after confirming no duplication with existing open/stale PRs
-5. require Black Oracle CI + Trading CI and mobile/readability verification before merge
+## Rollback
+Repository-only revert/close of BOT-A15 PR. Existing API/runtime contracts remain unchanged.
 
 ## Current deployment state
-Legacy Railway/PAPER services remain unchanged by S14 and Thinking Orbs normalization.
+Legacy Railway/PAPER services unchanged. No deployment/database mutation is required.
 
 ## Cycle exit record
-- Phase: **EXECUTION SAFETY COMPLETE → PRODUCT INTEGRATION**
-- Blocker: none for repository product work
-- Alpha status: S0-S14 complete; Thinking Orbs normalized and merged
-- Single next priority: **audit BOT Alpha product surfaces and implement the highest-value runtime-backed vertical slice**
+- Phase: **PRODUCT TRUTH AUDIT → IMPLEMENT**
+- Blocker: CI pending
+- Alpha status: execution-safety baseline complete; product truth integration active
+- Single next priority: **verify canonical replay UI exact-head CI and merge only if green**
