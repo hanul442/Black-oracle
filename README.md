@@ -4,6 +4,8 @@
 
 BLACK ORACLE BOT (BOT) is the execution-oriented product in the BLACK ORACLE project family. It is intentionally separated from BLACK ORACLE REPORT so trading authority, runtime state, strategy qualification, broker integration, and risk controls remain isolated from research/report generation.
 
+The current family-wide Alpha delivery authority is [`docs/ALPHA_ROADMAP.md`](docs/ALPHA_ROADMAP.md). Older roadmap and master-plan documents are historical unless that file activates them.
+
 > **Market → Strategy → Validation → Decision → Risk → Execution → Outcome → Replay**
 
 ## Alpha v0.1

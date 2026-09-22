@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **BOT-A18 REPOSITORY COMPLETE / FINAL DOCS CI GATE**
+Status: **BOT-A18 MERGED / FOUNDATION CLOSURE ACTIVE**
 
 ## Completed baseline
 - BOT-S0 through BOT-S14 complete.
@@ -34,17 +34,20 @@ Exact implementation head before documentation closeout: `0887fef3534e956f4a9dce
 A18 is observability/presentation truth only. No broker/Risk/order/capital/LIVE authority expansion, credential exposure, protected PAPER-history mutation, strategy promotion change, or database migration.
 
 ## Runtime truth
-Repository remediation is complete, but deployment is a separate gate. Current Railway services must be re-attested for exact deployed revision, scheduler ownership, and single-writer PAPER semantics before runtime Foundation is called complete.
+Repository remediation is complete. Runtime evidence is recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`; the family-wide canonical plan is `docs/ALPHA_ROADMAP.md`.
+
+- A18 web deployment at exact main SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` is attested; Railway healthcheck and public `/health` pass, while protected APIs remain authentication-gated.
+- Supabase data-plane reads timed out, so scheduler/writer/checkpoint lineage remains UNKNOWN.
+- no protected PAPER service, database, scheduler, risk limit, or qualification history was changed.
 
 ## Exact next gate
-Run docs-inclusive exact-head Black Oracle CI + Trading CI. If both are GREEN and PR #236 remains mergeable, merge A18. Then perform runtime Foundation closure:
-1. attest exact BOT deployed revision
-2. attest one authoritative PAPER scheduler/writer per runtime
-3. provision and verify independent BOR runtime/storage boundary
-4. reconcile stale issues/PRs and publish one canonical Alpha roadmap
+1. complete authenticated A18 source-health payload smoke without exposing credentials;
+2. recover read-only Supabase observability and prove one authoritative scheduler/writer/lineage;
+3. verify the isolated BOR runtime and preserve the durable-storage blocker truth;
+4. hand the completed Foundation evidence set to Astra for the final cross-system audit.
 
 ## Cycle state
-- Phase: **A18 DOCUMENT → FINAL CI / MERGE**
+- Phase: **FOUNDATION RUNTIME ATTESTATION**
 - Repository Alpha source-truth: **PASS**
-- Runtime Foundation: **PENDING ATTESTATION**
-- Single next priority after merge: **Foundation runtime closure**
+- Runtime Foundation: **BLOCKED / PARTIAL EVIDENCE**
+- Single next priority: **exact runtime and single-writer proof**
