@@ -15,11 +15,11 @@ This file is the single current Alpha roadmap for the BLACK ORACLE family. Older
 
 ## Current runtime truth
 
-- BOT repository main: `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` (A18 merged).
+- BOT A18 runtime code baseline: `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; later documentation-only Foundation commits do not change that runtime baseline.
 - BOT A18 exact PR head `fd4731384226d62645295420d43262309ee0b5a8` passed Black Oracle CI run `35709996684` and Trading CI run `35709996675`.
 - Railway contains four legacy BOT services. Their configured sources and deployed SHAs are recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`.
 - The production Supabase project reports `ACTIVE_HEALTHY` at the management plane, but direct SQL/control-plane reads timed out during Foundation Closure. PAPER scheduler/writer lineage therefore remains **UNKNOWN**, not PASS.
-- BOR repository main: `9118fe77780b26fe1901dc76bcf0add8231d29e0`. Independent runtime and durable artifact persistence remain Foundation gates.
+- BOR S21 runtime code baseline: `9118fe77780b26fe1901dc76bcf0add8231d29e0`; later Foundation build/test documentation does not establish a deployed runtime. Independent runtime and durable artifact persistence remain Foundation gates.
 
 ## Active sprint
 
