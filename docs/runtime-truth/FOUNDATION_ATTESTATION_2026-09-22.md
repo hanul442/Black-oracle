@@ -1,61 +1,65 @@
 # Foundation Runtime Attestation — 2026-09-22
 
-Disposition: **BLOCKED / BOT web revision attested**
+Disposition: **BLOCKED / BOT web revision attested / independent BOT runtime capacity-blocked**
 
 ## Repository gate
 
 | Repository | Runtime code baseline | Gate |
 | --- | --- | --- |
-| `hanul442/black_oracle_bot` | `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` | A18 merged; exact PR head `fd473138...` passed Black Oracle CI `35709996684` and Trading CI `35709996675`. Five-surface truth audit PASS. Later Foundation commits are documentation-only. |
+| `hanul442/black_oracle_bot` | `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` | A18 merged; exact PR head `fd473138...` passed Black Oracle CI and Trading CI. Five-surface truth audit PASS. Later Foundation commits are documentation-only. |
 | `hanul442/black_oracle_report` | `9118fe77780b26fe1901dc76bcf0add8231d29e0` | S21 merged. Later Foundation changes add build/test closure but no deployed runtime. |
 
 ## Railway BOT runtime matrix
 
 Project: `Black Oracle`, environment: production. Provider UUIDs and deployment UUIDs are intentionally excluded from this public document.
 
-| Service | Purpose / authority | Configured source | Actual deployed SHA before closure | Runtime/deployment evidence | Canonical PAPER mutation |
-| --- | --- | --- | --- | --- | --- |
-| `black-oracle-web` | Web/API gateway; scheduler-authenticated PAPER-cycle route exists | `hanul442/Black-oracle`, `main` | `d2b6d8626b1d34d5381c38dac49153354e4b2e7f` | startup showed qualification runtime profile | Candidate writer when targeted; not proven read-only |
-| `black-oracle-paper-vnext` | protected qualification PAPER runtime | repo `hanul442/Black-oracle`, branch `main`, configured historical pin | `8933516036f0910634fd53e97df1e81cc54637ea` | recent cycles failed checkpoint persistence | Yes; observed cycle invocations, but latest valid write unknown |
-| `black-oracle-paper-s2-shadow` | shadow PAPER / KRX research producer | repo `hanul442/Black-oracle`; branch not explicit | `8c2f27aa53345a9738847e05f204cd38cf393d02` | repeated canonical event append timeout/522 | Shadow state/event writer candidate |
-| `black-oracle-paper-v9-multiasset` | multi-asset PAPER / KRX research producer | repo `hanul442/Black-oracle`; branch not explicit | `8c2f27aa53345a9738847e05f204cd38cf393d02` | repeated canonical event append timeout/522 | PAPER/event writer candidate |
+| Service | Purpose / authority | Configured source | Runtime/deployment evidence | Canonical PAPER mutation |
+| --- | --- | --- | --- | --- |
+| `black-oracle-web` | Web/API gateway; scheduler-authenticated PAPER-cycle route exists | `hanul442/Black-oracle`, `main` | legacy runtime; A18 web deployment was separately attested | Candidate writer when targeted; not proven read-only |
+| `black-oracle-paper-vnext` | protected qualification PAPER runtime | `hanul442/Black-oracle`, `main`; service config exposes a historical source commit | one replica; `/health`; qualification variables present | Yes; writer candidate |
+| `black-oracle-paper-s2-shadow` | shadow PAPER / KRX research producer | `hanul442/Black-oracle`; branch not explicit | one replica; no Railway cron | Shadow state/event writer candidate |
+| `black-oracle-paper-v9-multiasset` | multi-asset PAPER / KRX research producer | `hanul442/Black-oracle`; branch not explicit | one replica; `/health`; no Railway cron | PAPER/event writer candidate |
 
-All four services report one Railway replica and no Railway cron schedule. Supabase is the documented scheduler/control plane; S2/V9 also run in-process KRX research scheduling. `SUCCESS` is not treated as revision or lineage proof.
+All existing PAPER services remain legacy `hanul442/Black-oracle` services. None is sourced from the independent `hanul442/black_oracle_bot` repository.
+
+### FOUNDATION-R1 independent BOT runtime provision attempt
+A new isolated Railway service named `black-oracle-bot-alpha`, sourced directly from `hanul442/black_oracle_bot` `main`, was requested without broker credentials, scheduler authority, database migration, or changes to any protected PAPER service. Railway rejected provisioning before service creation with **`Free plan resource provision limit exceeded. Please upgrade to provision more resources!`**.
+
+Result: **BLOCKED BY PROVIDER CAPACITY/PLAN**. No new service exists, no deployment occurred, and no legacy runtime was repointed or disabled. This is an infrastructure-capacity blocker, not a repository/build failure. The safe rollback is therefore a no-op.
 
 ## Safe A18 deployment
 
-The web-only A18 revision was deployed at exact SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`, preserving variables, runtime ID, scheduler, database, replicas, and risk settings. Railway reports `SUCCESS`, its configured `/` healthcheck passed, and the public `/health` endpoint returned HTTP 200 with the internal server alive. Protected read APIs returned HTTP 401 without credentials, preserving the authentication gate. The provider-side deployment and rollback identifiers are retained outside this public repository.
-
-The exact web revision gate is PASS. Authenticated source-health payload smoke remains unavailable without exposing credentials. No PAPER service deployment is authorized because changing a protected qualification runtime could contaminate evidence.
+The web-only A18 revision was previously deployed at exact SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`, preserving variables, runtime ID, scheduler, database, replicas, and risk settings. Railway health and public `/health` passed while protected read APIs remained authentication-gated. No PAPER service deployment is authorized merely from that evidence.
 
 ## Single-writer PAPER attestation
 
 | Required evidence | Observation | Status |
 | --- | --- | --- |
-| authoritative runtime ID | web and vnext startup/cycle logs both identify `black-oracle-paper-vnext-100m-v03` | BLOCKED: duplicate candidate identity |
-| scheduler target | expected in `black_oracle_trading_scheduler_config` | UNKNOWN: direct SQL timed out twice |
-| permitted writer | vnext shows real cycle invocations; web exposes the same authenticated mutation route | UNKNOWN |
-| deployed revision | captured above | PASS as observation, not freshness |
-| last valid invocation | vnext recent invocations returned HTTP 500 during checkpoint persistence | BLOCKED |
-| canonical checkpoint/event lineage | database read unavailable; S2/V9 event appends repeatedly return 522/timeouts | UNKNOWN |
-| competing candidates | web, vnext, S2, V9 plus preserved legacy Edge Function source | BLOCKED pending control-plane proof |
+| authoritative runtime ID | legacy services expose overlapping PAPER runtime identity/authority surfaces | BLOCKED |
+| scheduler target | Supabase scheduler v18 reads `black_oracle_trading_scheduler_config` at invocation time | PARTIAL: target mechanism proven; enabled row unavailable |
+| scheduler allowlist | scheduler v18 hard-allowlists web, vnext, vnext-s1r2 and s2-shadow HTTPS targets; arbitrary target URLs fail closed | PASS as source-contract evidence |
+| permitted writer | scheduler requires enabled config + approved target + per-runtime auth token before invoking `/api/trading-paper-cycle` | PARTIAL: contract proven; active row unavailable |
+| database control-plane read | direct SQL `select now()` plus scheduler-config read attempt timed out again | BLOCKED |
+| canonical checkpoint/event lineage | database read unavailable | UNKNOWN |
+| competing candidates | web/vnext/s2 remain approved scheduler targets; V9 remains a separate writer candidate outside the scheduler allowlist | BLOCKED pending control-plane proof |
 
-Disposition: **UNKNOWN / BLOCKED**. No issue may be closed and no single-writer PASS may be claimed from current evidence.
+Disposition: **UNKNOWN / BLOCKED**. Scheduler source substantially narrows the authority surface but does not prove which runtime row is currently enabled, so no single-writer PASS is claimed.
 
 ## Supabase observation
 
-- production project management state: `ACTIVE_HEALTHY`;
-- `list_tables` and `select now()` both failed with connection timeout;
-- migration/advisor reads also timed out;
-- Edge Function management API remained reachable;
+- production project `black_oracle` remains `ACTIVE_HEALTHY` at the management plane;
+- direct SQL remains unavailable with `Connection terminated due to connection timeout`;
 - `black-oracle-paper-scheduler` is ACTIVE version 18 with JWT verification;
-- production source manifest is stale for that function (records version 14), so docs/source parity needs a later verified reconciliation.
+- version 18 source was read directly from the deployed Edge Function;
+- its `APPROVED_TARGETS` map contains only the web, vnext/vnext-s1r2, and s2-shadow Railway origins;
+- it reads scheduler config and scheduler auth from Supabase REST, validates HTTPS + exact approved origin, and fails closed when config/auth/target is missing or invalid;
+- V9 is not in the scheduler v18 approved-target map, but may still have independent in-process behavior and therefore cannot be declared non-writer without runtime/database evidence.
 
-No database, cron, Edge Function, checkpoint, ledger, or scheduler mutation was performed.
+No database, cron, Edge Function, checkpoint, ledger, scheduler, broker secret, Risk limit, or qualification-history mutation was performed.
 
 ## Foundation blockers carried to final verification
 
-1. recover Supabase data-plane access and prove the exact scheduler target and writer lineage;
-2. complete authenticated A18 source-health payload smoke without exposing credentials;
-3. establish independent BOR runtime plus durable BOR-owned artifact persistence;
-4. post the final closeout only after the above evidence is available.
+1. Railway resource capacity/plan must permit one isolated `hanul442/black_oracle_bot` service before independent BOT runtime attestation can complete;
+2. recover Supabase data-plane access and read the enabled scheduler-config row to prove the exact scheduler target and writer lineage;
+3. complete authenticated A18 source-health payload smoke without exposing credentials;
+4. preserve deterministic Risk and PAPER lineage while the above remain unresolved.
