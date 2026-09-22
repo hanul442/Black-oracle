@@ -1,7 +1,7 @@
 # BOT-A15 Product Truth Review — Canonical Decision Replay UI
 
 Date: 2026-09-22
-Status: IMPLEMENTED / CI PENDING
+Status: VERIFIED / ADOPT
 Hypothesis: BOT-A15-H1
 Experiment: BOT-A15-E1
 
@@ -20,19 +20,16 @@ The product can preserve useful market context while preventing false lineage cl
 - retain market-filtered canonical events as context when a replay cannot be established
 - never synthesize a trace ID or reinterpret context as verified lineage
 
-## Acceptance
-1. trace-bearing event -> canonical replay API request
-2. verified replay -> canonical label and timeline
-3. no trace -> explicit Market event context
-4. replay failure -> explicit context/failure state, not fabricated lineage
-5. no trading/runtime/database mutation
-6. Black Oracle CI + Trading CI pass
+## Verification result
+Exact implementation/research head `599566b1defcdc0b632d55cc182e7f14f9e062a0`:
+- Black Oracle CI run #35683709498 — SUCCESS
+- Black Oracle Trading CI run #35683709801 — SUCCESS
+- PR #231 mergeable after implementation CI — true
 
-## Result
-PENDING exact-head CI.
+The integration compiles against the current mobile/Fold product shell and leaves the trading test suite green. No Risk, order, portfolio, persistence, or execution-authority code changed.
 
 ## Adopt / Reject
-PENDING.
+**ADOPT.** BOT-A15-E1 supports the hypothesis: canonical lineage is now distinguished mechanically from market context instead of being implied by the UI label.
 
 ## Authority impact
 None. Read-only product presentation only.
