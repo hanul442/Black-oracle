@@ -8,7 +8,7 @@ const dryRun: UpbitDryRunPreview = {
   contractVersion: 'bot.upbit-dry-run-reconciliation.v1', status: 'DRY_RUN', reason: 'RISK_APPROVED_DRY_RUN_ONLY',
   requestId: 'req-1', idempotencyKey: 'idem-1', mode: 'PAPER', market: 'KRW-BTC', side: 'BUY',
   quantity: 0.001, referencePrice: 100_000_000, notional: 100_000,
-  lineage: { intentId: 'intent-1', strategyId: 'strategy-1', routerDecisionId: 'router-1', governanceDecisionId: 'gov-1', riskDecisionId: 'risk-1', eventLedgerId: 'event-1', decisionReplayId: 'replay-1' },
+  lineage: { intentId: 'intent-1', strategyId: 'strategy-1', routerDecisionId: 'router-1', governanceDecisionId: 'gov-1', riskDecisionId: 'risk-1', eventLedgerId: 'event-1', decisionReplayId: 'replay-1', orderIntentFingerprint: 'order-intent-v1-fixture' },
   submissionAuthority: false, executionAuthority: false, capitalAuthority: false, liveAuthority: false,
 };
 const readiness: LiveCanaryReadinessResult = {
