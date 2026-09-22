@@ -2,38 +2,54 @@
 
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
-Repository: black_oracle_bot
-Status: **BOT-A16 VERIFIED / ADOPT — FINAL CI + MERGE GATE**
+Repository: `hanul442/black_oracle_bot`
+Status: **BOT-A16 COMPLETE / BOT-A17 QUEUED**
 
 ## Completed baseline
 - BOT-S0 through BOT-S14 complete.
-- BOT-A15 canonical Decision Replay UI merged as PR #231 / 6dbe7cf4d7d17f9af2cc4f99a3a0d679f4a688da.
+- BOT-A15 canonical Decision Replay UI merged as PR #231 / `6dbe7cf4d7d17f9af2cc4f99a3a0d679f4a688da`.
+- BOT-A16 Alpha IA + global Canonical Ledger merged as PR #232 / `bcb81ecf813c9f36325bd2035660ec07a8f754fc`.
 
-## BOT-A16 delivered
-- Overview / Strategy Lab / Trading / Risk / Ledger primary navigation
-- Markets and Oracle remain contextual drill-ins
-- global read-only canonical Ledger over /api/events
-- search/filter by event/type/market/strategy/source/authority
-- source, authority, severity and trace availability visible
-- trace availability does not imply Decision Replay; A15 remains the verified replay path
-- Risk surface uses observed drawdown, daily P&L, open positions and recent Risk rejects only
-- no invented Risk thresholds
-
-## Verification
-- exact implementation/docs head: b7cde7e18109fb6fc590ab41ba1e105c85edcb93
-- Black Oracle CI #35684257298 — **SUCCESS**
-- Black Oracle Trading CI #35684257249 — **SUCCESS**
-- PR #232 mergeable after implementation CI — **true**
-- BOT-A16-E1 — **ADOPT**
+## BOT-A16 closeout
+- Overview / Strategy Lab / Trading / Risk / Ledger are the five primary destinations.
+- Markets and Oracle remain contextual drill-ins.
+- Global Ledger is read-only over canonical `/api/events` truth with event/type/market/strategy/source/authority filtering.
+- Source, authority, severity and trace availability are visible.
+- Trace availability does not imply Decision Replay; BOT-A15 remains the verified replay path.
+- Risk surface uses observed drawdown, daily P&L, open positions and recent Risk rejects only; no invented thresholds.
+- Final exact PR head `a88ca5c4f57036d2f03d7e9d76ec87a93978ad76` passed Black Oracle CI #1067 and Black Oracle Trading CI #1245; PR was mergeable and squash-merged.
+- Research disposition: BOT-A16-E1 = **ADOPT** for the read-only product slice only; it does not grant trading authority.
 
 ## Safety boundary
-UI/IA only. No trading, Risk policy, order, strategy, database, PAPER history, broker or authority mutation.
+Alpha product integration remains read-only unless a separately approved execution package says otherwise. Never expand broker/Risk/order authority, expose broker secrets, or mutate protected PAPER history. Preserve deterministic Risk and fail closed on missing/stale execution evidence.
+
+## BOT-A17 candidate — Alpha release-readiness truth audit
+Objective: audit the now-integrated Alpha shell against canonical runtime contracts before any deployment decision.
+
+Acceptance criteria:
+- every primary surface maps to an existing canonical API/runtime source or truthfully exposes unavailable/degraded state
+- no UI label overstates execution, Risk, replay, authority, P&L, strategy promotion, or live readiness
+- PAPER behavior and lineage remain unchanged
+- repository/runtime/database separation remains explicit
+- produce a bounded release-readiness evidence record with PASS/BLOCKED findings and exact remediation links
+- no deployment, database migration, broker credential use, or LIVE authority expansion
+
+Research review requirement:
+- review the research ledger plus the precedents governing Decision Replay, evidence-only UI, deterministic Risk, canary readiness, and product truth integration
+- record IDs/experiments used; research remains evidence and cannot silently become production behavior
+
+Rollback path:
+- audit/documentation changes are additive; revert the A17 audit commit/PR if evidence is incorrect
+- do not alter the merged A16 runtime unless a separately verified defect fix is required
 
 ## Exact next gate
-Require fresh docs-inclusive Black Oracle CI + Trading CI on final PR #232 head. If both green and mergeable, squash merge.
+Read the research ledger and relevant architecture/research contracts, inspect each of the five primary surfaces against its canonical source, then open the smallest evidence-only A17 audit PR. Merge only with exact-head Black Oracle CI + Trading CI green and conflict-free.
+
+## Current deployment state
+Legacy Railway/PAPER services unchanged. No deployment/database mutation performed in A16.
 
 ## Cycle exit record
-- Phase: **VERIFY / DOCUMENT COMPLETE → FINAL CI / MERGE GATE**
-- PR: #232
-- Research result: **BOT-A16-E1 ADOPT**
-- Single next priority: **final CI, then merge if green**
+- Phase: **BOT-A16 COMPLETE → BOT-A17 QUEUED**
+- Blocker: none for repository audit work
+- Alpha status: execution safety baseline complete; product truth integration continuing toward Alpha v0.1
+- Single next priority: **A17 release-readiness truth audit**
