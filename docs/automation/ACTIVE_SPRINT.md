@@ -10,44 +10,48 @@ Status: **BOT-A18 MERGED / FOUNDATION CLOSURE ACTIVE**
 - BOT-A15 canonical Decision Replay merged.
 - BOT-A16 five-surface Alpha IA + global Canonical Ledger merged.
 - BOT-A17 release-readiness truth audit merged and identified source-health/freshness blockers.
-- BOT-A18 implements the A17 source-truth remediation across API contracts and the active Alpha shell.
+- BOT-A18 source-truth remediation merged across API contracts and the active Alpha shell.
 
-## BOT-A18 completed scope
-- canonical `OK | DEGRADED | UNAVAILABLE` source-health envelope with `observedAt`, `stale`, `verifiedEmpty`, and `error`
-- `/api/events` propagates canonical source health and fails closed on ledger-read failure
-- Strategy Factory status exposes canonical source health with source-specific freshness semantics
-- `/api/trading-status` operational Supabase reads distinguish verified-empty data from unavailable/non-OK reads
-- active shell checks HTTP success before accepting a payload
-- failed refreshes retain last-known-good data only as visibly stale/unavailable data
-- Overview / Strategy Lab / Trading / Risk / Ledger consume a source-health state
-- Ledger retains and renders coverage / health metadata instead of dropping it
-- deterministic Risk, PAPER behavior, strategy promotion, order submission, broker credentials, database schema, and LIVE authority are unchanged
+## Current work package — FOUNDATION-R1 independent BOT runtime attestation
+### Objective
+Establish a deployable runtime sourced directly from `hanul442/black_oracle_bot` without mutating the protected legacy PAPER qualification services, then attest its exact repository/deployment revision and health state.
 
-## Verification
-Exact implementation head before documentation closeout: `0887fef3534e956f4a9dce53dd0e8b046d356438`.
-- Black Oracle CI `35709793587`: **SUCCESS**
-- Black Oracle Trading CI `35709793619`: **SUCCESS**
-- prior CI diagnosis corrected: the final blocking type error was `LedgerHealthStatus` being compared with `OK`; canonical ledger health uses `HEALTHY | DEGRADED | CRITICAL`
-- five-surface source-truth re-audit recorded in `docs/audit/BOT_A18_ALPHA_SOURCE_TRUTH_REAUDIT.md`
+### Acceptance criteria
+1. Railway service source is exactly `hanul442/black_oracle_bot` on `main`.
+2. The service is isolated from legacy PAPER scheduler/writer authority and does not receive broker secrets or new financial authority.
+3. Exact deployed revision is observable and health/startup evidence is recorded.
+4. Failure to build/start/healthcheck is recorded as BLOCKED rather than worked around by weakening Risk, freshness, auth, or persistence contracts.
+5. Existing `black-oracle-paper-vnext`, `black-oracle-paper-s2-shadow`, and `black-oracle-paper-v9-multiasset` remain untouched.
 
-## Safety boundary
-A18 is observability/presentation truth only. No broker/Risk/order/capital/LIVE authority expansion, credential exposure, protected PAPER-history mutation, strategy promotion change, or database migration.
+### Safety boundary
+No unrestricted LIVE, broker credential injection, deterministic-Risk bypass, scheduler retarget, database migration, protected PAPER-history mutation, qualification reset, or legacy PAPER service disable/repoint. Missing/stale runtime evidence fails closed.
 
-## Runtime truth
-Repository remediation is complete. Runtime evidence is recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`; the family-wide canonical plan is `docs/ALPHA_ROADMAP.md`.
+### Rollback path
+The new BOT runtime is additive and isolated. If deployment is unhealthy, leave legacy services unchanged and remove/disable only the new isolated service in a later explicitly verified rollback; do not alter canonical PAPER lineage.
 
-- A18 web deployment at exact main SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` is attested; Railway healthcheck and public `/health` pass, while protected APIs remain authentication-gated.
-- Supabase data-plane reads timed out, so scheduler/writer/checkpoint lineage remains UNKNOWN.
-- no protected PAPER service, database, scheduler, risk limit, or qualification history was changed.
+### Research / precedent constraints
+- `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`: existing Railway services are legacy `hanul442/Black-oracle` runtimes; single-writer proof remains BLOCKED.
+- BOT-S9 deterministic Risk boundary and BOT-S11 canary-readiness precedent remain binding: runtime readiness is not execution authority.
+- A17/A18 source-truth precedent remains binding: unavailable runtime evidence must be represented as unavailable, never inferred as healthy.
+- This package operationalizes existing architecture/runtime separation only; it does not promote research-only behavior into trading production.
+
+## Verification baseline
+A18 merge commit: `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`.
+- A18 exact PR head passed Black Oracle CI and Trading CI before merge.
+- Repository Alpha source-truth: PASS.
+- Existing runtime Foundation: BLOCKED / partial evidence.
+
+## Runtime truth before FOUNDATION-R1
+Railway project `Black Oracle`, production environment currently exposes four legacy services. `black-oracle-paper-vnext`, `black-oracle-paper-s2-shadow`, and `black-oracle-paper-v9-multiasset` are all sourced from `hanul442/Black-oracle`; none is an independent `hanul442/black_oracle_bot` runtime. Single-writer scheduler/checkpoint lineage remains unproven and therefore BLOCKED.
 
 ## Exact next gate
-1. complete authenticated A18 source-health payload smoke without exposing credentials;
-2. recover read-only Supabase observability and prove one authoritative scheduler/writer/lineage;
-3. verify the isolated BOR runtime and preserve the durable-storage blocker truth;
-4. hand the completed Foundation evidence set to Astra for the final cross-system audit.
+1. provision one isolated Railway service directly from `hanul442/black_oracle_bot` main;
+2. verify build/start/health and exact deployed revision without adding broker/scheduler authority;
+3. record runtime evidence in the Foundation attestation;
+4. only then continue read-only single-writer/control-plane proof.
 
 ## Cycle state
-- Phase: **FOUNDATION RUNTIME ATTESTATION**
+- Phase: **FOUNDATION-R1 INDEPENDENT BOT RUNTIME**
 - Repository Alpha source-truth: **PASS**
-- Runtime Foundation: **BLOCKED / PARTIAL EVIDENCE**
-- Single next priority: **exact runtime and single-writer proof**
+- Runtime Foundation: **BLOCKED / WORK PACKAGE ACTIVE**
+- Single next priority: **isolated BOT runtime provision + exact revision attestation**
