@@ -3,43 +3,45 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **BOT-A15 ACTIVE — CANONICAL DECISION REPLAY UI**
+Status: **BOT-A15 VERIFIED / ADOPT — FINAL CI + MERGE GATE**
 
 ## Completed baseline
 - BOT-S0 through BOT-S14 complete.
 - S14 merged as PR #229 / `66681b41856fe9fcff96df388167215f4e37bbdb`.
 - Thinking Orbs normalized and merged as PR #230 / `78183f474db0938dce945d72f7a1fc7aca2bee01`.
-- current product shell already exposes live-backed Command/Markets/Oracle/Trade/Lab/System views from `/api/trading-status`, `/api/strategy-factory-status`, and `/api/events`.
 
 ## BOT-A15 — canonical Decision Replay UI
 
-### Gap found
-The Instrument Cockpit labelled a market-filtered event list as **Decision Replay**, but it did not call the existing canonical `/api/decision-replay` endpoint. That risks presenting contextual events as if they were a verified trace.
+### Product truth gap closed
+The Instrument Cockpit previously labelled a market-filtered event list as **Decision Replay** without querying the canonical replay endpoint. BOT-A15 now distinguishes verified trace replay from ordinary market event context.
 
-### Objective
-Bind the Instrument Cockpit to the canonical Decision Replay API only when a replayable `traceId` exists. When no replayable trace is present, label the list truthfully as market event context rather than synthesizing lineage.
+### Delivered
+- new `CanonicalDecisionReplayPanel`
+- trace candidates come only from canonical `trace.traceId`, `links.traceId`, or `links.entryTraceId`
+- `GET /api/decision-replay` is called with the exact trace and observed runtime identity
+- **Canonical Decision Replay** appears only when `canonical=true` and `found=true`
+- replay version, requested trace, and `completeThrough` are visible
+- absent/unavailable trace falls back to explicitly labelled **Market event context**
+- no inferred trace IDs or fabricated lineage
 
-### Acceptance criteria
-- detect replayable `traceId` / linked trace identity only from canonical event trace/link fields
-- call `GET /api/decision-replay` with the exact trace and runtime identity
-- render canonical replay only when API reports `canonical=true` and `found=true`
-- show replay version, requested trace, and `completeThrough`
-- if trace is absent or replay is unavailable, retain the market event list but explicitly label it **Market event context**
-- no inferred trace IDs, no fabricated lineage, no mutation of trading/runtime state
-- preserve existing Instrument Cockpit, trade map, Evidence/Council, chart, mobile/Fold behavior
-- Black Oracle CI + Trading CI must both pass before merge
+### Verification
+- exact implementation head: `599566b1defcdc0b632d55cc182e7f14f9e062a0`
+- Black Oracle CI #35683709498 — **SUCCESS**
+- Black Oracle Trading CI #35683709801 — **SUCCESS**
+- PR #231 mergeable after implementation CI — **true**
+- BOT-A15-E1 — **ADOPT**
 
 ## Safety boundary
-Read-only UI integration only. No order path, Risk, strategy, portfolio, broker, database, PAPER history, or execution authority changes.
+Read-only UI integration only. No order path, Risk, strategy, portfolio, broker, database, PAPER history, deployment, or execution authority changed.
 
 ## Rollback
-Repository-only revert/close of BOT-A15 PR. Existing API/runtime contracts remain unchanged.
+Repository-only revert/close of PR #231. Existing API/runtime contracts remain unchanged.
 
-## Current deployment state
-Legacy Railway/PAPER services unchanged. No deployment/database mutation is required.
+## Exact next gate
+Require fresh docs-inclusive Black Oracle CI + Trading CI on the final PR #231 head. If both remain green and PR is mergeable, squash merge.
 
 ## Cycle exit record
-- Phase: **PRODUCT TRUTH AUDIT → IMPLEMENT**
-- Blocker: CI pending
-- Alpha status: execution-safety baseline complete; product truth integration active
-- Single next priority: **verify canonical replay UI exact-head CI and merge only if green**
+- Phase: **VERIFY / DOCUMENT COMPLETE → FINAL CI / MERGE GATE**
+- PR: #231 (`bot-a15-canonical-replay-ui` → `main`)
+- Research result: **BOT-A15-E1 ADOPT**
+- Single next priority: **final CI, then merge only if green**
