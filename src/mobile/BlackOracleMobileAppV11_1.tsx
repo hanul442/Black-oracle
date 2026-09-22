@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type {
+  CanonicalSourceHealth,
   ClosedTrade,
   DecisionTapeItem,
   EventsPayload,
@@ -63,6 +64,8 @@ type Detail =
   | null;
 
 type FactoryStatusPayload = FactoryPayload & {
+  observedAt?: number;
+  sourceHealth?: CanonicalSourceHealth;
   runs?: Array<NonNullable<FactoryPayload['latestRun']>>;
   governance?: {
     automaticChampionPromotion?: boolean;
@@ -101,6 +104,48 @@ const percent = (value: number | null | undefined, signed = false) => {
 };
 const score = (value: number | null | undefined) => finite(value) ? value.toFixed(2) : '—';
 const motionTransition = { type: 'spring' as const, stiffness: 420, damping: 38, mass: 0.7 };
+
+type SourceKey = 'operations' | 'factory' | 'ledger';
+type SourceHealthMap = Record<SourceKey, CanonicalSourceHealth | null>;
+
+const checkedJson = async <T,>(url: string): Promise<T> => {
+  const response = await fetch(url, { cache: 'no-store' });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) {
+    throw new Error(typeof payload.error === 'string' ? payload.error : `${url} failed with HTTP ${response.status}`);
+  }
+  return payload as T;
+};
+
+const retainedUnavailable = (previous: CanonicalSourceHealth | null, error: unknown): CanonicalSourceHealth => ({
+  state: 'UNAVAILABLE',
+  observedAt: previous?.observedAt ?? Date.now(),
+  stale: true,
+  verifiedEmpty: false,
+  error: error instanceof Error ? error.message : String(error ?? 'Canonical source unavailable.'),
+});
+
+const fallbackHealth = (state: CanonicalSourceHealth['state'], itemCount: number, error: string | null = null): CanonicalSourceHealth => ({
+  state,
+  observedAt: Date.now(),
+  stale: state !== 'OK',
+  verifiedEmpty: state === 'OK' && itemCount === 0,
+  error,
+});
+
+const SourceHealthNotice = ({ label, health, coverage }: { label: string; health: CanonicalSourceHealth | null; coverage?: string | null }) => {
+  if (!health || (health.state === 'OK' && !health.stale)) return null;
+  const color = health.state === 'UNAVAILABLE' ? red : amber;
+  return <div className="mx-auto max-w-[1180px] px-4 pt-4 lg:px-7">
+    <div className="rounded-[16px] border bg-white px-4 py-3" style={{ borderColor: `${color}35` }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2"><StatusDot status={health.state === 'UNAVAILABLE' ? 'ERROR' : 'WARN'} /><span className="text-[10px] font-semibold" style={{ color }}>{label} · {health.state}{health.stale ? ' · STALE RETAINED' : ''}</span></div>
+        <span className="text-[8px] text-[#9aa1aa]">observed {dateTime(health.observedAt)}</span>
+      </div>
+      {(health.error || coverage) && <div className="mt-2 text-[9px] leading-4 text-[#7f8790]">{health.error ?? coverage}</div>}
+    </div>
+  </div>;
+};
 
 const StatusDot = ({ status, pulse = false }: { status?: string | null; pulse?: boolean }) => (
   <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -347,7 +392,7 @@ const LabView = ({ factory, openDetail }: { factory: FactoryStatusPayload | null
   </main>;
 };
 
-const LedgerView = ({ events, openDetail }: { events: LedgerEvent[]; openDetail: (detail: Detail) => void }) => {
+const LedgerView = ({ events, meta, openDetail }: { events: LedgerEvent[]; meta: EventsPayload | null; openDetail: (detail: Detail) => void }) => {
   const [filter, setFilter] = useState<string>('ALL');
   const [query, setQuery] = useState('');
 
@@ -375,6 +420,13 @@ const LedgerView = ({ events, openDetail }: { events: LedgerEvent[]; openDetail:
   const authorities = new Set(events.map((event) => event.authority).filter(Boolean)).size;
 
   return <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-4 lg:px-7 lg:pb-10 lg:pt-6">
+    <div className={cn(card, 'mb-3 p-4')}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-[#9da3ab]">Ledger source truth</div><div className="mt-1 text-[11px] font-semibold text-[#343a41]">{meta?.coverage ?? 'COVERAGE UNKNOWN'}</div></div>
+        <div className="text-right"><Pill color={tone(meta?.sourceHealth?.state)}>{meta?.sourceHealth?.state ?? 'UNKNOWN'}</Pill><div className="mt-1 text-[8px] text-[#9da3ab]">{meta?.sourceHealth ? `observed ${dateTime(meta.sourceHealth.observedAt)}` : 'not observed'}</div></div>
+      </div>
+      {meta?.healthError && <div className="mt-2 text-[9px] leading-4" style={{ color: amber }}>{meta.healthError}</div>}
+    </div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <AnimatedCard><div className={cn(card, 'p-4')}><Metric label="Canonical events" value={events.length} /></div></AnimatedCard>
       <AnimatedCard index={1}><div className={cn(card, 'p-4')}><Metric label="Replayable trace" value={replayable} accent={replayable ? green : undefined} /></div></AnimatedCard>
@@ -500,6 +552,8 @@ export const BlackOracleMobileApp = () => {
   const [operations, setOperations] = useState<OperationsPayload | null>(null);
   const [factory, setFactory] = useState<FactoryStatusPayload | null>(null);
   const [events, setEvents] = useState<LedgerEvent[]>([]);
+  const [ledgerMeta, setLedgerMeta] = useState<EventsPayload | null>(null);
+  const [sourceHealth, setSourceHealth] = useState<SourceHealthMap>({ operations: null, factory: null, ledger: null });
   const [loading, setLoading] = useState(false);
   const [market, setMarket] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail>(null);
@@ -509,13 +563,27 @@ export const BlackOracleMobileApp = () => {
     setLoading(true);
     try {
       const [ops, fac, evt] = await Promise.allSettled([
-        fetch('/api/trading-status', { cache: 'no-store' }).then((response) => response.json() as Promise<OperationsPayload>),
-        fetch('/api/strategy-factory-status', { cache: 'no-store' }).then((response) => response.json() as Promise<FactoryStatusPayload>),
-        fetch('/api/events?limit=500', { cache: 'no-store' }).then((response) => response.json() as Promise<EventsPayload>),
+        checkedJson<OperationsPayload>('/api/trading-status'),
+        checkedJson<FactoryStatusPayload>('/api/strategy-factory-status'),
+        checkedJson<EventsPayload>('/api/events?limit=500'),
       ]);
       if (ops.status === 'fulfilled') setOperations(ops.value);
       if (fac.status === 'fulfilled') setFactory(fac.value);
-      if (evt.status === 'fulfilled') setEvents(evt.value.events ?? []);
+      if (evt.status === 'fulfilled') {
+        setEvents(evt.value.events ?? []);
+        setLedgerMeta(evt.value);
+      }
+      setSourceHealth((previous) => ({
+        operations: ops.status === 'fulfilled'
+          ? (ops.value.sourceHealth ?? fallbackHealth(ops.value.status === 'OK' ? 'OK' : ops.value.status === 'UNAVAILABLE' || ops.value.status === 'ERROR' ? 'UNAVAILABLE' : 'DEGRADED', ops.value.available === false ? 0 : 1))
+          : retainedUnavailable(previous.operations, ops.reason),
+        factory: fac.status === 'fulfilled'
+          ? (fac.value.sourceHealth ?? fallbackHealth(fac.value.available === false ? 'DEGRADED' : 'OK', fac.value.runs?.length ?? 0))
+          : retainedUnavailable(previous.factory, fac.reason),
+        ledger: evt.status === 'fulfilled'
+          ? (evt.value.sourceHealth ?? fallbackHealth(evt.value.healthDegraded ? 'DEGRADED' : 'OK', evt.value.events?.length ?? 0, evt.value.healthError ?? null))
+          : retainedUnavailable(previous.ledger, evt.reason),
+      }));
     } finally {
       setLoading(false);
     }
@@ -538,14 +606,18 @@ export const BlackOracleMobileApp = () => {
     : view === 'oracle' ? <OracleView operations={operations} events={events} openDetail={setDetail} />
     : view === 'trade' ? <TradeView operations={operations} openMarket={setMarket} openDetail={setDetail} />
     : view === 'lab' ? <LabView factory={factory} openDetail={setDetail} />
-    : view === 'ledger' ? <LedgerView events={events} openDetail={setDetail} />
+    : view === 'ledger' ? <LedgerView events={events} meta={ledgerMeta} openDetail={setDetail} />
     : <SystemView operations={operations} events={events} factory={factory} />;
+
+  const activeSourceKey: SourceKey = view === 'lab' ? 'factory' : view === 'ledger' ? 'ledger' : 'operations';
+  const activeSourceLabel = activeSourceKey === 'factory' ? 'Strategy Factory source' : activeSourceKey === 'ledger' ? 'Canonical Ledger source' : 'Trading runtime source';
 
   return <MarketIdentityProvider markets={identityMarkets}>
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-[#f6f7f9] text-[#111318] antialiased">
       <DesktopRail view={view} setView={setView} operations={operations} />
       <div className="min-h-[100dvh] lg:pl-[220px]">
         <Header view={view} operations={operations} loading={loading} refresh={() => void load()} goSystem={() => setView('system')} />
+        <SourceHealthNotice label={activeSourceLabel} health={sourceHealth[activeSourceKey]} coverage={activeSourceKey === 'ledger' ? ledgerMeta?.coverage : null} />
         <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>{content}</motion.div></AnimatePresence>
       </div>
       <MobileNav view={view} setView={setView} />

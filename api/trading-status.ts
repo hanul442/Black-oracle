@@ -1,15 +1,49 @@
-const supabaseOperationalRead = async (path: string, params: Record<string, string>) => {
+import { canonicalSourceHealth, type CanonicalSourceHealth } from '../server/canonicalSourceHealth';
+
+type OperationalRows = any[] & { sourceHealth: CanonicalSourceHealth };
+
+const operationalRows = (rows: any[], sourceHealth: CanonicalSourceHealth): OperationalRows =>
+  Object.assign(rows, { sourceHealth });
+
+const supabaseOperationalRead = async (path: string, params: Record<string, string>): Promise<OperationalRows> => {
   const base = String(process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
-  if (!base || !key) return [] as any[];
-  const url = new URL(`${base}/rest/v1/${path}`);
-  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
-  const result = await fetch(url, {
-    headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
-    cache: 'no-store',
-  });
-  if (!result.ok) return [] as any[];
-  return result.json() as Promise<any[]>;
+  if (!base || !key) {
+    return operationalRows([], canonicalSourceHealth({
+      unavailable: true,
+      itemCount: 0,
+      error: `Operational source ${path} unavailable: Supabase is not configured.`,
+    }));
+  }
+  try {
+    const url = new URL(`${base}/rest/v1/${path}`);
+    for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+    const result = await fetch(url, {
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!result.ok) {
+      return operationalRows([], canonicalSourceHealth({
+        unavailable: true,
+        itemCount: 0,
+        error: `Operational source ${path} read failed (${result.status}).`,
+      }));
+    }
+    const rows = await result.json() as any[];
+    return operationalRows(rows, canonicalSourceHealth({
+      observedAt: Date.now(),
+      itemCount: rows.length,
+      staleAfterMs: Number.MAX_SAFE_INTEGER,
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown operational source error.';
+    return operationalRows([], canonicalSourceHealth({
+      unavailable: true,
+      itemCount: 0,
+      error: `Operational source ${path} unavailable: ${message}`,
+    }));
+  }
 };
 
 const loadOperationalEvidence = async (now: number) => {
@@ -31,7 +65,16 @@ const loadOperationalEvidence = async (now: number) => {
       limit: '30',
     }),
   ]);
-  return { flow, requests, inbox };
+  return {
+    flow,
+    requests,
+    inbox,
+    sourceHealth: {
+      flow: flow.sourceHealth,
+      requests: requests.sourceHealth,
+      inbox: inbox.sourceHealth,
+    },
+  };
 };
 
 const mapOperationalCouncilReview = (row: any) => ({
@@ -108,6 +151,11 @@ const loadOperationalAiCouncil = async (now: number) => {
       softLimited: monthCouncilCostUsd >= softLimitUsd,
       hardLimited: monthCouncilCostUsd >= hardCapUsd,
     },
+    sourceHealth: {
+      reviews: reviewRows.sourceHealth,
+      usage: usageRows.sourceHealth,
+      budget: budgetRows.sourceHealth,
+    },
   };
 };
 
@@ -137,6 +185,7 @@ export default async function handler(request: any, response: any) {
         success: false,
         available: false,
         status: 'UNAVAILABLE',
+        sourceHealth: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: 'Trading status requires Supabase persistence in this deployment.' }),
         error: 'Trading status requires Supabase persistence in this deployment.',
       });
     }
@@ -154,14 +203,24 @@ export default async function handler(request: any, response: any) {
         available: false,
         status: 'WAITING',
         now: Date.now(),
+        sourceHealth: canonicalSourceHealth({ observedAt: Date.now(), itemCount: 0 }),
         message: 'No Paper checkpoint has been saved yet.',
       });
     }
 
     const now = Date.now();
     const [operationalEvidence, operationalAiCouncil] = await Promise.all([
-      loadOperationalEvidence(now).catch(() => ({ flow: [], requests: [], inbox: [] })),
-      loadOperationalAiCouncil(now).catch(() => ({
+      loadOperationalEvidence(now).catch((error) => ({
+        flow: [],
+        requests: [],
+        inbox: [],
+        sourceHealth: {
+          flow: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'Evidence source unavailable.' }),
+          requests: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'Evidence request source unavailable.' }),
+          inbox: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'NARS inbox source unavailable.' }),
+        },
+      })),
+      loadOperationalAiCouncil(now).catch((error) => ({
         mode: 'CONDITIONAL_SHADOW',
         advisoryOnly: true,
         executionAuthority: false,
@@ -169,6 +228,11 @@ export default async function handler(request: any, response: any) {
         recent: [],
         stats: { reviewed: 0, agree: 0, caution: 0, dissent: 0 },
         budget: { enabled: false, monthCouncilCostUsd: 0, monthlyBudgetUsd: 0, hardCapUsd: 0, softLimitUsd: 0, softLimited: false, hardLimited: false },
+        sourceHealth: {
+          reviews: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'AI Council reviews unavailable.' }),
+          usage: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'AI usage source unavailable.' }),
+          budget: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: error instanceof Error ? error.message : 'AI budget source unavailable.' }),
+        },
       })),
     ]);
 
@@ -316,6 +380,17 @@ export default async function handler(request: any, response: any) {
       status,
       now,
       mode: 'PAPER',
+      sourceHealth: canonicalSourceHealth({
+        observedAt: checkpoint.savedAt,
+        itemCount: 1,
+        degraded: status !== 'OK',
+        error: status === 'OK' ? null : `Trading runtime status is ${status}.`,
+        staleAfterMs: checkpoint.loop.config.intervalMs * 2.5,
+      }),
+      operationalSourceHealth: {
+        evidence: operationalEvidence.sourceHealth,
+        aiCouncil: operationalAiCouncil.sourceHealth,
+      },
       strategyVersion: lastClosedTrade?.strategyVersion ?? null,
       checkpoint: {
         savedAt: checkpoint.savedAt,
@@ -390,6 +465,6 @@ export default async function handler(request: any, response: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown trading status error.';
     console.error('Black Oracle trading status error:', error);
-    return response.status(500).json({ success: false, available: false, status: 'ERROR', error: message });
+    return response.status(500).json({ success: false, available: false, status: 'ERROR', sourceHealth: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: message }), error: message });
   }
 }
