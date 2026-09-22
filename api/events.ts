@@ -1,5 +1,6 @@
 import { readCanonicalEvents, type CanonicalEventRow } from '../server/eventLedger';
 import { readCanonicalLedgerHealth } from '../server/eventLedgerHealth';
+import { canonicalSourceHealth } from '../server/canonicalSourceHealth';
 
 const boundedInt = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value ?? fallback);
@@ -46,10 +47,6 @@ export default async function handler(request: any, response: any) {
       ? null
       : (requestedRuntime ?? configuredRuntimeId);
 
-    // Read the canonical ledger once. The same bounded read supplies both the
-    // operational runtime tape and read-only KRX instrument discovery. This avoids
-    // multiplying Supabase queries under React/mobile refresh fan-out while keeping
-    // discovery provenance distinct from the execution-authoritative runtime tape.
     const rawEvents = await readCanonicalEvents({ limit: 500, type, market });
 
     const shouldIncludeInstrumentDiscovery = requestedRuntime == null && type == null && market == null;
@@ -70,8 +67,6 @@ export default async function handler(request: any, response: any) {
       .sort((a, b) => b.occurredAt - a.occurredAt || b.recordedAt - a.recordedAt)
       .slice(0, limit);
 
-    // Ledger producer health is supplementary observability. A transient health
-    // read failure must not erase a successfully retrieved canonical event tape.
     let health: Awaited<ReturnType<typeof readCanonicalLedgerHealth>> | null = null;
     let healthError: string | null = null;
     if (runtimeScope) {
@@ -96,11 +91,25 @@ export default async function handler(request: any, response: any) {
       : runtimeScope
         ? `CUTOVER_FORWARD · HEALTH_UNKNOWN${discoveryMixed ? ' · KRX_DISCOVERY' : ''}`
         : 'CUTOVER_FORWARD · ALL_RUNTIMES';
+    const observedAt = events.length
+      ? Math.max(...events.map((event) => Number(event.recordedAt || event.occurredAt || 0)).filter(Number.isFinite))
+      : Date.now();
+    const sourceHealth = canonicalSourceHealth({
+      observedAt,
+      itemCount: events.length,
+      degraded: Boolean(healthError) || Boolean(health && health.status !== 'OK'),
+      error: healthError,
+      // Event freshness is producer-specific. A18 does not invent a global event-age
+      // threshold; producer health remains authoritative for degradation here.
+      staleAfterMs: Number.MAX_SAFE_INTEGER,
+    });
 
     return response.status(200).json({
       success: true,
       canonical: true,
       appendOnly: true,
+      observedAt,
+      sourceHealth,
       coverage,
       source: 'black_oracle_events',
       runtimeScope: runtimeScope ?? 'ALL',
@@ -120,13 +129,21 @@ export default async function handler(request: any, response: any) {
       },
       count: events.length,
       health,
-      healthDegraded: Boolean(healthError),
+      healthDegraded: sourceHealth.state !== 'OK',
       healthError,
       events,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown canonical event ledger error.';
     console.error('Black Oracle canonical event API failed:', error);
-    return response.status(500).json({ success: false, canonical: true, appendOnly: true, error: message, events: [] });
+    return response.status(500).json({
+      success: false,
+      canonical: true,
+      appendOnly: true,
+      observedAt: Date.now(),
+      sourceHealth: canonicalSourceHealth({ unavailable: true, itemCount: 0, error: message }),
+      error: message,
+      events: [],
+    });
   }
 }
