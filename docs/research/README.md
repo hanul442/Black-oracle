@@ -8,6 +8,16 @@ This directory is the evidence-backed R&D knowledge base for BLACK ORACLE.
 
 Research is not an implementation mandate. Production/Paper trading behavior must not change solely because an external source looks promising. A candidate must be linked to an explicit hypothesis, validation protocol, metrics, and result.
 
+## Reference intake
+
+User-supplied products, screenshots, UI components, repositories, and data providers are first recorded in `docs/references/`, which is the canonical external-reference registry.
+
+A reference does not become a product requirement merely because it is recorded. Use this lineage when a reference implies a testable change:
+
+`REFERENCE → BO GAP → HYPOTHESIS → EXPERIMENT → RESULT → ADOPT / REJECT / REVISIT`
+
+Before reference-driven design/product work, review `docs/references/README.md` and the relevant note so prior intent, exclusions, implementation status, and linked PRs are not lost.
+
 ## Domains
 
 - `design/` — financial UX, visualization, mobile interaction, accessibility
