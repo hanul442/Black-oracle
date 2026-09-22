@@ -187,6 +187,19 @@ export type OperationsPayload = {
   available?: boolean;
   status?: 'OK' | 'DEGRADED' | 'WAITING' | 'ERROR' | 'UNAVAILABLE';
   mode?: 'PAPER';
+  sourceHealth?: CanonicalSourceHealth;
+  operationalSourceHealth?: {
+    evidence?: {
+      flow?: CanonicalSourceHealth;
+      requests?: CanonicalSourceHealth;
+      inbox?: CanonicalSourceHealth;
+    };
+    aiCouncil?: {
+      reviews?: CanonicalSourceHealth;
+      usage?: CanonicalSourceHealth;
+      budget?: CanonicalSourceHealth;
+    };
+  };
   strategyVersion?: string | null;
   loop?: {
     cycleCount: number;
@@ -347,11 +360,23 @@ export type LedgerEvent = {
   schemaVersion?: number;
 };
 
+export type CanonicalSourceHealth = {
+  state: 'OK' | 'DEGRADED' | 'UNAVAILABLE';
+  observedAt: number;
+  stale: boolean;
+  verifiedEmpty: boolean;
+  error: string | null;
+};
+
 export type EventsPayload = {
   success?: boolean;
   canonical?: boolean;
   appendOnly?: boolean;
+  observedAt?: number;
+  sourceHealth?: CanonicalSourceHealth;
   coverage?: string;
+  healthDegraded?: boolean;
+  healthError?: string | null;
   source?: string;
   events?: LedgerEvent[];
 };
