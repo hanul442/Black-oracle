@@ -36,12 +36,12 @@ A18 is observability/presentation truth only. No broker/Risk/order/capital/LIVE 
 ## Runtime truth
 Repository remediation is complete. Runtime evidence is recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`; the family-wide canonical plan is `docs/ALPHA_ROADMAP.md`.
 
-- A18 web deployment requested at exact main SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; exact deployment acceptance is pending.
+- A18 web deployment at exact main SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` is attested; Railway healthcheck and public `/health` pass, while protected APIs remain authentication-gated.
 - Supabase data-plane reads timed out, so scheduler/writer/checkpoint lineage remains UNKNOWN.
 - no protected PAPER service, database, scheduler, risk limit, or qualification history was changed.
 
 ## Exact next gate
-1. accept the exact A18 web deployment only after SHA and read-only smoke verification;
+1. complete authenticated A18 source-health payload smoke without exposing credentials;
 2. recover read-only Supabase observability and prove one authoritative scheduler/writer/lineage;
 3. verify the isolated BOR runtime and preserve the durable-storage blocker truth;
 4. hand the completed Foundation evidence set to Astra for the final cross-system audit.

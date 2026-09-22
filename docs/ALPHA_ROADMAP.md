@@ -45,7 +45,7 @@ Every item below has exactly one disposition.
 | #16 v0.3 realignment | SUPERSEDED | Later main-line integration and Alpha contracts replace the stacked architecture. |
 | #71 pre-trade Council authority | DEFERRED_POST_ALPHA | Any authority promotion needs separate empirical evidence and approval. |
 | #145 trigger-aware fills/outcome attribution | ACTIVE | Relevant to PAPER correctness; do not alter the protected runtime during Foundation Closure. |
-| #161 Railway source-pin drift | BLOCKER | Runtime revision must match the attested repository SHA. |
+| #161 Railway source-pin drift | STALE_RESOLVED | Exact BOT main SHA is deployed and independently attested; issue closed. |
 | #165 duplicate PAPER writers | BLOCKER | Supabase scheduler/control-plane lineage is currently inaccessible; status remains UNKNOWN. |
 | #204 independent BOR boundary | BLOCKER | Repository exists; independent runtime and durable storage still require attestation. |
 

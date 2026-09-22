@@ -1,6 +1,6 @@
 # Foundation Runtime Attestation — 2026-09-22
 
-Disposition: **BLOCKED / evidence captured**
+Disposition: **BLOCKED / BOT web revision attested**
 
 ## Repository gate
 
@@ -24,9 +24,9 @@ All four services report one Railway replica and no Railway cron schedule. Supab
 
 ## Safe A18 deployment
 
-The web-only A18 revision was requested at exact SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`, preserving variables, runtime ID, scheduler, database, replicas, and risk settings. The provider-side deployment and rollback identifiers are retained outside this public repository.
+The web-only A18 revision was deployed at exact SHA `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`, preserving variables, runtime ID, scheduler, database, replicas, and risk settings. Railway reports `SUCCESS`, its configured `/` healthcheck passed, and the public `/health` endpoint returned HTTP 200 with the internal server alive. Protected read APIs returned HTTP 401 without credentials, preserving the authentication gate. The provider-side deployment and rollback identifiers are retained outside this public repository.
 
-Acceptance requires Railway metadata to report that exact SHA and read-only endpoint smoke tests to pass. No PAPER service deployment is authorized because changing a protected qualification runtime could contaminate evidence.
+The exact web revision gate is PASS. Authenticated source-health payload smoke remains unavailable without exposing credentials. No PAPER service deployment is authorized because changing a protected qualification runtime could contaminate evidence.
 
 ## Single-writer PAPER attestation
 
@@ -56,6 +56,6 @@ No database, cron, Edge Function, checkpoint, ledger, or scheduler mutation was 
 ## Foundation blockers carried to final verification
 
 1. recover Supabase data-plane access and prove the exact scheduler target and writer lineage;
-2. attest the A18 web deployment exact SHA and smoke its read-only endpoints;
+2. complete authenticated A18 source-health payload smoke without exposing credentials;
 3. establish independent BOR runtime plus durable BOR-owned artifact persistence;
 4. post the final closeout only after the above evidence is available.
