@@ -1,6 +1,6 @@
 # REF-COMP-001 — Thinking Orbs
 
-Status: **IMPLEMENTED / OPEN PR**
+Status: **IMPLEMENTED / UNMERGED PR**
 Domain: Component / AI State UX
 Source: https://github.com/Jakubantalik/thinking-orbs
 Upstream version referenced by implementation: 0.3.1
@@ -50,9 +50,9 @@ Preserve the upstream behavior already noted in PR #222:
 
 PR #222 — `feat(ui): integrate Thinking Orbs into BLACK ORACLE runtime states`
 
-Current disposition when this note was created:
-- code exists;
-- PR is open;
-- not yet merged into `main`.
+Current disposition when this note was verified:
+- code exists in the PR;
+- PR is closed;
+- PR was not merged into `main`.
 
-Do not treat this reference note as authorization to merge #222 without normal review/testing.
+The reference remains valid, but implementation should be re-reviewed or rebuilt against current `main` before adoption. Do not treat this note as authorization to merge or cherry-pick stale code.
