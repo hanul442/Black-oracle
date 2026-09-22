@@ -4,10 +4,10 @@ Disposition: **BLOCKED / BOT web revision attested**
 
 ## Repository gate
 
-| Repository | Main SHA | Gate |
+| Repository | Runtime code baseline | Gate |
 | --- | --- | --- |
-| `hanul442/black_oracle_bot` | `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` | A18 merged; exact PR head `fd473138...` passed Black Oracle CI `35709996684` and Trading CI `35709996675`. Five-surface truth audit PASS. |
-| `hanul442/black_oracle_report` | `9118fe77780b26fe1901dc76bcf0add8231d29e0` | S21 merged. Independent runtime closure handled in BOR repository. |
+| `hanul442/black_oracle_bot` | `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` | A18 merged; exact PR head `fd473138...` passed Black Oracle CI `35709996684` and Trading CI `35709996675`. Five-surface truth audit PASS. Later Foundation commits are documentation-only. |
+| `hanul442/black_oracle_report` | `9118fe77780b26fe1901dc76bcf0add8231d29e0` | S21 merged. Later Foundation changes add build/test closure but no deployed runtime. |
 
 ## Railway BOT runtime matrix
 
