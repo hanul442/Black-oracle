@@ -28,7 +28,7 @@ export function evaluateBotRiskExecutionBoundary(input: BotRiskExecutionInput): 
   if (order.contractVersion !== CANONICAL_ORDER_INTENT_VERSION) return noTrade(input, ['ORDER_INTENT_CONTRACT_MISMATCH']);
   if (![order.intentId, order.market, order.strategyId, order.strategyRevision].every(isNonEmpty) || !Number.isFinite(order.maxAgeMs) || order.maxAgeMs < 0) return noTrade(input, ['ORDER_INTENT_MALFORMED']);
   if (!/^KRW-[A-Z0-9]+$/.test(order.market) || (order.side !== 'BUY' && order.side !== 'SELL') || !isFinitePositive(order.quantity) || !isFinitePositive(order.referencePrice)) return noTrade(input, ['ORDER_ECONOMICS_INVALID']);
-  if (order.strategyId !== input.governance.strategyId || order.strategyRevision !== input.governance.strategyRevision) return noTrade(input, ['ORDER_STRATEGY_IDENTITY_MISMATCH']);
+  if (order.strategyId !== input.governance.strategyId || order.strategyRevision !== input.governance.strategyRevision) return noTrade(input, ['ORDER_INTENT_STRATEGY_IDENTITY_MISMATCH']);
   const orderObservedMs = parseTime(order.observedAt);
   if (orderObservedMs > nowMs) return noTrade(input, ['ORDER_INTENT_FUTURE']);
   if (nowMs - orderObservedMs > order.maxAgeMs) return noTrade(input, ['ORDER_INTENT_STALE']);
