@@ -20,7 +20,7 @@ Before reference-driven product, UI, component, market-data, or competitor work:
 - **REFERENCE** — useful precedent; no implementation implied.
 - **TEST** — candidate pattern/component requires isolated validation.
 - **ADOPTED** — intentionally implemented and accepted.
-- **IMPLEMENTED / OPEN PR** — code exists but has not been merged to main.
+- **IMPLEMENTED / UNMERGED PR** — code exists in a PR but has not been merged to main.
 - **REJECTED** — intentionally not adopted.
 - **SUPERSEDED** — retained for historical context only.
 
@@ -29,7 +29,7 @@ Before reference-driven product, UI, component, market-data, or competitor work:
 | ID | Reference | Domain | BO use | Status | Implementation |
 |---|---|---|---|---|---|
 | REF-PROD-001 | Algory.app | Product / Competitor / Strategy UX | strategy discovery, automation lifecycle, strategy portfolio UX | REFERENCE | none |
-| REF-COMP-001 | Thinking Orbs | Component / AI State UX | visible AI/runtime phase state | IMPLEMENTED / OPEN PR | PR #222 |
+| REF-COMP-001 | Thinking Orbs | Component / AI State UX | visible AI/runtime phase state | IMPLEMENTED / UNMERGED PR | PR #222 closed, not merged |
 | REF-COMP-002 | ThreeUI / Rectangle Buttons | UI Component | premium compact action controls; motion/interaction inspiration | REFERENCE | none |
 | REF-DATA-001 | London Strategic Edge (LSE) | Market Data | read-only multi-asset research/model inputs | ADOPTED | PR #223 merged |
 | REF-UI-001 | BLACK ORACLE approved mobile mockups | Product UI | mobile-first white/ivory/gold financial shell | ADOPTED | docs/design + PR #64 lineage |
