@@ -97,7 +97,7 @@ export default async function handler(request: any, response: any) {
     const sourceHealth = canonicalSourceHealth({
       observedAt,
       itemCount: events.length,
-      degraded: Boolean(healthError) || Boolean(health && health.status !== 'OK'),
+      degraded: Boolean(healthError) || Boolean(health && health.status !== 'HEALTHY'),
       error: healthError,
       // Event freshness is producer-specific. A18 does not invent a global event-age
       // threshold; producer health remains authoritative for degradation here.
