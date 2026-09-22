@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **BOT-A18 ACTIVE / PACKAGE 1 CI GATE**
+Status: **BOT-A18 ACTIVE / PACKAGE 1 TYPECHECK REMEDIATION**
 
 ## Completed baseline
 - BOT-S0 through BOT-S14 complete.
@@ -35,22 +35,28 @@ Implemented the smallest coherent A17-F2 remediation:
 - preserved existing canonical event payload, coverage and producer-health fields for compatibility
 - deliberately did not invent a global event-age freshness threshold; producer health remains authoritative until a source-specific freshness contract is defined
 
+## Package 1 CI remediation plan
+Exact head `2d89e0f614815b2915198f179d47334cb8166d72` failed Black Oracle CI #1080 and Trading CI #1258 at Typecheck; production build was skipped. Inspection isolates the new helper as the smallest coherent type seam: optional numeric inputs are passed directly to `Number.isFinite`, which requires a number under the repository TypeScript contract. Remediate only that seam with explicit numeric guards; do not change health semantics or widen A18 scope.
+
+### Acceptance criteria for this work package
+- optional `now`, `observedAt`, `staleAfterMs`, and `itemCount` are narrowed before `Number.isFinite`
+- canonical source-health output semantics remain byte-for-byte equivalent for valid numeric inputs
+- no API authority, PAPER, Risk, order, broker, database, or LIVE behavior changes
+- exact-head Black Oracle CI + Trading CI must both pass before merge
+
 ## Safety boundary
 Read-only API/source-health work only. No broker/Risk/order/capital/LIVE authority change, credential exposure, PAPER-history mutation, strategy promotion change, database migration or runtime deployment.
 
 ## Rollback path
 Revert the A18 PR/package. No database/runtime rollback required.
 
-## Verification state
-Repository artifacts exist on `bot-a18-canonical-source-health`. CI is the test/verification gate; no PASS is claimed before exact-head workflow evidence exists.
-
 ## Exact next gate
-Open the A18 PR and require exact-head Black Oracle CI + Trading CI green. If green, continue A18 with active-shell HTTP/stale rendering and `trading-status` unavailable-vs-empty operational reads; if red, fix before any merge. A18 remains incomplete until all five primary surfaces pass the truth audit.
+Apply the bounded numeric type narrowing in `server/canonicalSourceHealth.ts`, then require exact-head Black Oracle CI + Trading CI green and conflict-free. Do not merge or deploy on red. If green, continue A18 with active-shell HTTP/stale rendering and `trading-status` unavailable-vs-empty operational reads.
 
 ## Current deployment state
 Legacy Railway/PAPER services unchanged. No deployment/database mutation performed.
 
 ## Cycle state
-- Phase: **PACKAGE 1 IMPLEMENTED → CI GATE**
-- Alpha deployment-readiness: **BLOCKED pending remaining A18 remediation**
-- Single next priority: **verify Package 1 CI, then active-shell fail-closed source-health consumption**
+- Phase: **PACKAGE 1 TYPECHECK RED → BOUNDED REMEDIATION**
+- Alpha deployment-readiness: **BLOCKED pending A18**
+- Single next priority: **restore exact-head CI green without changing source-health semantics**
