@@ -3,41 +3,40 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **S13 COMPLETE / S14 ACTIVE**
+Status: **S14 COMPLETE / MERGED**
 
 ## Completed
-BOT-S0 through BOT-S13 complete. S13 merged #228 as `ba319d22f5d6afaa09b17702596f6c770e2fef9d` and exposed the Risk/order-economics seam rather than hiding it.
+- BOT-S0 through BOT-S13 complete.
+- BOT-S14 canonical order economics ↔ deterministic Risk binding merged as PR #229 / `66681b41856fe9fcff96df388167215f4e37bbdb`.
+- S14 introduces one versioned canonical order-intent contract before deterministic Risk.
+- deterministic Risk validates and attests exact market/side/quantity/referencePrice + strategy identity/freshness.
+- Upbit dry-run consumes only Risk-attested economics; post-Risk caller economics injection is removed.
+- S9/S10/S13/outcome fixtures were migrated to the canonical intent/fingerprint lineage.
+- malformed/non-KRW economics, stale/future intent, strategy mismatch, missing Risk, kill switch, duplicate intent, stale market data, and failed limits remain fail closed.
+- PAPER/LIVE_SHADOW remain the only Alpha modes; submission/execution/capital/live authorities remain false.
 
-## BOT-S14 — canonical order economics ↔ deterministic Risk binding
+## S14 verification
+- final PR head: `fa61c729d75aae497dcf10fc480fd4f800fc1dfe`
+- Black Oracle CI: **SUCCESS**
+- Black Oracle Trading CI: **SUCCESS**
+- PR mergeable before merge: **true**
+- squash merge: `66681b41856fe9fcff96df388167215f4e37bbdb`
+- deployment/database/runtime mutation: none
 
-### Objective
-Make deterministic Risk attest the exact canonical order intent consumed by the Upbit dry-run layer, eliminating independent downstream ownership of market/side/quantity/referencePrice while preserving PAPER/LIVE_SHADOW behavior and lineage.
+## Safety boundary
+S14 is execution-contract hardening only. No broker/network order submission, credentials, unrestricted LIVE, Risk bypass, capital authority, database migration, or deployment was introduced.
 
-### Acceptance criteria
-- one versioned canonical order-intent contract owns intentId, market, side, quantity, referencePrice, strategy identity and freshness.
-- deterministic Risk validates canonical identity/economics before ALLOW_INTENT and returns an immutable attestation of those exact economics.
-- S10 consumes the Risk attestation; callers cannot inject alternate economics after Risk.
-- malformed/non-KRW economics, missing identity, stale/future intent, strategy mismatch, kill switch, duplicate intent and failed limits fail closed.
-- S13 integration fixture constructs canonical intent before Risk; no test-only post-Risk economics adapter remains.
-- PAPER/LIVE_SHADOW only; all submission/execution/capital/live authorities remain false.
+## Rollback
+Repository-only revert of merge #229. S0-S13 and existing PAPER/runtime/database state remain recoverable.
 
-### Safety boundary
-Execution-contract hardening only. No broker/network order submission, credentials, secret exposure, runtime/database migration, deployment, unrestricted LIVE, Risk bypass, or new financial authority. Existing PAPER lineage is preserved through deterministic compatibility at the dry-run boundary only where it cannot weaken Risk.
-
-### Rollback path
-Close/revert this branch/PR. S0-S13 and existing PAPER/runtime/database state remain unchanged.
-
-### Research review / constraints
-Reviewed S9 deterministic Risk, S10 Upbit dry-run/reconciliation and S13 integration audit. Apply research precedents `DI-003/EXP-DI003`, `DI-004/EXP-DI004`, `EV-006/EXP-EV006`, `EV-007/EXP-EV007`: deterministic safety owns execution eligibility; replay/ledger identity must remain reconstructable; integration evidence is required in addition to local PASS. Research remains evidence/constraint only and does not create production thresholds or trading behavior.
-
-### Exact next gate
-Implement the smallest versioned canonical intent + Risk attestation, migrate S10/S13 tests, run focused tests and repository CI. Merge only if exact-head Black Oracle CI + Trading CI are green and PR is mergeable. Do not deploy or enable LIVE.
+## Next priority
+Shift from execution-contract expansion toward Alpha product integration. First reconcile open UI PR #222 (Thinking Orbs) against current `main`, because it was built on a pre-S14 base and now reports non-mergeable. Normalize/rebase it, preserve reduced-motion/runtime-state behavior, rerun exact-head Black Oracle CI + Trading CI, and merge only if green and conflict-free. Do not add new trading authority while doing UI integration.
 
 ## Current deployment state
-Existing legacy Railway/PAPER services unchanged. No S14 deployment/database mutation is authorized or required.
+Legacy Railway/PAPER services remain unchanged. S14 required no deployment.
 
 ## Cycle exit record
-- Phase: **BOT-S14 ACTIVE / IMPLEMENTATION GATE**
-- Blocker: **Risk/order economics not mechanically bound; future canary authority remains blocked**
-- Alpha status: S0-S13 complete; S14 active
-- Single next priority: **canonical order intent attestation through deterministic Risk into Upbit dry-run**
+- Phase: **BOT-S14 COMPLETE / MERGED**
+- Blocker: none for S14
+- Alpha status: S0-S14 complete
+- Single next priority: **normalize and verify Thinking Orbs PR #222 on current main, then continue product-integration work**
