@@ -3,7 +3,7 @@
 Date: **2026-09-22**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **BOT-A17 ACTIVE — Alpha release-readiness truth audit**
+Status: **BOT-A17 AUDIT COMPLETE / RELEASE READINESS BLOCKED**
 
 ## Completed baseline
 - BOT-S0 through BOT-S14 complete.
@@ -13,31 +13,51 @@ Status: **BOT-A17 ACTIVE — Alpha release-readiness truth audit**
 ## BOT-A17 objective
 Audit the integrated Alpha shell against canonical runtime contracts before any deployment decision. Produce an evidence-only release-readiness record; do not change trading authority or deploy.
 
-## Acceptance criteria
-- every primary surface (Overview / Strategy Lab / Trading / Risk / Ledger) maps to an existing canonical API/runtime source or truthfully exposes unavailable/degraded state
-- no UI label overstates execution, Risk, replay, authority, P&L, strategy promotion, or live readiness
-- PAPER behavior and lineage remain unchanged
-- repository/runtime/database separation remains explicit
-- bounded PASS/BLOCKED evidence record identifies exact remediation targets
-- no deployment, database migration, broker credential use, or LIVE authority expansion
+## Research reviewed
+- `BOT-A15-H1 / BOT-A15-E1` — canonical Decision Replay requires verified trace; context is not replay.
+- `BOT-A16-H1 / BOT-A16-E1` — five-primary-surface IA/global Ledger is adopted as a read-only slice only.
+- `EV-006 / EXP-EV006` — deterministic execution safety remains independent of agent/model authority.
+- `DI-003 / EXP-DI003` — missing/stale/future decision evidence fails closed.
+- `DI-004 / EXP-DI004` — explicit snapshot/trace identity for replay continuity.
+- S9 `bot.risk-execution-boundary.v1` and S11 `bot.live-canary-readiness.v1` — PAPER/LIVE_SHADOW only; readiness/ALLOW_INTENT do not grant order, capital, credential, or LIVE authority.
 
-## Research review gate
-Review the research ledger/records and precedents governing Decision Replay, evidence-only UI, deterministic Risk, canary readiness, and product truth integration. Record research IDs/experiments used. Research remains evidence and cannot silently become production behavior.
+Research remains evidence; A17 promotes no research behavior into production.
+
+## Audit result
+Evidence record: `docs/audit/BOT_A17_ALPHA_RELEASE_READINESS_TRUTH_AUDIT.md`.
+
+- Overview — **BLOCKED**: canonical sources exist, but failed refresh can leave prior state visible without stale/degraded state; HTTP status is not checked before JSON parsing.
+- Strategy Lab — **BLOCKED**: same source-health/freshness presentation gap.
+- Trading — **BLOCKED**: PAPER data is source-backed, but current freshness cannot be proven during upstream/API failure.
+- Risk — **BLOCKED**: no invented thresholds, but some `trading-status` operational Supabase reads collapse unavailable/non-OK to `[]`, conflating unavailable with verified-empty.
+- Ledger — **BLOCKED**: `/api/events` returns canonical coverage and health/degradation metadata, but the active shell discards those fields and renders only events.
+- Canonical Decision Replay semantic boundary — **PASS**.
+- Authority boundary — **PASS**.
+- Repository/runtime/database separation — **PASS**.
+
+## Acceptance criteria disposition
+- primary surfaces mapped to real sources: **PASS**
+- unavailable/degraded truth surfaced: **BLOCKED**
+- no overstatement of Decision Replay/authority: **PASS**
+- PAPER behavior/lineage unchanged: **PASS**
+- repository/runtime/database separation explicit: **PASS**
+- bounded PASS/BLOCKED evidence record: **PASS**
+- no deployment/migration/credential/LIVE expansion: **PASS**
 
 ## Safety boundary
-A17 is read-only audit/documentation unless a separately verified presentation defect requires a bounded fix. Never expand broker/Risk/order authority, expose broker secrets, mutate protected PAPER history, relax deterministic Risk, or infer readiness from missing/stale data. Missing evidence is BLOCKED, not PASS.
+A17 is documentation/evidence only. Never expand broker/Risk/order authority, expose broker secrets, mutate protected PAPER history, relax deterministic Risk, or infer readiness from missing/stale data. Missing evidence is BLOCKED, not PASS.
 
 ## Rollback path
-A17 audit/documentation changes are additive. Revert the A17 branch/PR if evidence is incorrect. Do not alter merged A16 runtime unless a separately verified defect fix is required. No runtime/database rollback is expected because deployment/migration is prohibited in this package.
+Revert the A17 audit PR if evidence is incorrect. No runtime/database rollback is required because A17 performs no deployment or migration.
 
 ## Exact next gate
-Complete research review; inspect the five primary surfaces against canonical source contracts and current deployment truth; write the smallest evidence-only A17 audit artifact; run exact-head Black Oracle CI + Trading CI; merge only if both are green and the PR is conflict-free.
+Open the A17 evidence-only PR; require exact-head Black Oracle CI + Trading CI green and conflict-free before merge. After A17 merge, A18 must remediate source-health truth only: explicit `OK | DEGRADED | UNAVAILABLE` load state, `response.ok` enforcement, observed-at/stale labeling, Ledger coverage/health propagation, and unavailable-vs-empty operational read distinction. Preserve PAPER execution behavior.
 
 ## Current deployment state
-Legacy Railway/PAPER services unchanged. No deployment/database mutation authorized in A17.
+Legacy Railway/PAPER services unchanged. No deployment/database mutation performed in A17.
 
 ## Cycle state
-- Phase: **PLAN COMPLETE → RESEARCH REVIEW / AUDIT**
-- Blocker: none for repository audit work
-- Alpha status: execution safety baseline complete; product truth audit active
-- Single next priority: **A17 release-readiness evidence record**
+- Phase: **AUDIT COMPLETE → PR / CI GATE**
+- Release-readiness blocker: **source health/freshness can be hidden or conflated with empty data**
+- Alpha status: execution safety baseline intact; product truth audit blocks deployment-readiness claim
+- Single next priority: **A18 canonical source-health / degraded-state remediation after A17 evidence merge**
