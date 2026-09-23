@@ -15,11 +15,11 @@ This file is the single current Alpha roadmap for the BLACK ORACLE family. Older
 
 ## Current runtime truth
 
-- BOT current main: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`. The deployed web runtime remains the separately attested A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; subsequent commits through current main are Foundation/research documentation and do not change protected PAPER behavior.
+- BOT Foundation-remediation base: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`; governance reconciliation merged in PR #240. The deployed web runtime remains the separately attested A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; subsequent Foundation/research documentation does not change protected PAPER behavior.
 - BOT A18 exact PR head `fd4731384226d62645295420d43262309ee0b5a8` passed Black Oracle CI run `35709996684` and Trading CI run `35709996675`.
 - Railway contains four legacy BOT services. Their configured sources and deployed SHAs are recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`.
 - The production Supabase project reports `ACTIVE_HEALTHY` at the management plane. BLACK ORACLE SQL calls now fail with `INVALID_ARGUMENT` while the same connector succeeds against another project, and direct REST/browser probes time out. PAPER scheduler/writer lineage therefore remains **UNKNOWN**, not PASS.
-- BOR current main: `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0` (S25). S22–S25 are repository/local-artifact results only; S26 remains isolated in open PR #34. An approved isolated BOR Railway service and BOR-owned volume are the active runtime gate.
+- BOR S25 base: `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0`; Foundation runtime preparation merged at `8ae39ea4a7e6e556ebc250555fd2f09bdab11cfa`. S26 remains isolated in draft PR #34. Railway rejected the new service at the effective workspace resource ceiling, so no BOR runtime is deployed.
 
 ## Active sprint
 
@@ -47,7 +47,7 @@ Every item below has exactly one disposition.
 | #145 trigger-aware fills/outcome attribution | ACTIVE | Relevant to PAPER correctness; do not alter the protected runtime during Foundation Closure. |
 | #161 Railway source-pin drift | STALE_RESOLVED | Exact BOT main SHA is deployed and independently attested; issue closed. |
 | #165 duplicate PAPER writers | BLOCKER | Supabase scheduler/control-plane lineage is currently inaccessible; status remains UNKNOWN. |
-| #204 independent BOR boundary | ACTIVE_BLOCKER | Hobby capacity is 2/2 projects and 4/5 services. The approved final service slot is reserved for an isolated BOR service with BOR-only volume and credentials. |
+| #204 independent BOR boundary | BLOCKER | Hobby shows 4/5 services in `Black Oracle`, but the workspace already has five services across its two projects and Railway rejects another service. No BOR service was created. |
 
 ### BOT pull requests
 
@@ -97,5 +97,5 @@ Every item below has exactly one disposition.
 ## Next milestones
 
 1. restore read-only Supabase observability and mechanically attest scheduler, writer, last invocation, and canonical checkpoint/event lineage;
-2. finish the approved BOR-only Railway service/volume deployment and attest durable artifact persistence without BOT credentials;
+2. obtain Railway authority/capacity for one additional workspace service, then deploy the prepared BOR-only service/volume and attest durable persistence;
 3. build the 9/27 runtime E2E fixture against isolated PAPER state, including both execution and `NO_TRADE`, then verify ledger/replay/report continuity.
