@@ -7,11 +7,11 @@ Status: **FEATURE FREEZE / PAPER SINGLE-WRITER BLOCKED**
 
 ## Repository and deployment truth
 
-- Current BOT main: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`.
+- Foundation-remediation base: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`; governance reconciliation merged in PR #240.
 - Deployed web runtime: A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`.
 - Commits after the A18 deployment through current main are Foundation/research documentation and do not change protected PAPER behavior.
-- Current BOR main: `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0`; S22–S25 are merged at repository/local-artifact scope. S26 remains isolated in PR #34.
-- Railway is Hobby with 2/2 projects and 4/5 services in the `Black Oracle` project before BOR provisioning. The final service slot is approved for BOR, not a second BOT runtime.
+- BOR Foundation runtime preparation merged at `8ae39ea4a7e6e556ebc250555fd2f09bdab11cfa`; S26 remains isolated in draft PR #34.
+- Railway is Hobby with 2/2 projects, four services in `Black Oracle`, and one service in the separate `SOCIAL VEGAS` project. Railway's API rejects a new service with `Free plan resource provision limit exceeded`; this provider text does not change the observed Hobby plan.
 
 ## Freeze
 
@@ -46,12 +46,12 @@ The next infrastructure action that could restore database observability is a Su
 
 ## BOR runtime objective
 
-Use the approved final Railway service slot for one BOR-only service and mounted volume. It must use only `hanul442/black_oracle_report`, carry no BOT/PAPER/trading credentials, keep all authority flags false, and verify durable publish -> resolver -> read behavior. Protected existing services and domains are immutable.
+BOR code and tests are ready for one BOR-only service and mounted volume. No service was created because the effective workspace service ceiling is already consumed. A temporary empty BOR volume was created during diagnosis; its exact deletion is staged and requires Railway dashboard 2FA to apply. Protected existing services and domains remain untouched.
 
 ## Exit gate
 
 - Supabase read-only evidence either proves one writer or records the precise owner action still required;
-- BOR service exact revision, health, authority flags, durable fingerprint, and read API are attested;
+- Railway capacity is granted and the BOR exact revision, health, authority flags, durable fingerprint, and read API are attested;
 - governance reflects current SHAs and S22–S26 truth;
 - repository tests and exact-head CI are green;
 - Slack and blocker issues are updated with no unsupported PASS claim.
