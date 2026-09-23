@@ -1,64 +1,57 @@
-# ACTIVE SPRINT — BOT Alpha Product Integration
+# ACTIVE SPRINT — Foundation Remediation
 
-Date: **2026-09-22**
+Date: **2026-09-23**
 Target release: **2026-10-20 — Alpha v0.1**
 Repository: `hanul442/black_oracle_bot`
-Status: **BOT-A18 MERGED / FOUNDATION CLOSURE BLOCKED**
+Status: **FEATURE FREEZE / PAPER SINGLE-WRITER BLOCKED**
 
-## Completed baseline
-- BOT-S0 through BOT-S14 complete.
-- BOT-A15 canonical Decision Replay merged.
-- BOT-A16 five-surface Alpha IA + global Canonical Ledger merged.
-- BOT-A17 release-readiness truth audit merged.
-- BOT-A18 canonical source-health remediation merged.
+## Repository and deployment truth
 
-## FOUNDATION-R1 — independent BOT runtime attestation
-### Objective
-Provision and attest one isolated Railway runtime sourced directly from `hanul442/black_oracle_bot` while preserving all legacy PAPER services and authority boundaries.
+- Current BOT main: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`.
+- Deployed web runtime: A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`.
+- Commits after the A18 deployment through current main are Foundation/research documentation and do not change protected PAPER behavior.
+- Current BOR main: `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0`; S22–S25 are merged at repository/local-artifact scope. S26 remains isolated in PR #34.
+- Railway is Hobby with 2/2 projects and 4/5 services in the `Black Oracle` project before BOR provisioning. The final service slot is approved for BOR, not a second BOT runtime.
 
-### Acceptance criteria / result
-- direct BOT repository source: **BLOCKED before creation**
-- isolated from legacy PAPER authority: **PASS by no mutation/no service created**
-- exact deployed revision + health: **NOT APPLICABLE / no deployment created**
-- fail closed rather than weakening contracts: **PASS**
-- legacy PAPER services untouched: **PASS**
+## Freeze
 
-### Concrete blocker
-Railway rejected creation of `black-oracle-bot-alpha` from `hanul442/black_oracle_bot` `main` with: `Free plan resource provision limit exceeded. Please upgrade to provision more resources!` No service or deployment was created.
+No strategy, Risk, cohort, scheduler-target, LIVE, UI, monetization, S26, or research-feature work advances during remediation. Existing feature and research PRs retain their roadmap classifications and do not merge merely because CI is green.
 
-### Safety boundary preserved
-No unrestricted LIVE, broker credential injection, deterministic-Risk bypass, scheduler retarget, database migration, protected PAPER-history mutation, qualification reset, or legacy PAPER service disable/repoint.
+## Supabase recovery objective
 
-### Rollback
-No-op: provisioning failed before resource creation.
+Read-only evidence required for single-writer closure:
 
-## Research / precedent review
-- BOT-S9: EV-006/EXP-EV006, DI-003/EXP-DI003, DI-004/EXP-DI004 and AIML-002/EXP-AIML002 keep deterministic Risk independent and stale/missing evidence fail-closed.
-- BOT-S11: canary readiness is evidence only, never execution/capital/LIVE authority.
-- A17/A18: source/runtime truth may not be inferred from missing evidence.
-- No research-only strategy, threshold, or model was promoted into production behavior.
+1. enabled `black_oracle_trading_scheduler_config` row and exact target;
+2. active `pg_cron` job and recent `cron.job_run_details`;
+3. latest successful scheduler invocation;
+4. current `black_oracle_trading_cycle_leases` state;
+5. latest runtime checkpoint metadata by runtime ID;
+6. producer/runtime/source-tagged canonical event lineage.
 
-## Additional read-only runtime verification
-- Existing Railway PAPER services remain sourced from legacy `hanul442/Black-oracle`.
-- Supabase management plane reports production `black_oracle` ACTIVE_HEALTHY, but direct SQL still terminates on connection timeout.
-- Deployed `black-oracle-paper-scheduler` Edge Function v18 was inspected read-only. It reads `black_oracle_trading_scheduler_config`, requires an enabled row, exact HTTPS approved target and per-runtime scheduler token, and fails closed otherwise.
-- v18 approved scheduler targets are limited to legacy web, vnext/vnext-s1r2 and s2-shadow origins. V9 is not on that allowlist, but independent writer behavior remains possible and therefore is not cleared.
-- Because the enabled scheduler row and checkpoint/event lineage remain unreadable, **single-writer remains UNKNOWN/BLOCKED**.
+## Current observation
 
-## Documentation / verification artifacts
-- `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md` updated with the Railway capacity blocker and scheduler-v18 source evidence.
-- Foundation documentation commits only; trading/runtime contracts unchanged.
+- Supabase management plane: `ACTIVE_HEALTHY`.
+- `black-oracle-paper-scheduler`: ACTIVE version 18, JWT required, exact approved-target enforcement in source.
+- `black-oracle-runtime-status`: ACTIVE version 4, public read-only status contract.
+- BLACK ORACLE `execute_sql` returns `INVALID_ARGUMENT`; direct REST, shell, and cloud-browser requests time out.
+- The same Supabase connector successfully executes SQL against another active project, so this is project/data-plane specific.
+- Railway can inspect service config/files but cannot execute in the running container or reveal OAuth-hidden variables.
+- Enabled scheduler row, cron job, last success, lease, checkpoint, and canonical producer lineage therefore remain unreadable.
 
-## Exact next gate
-1. obtain Railway capacity for one additional isolated service (or otherwise free capacity only with explicit safe authority/lineage proof);
-2. provision `hanul442/black_oracle_bot` directly and attest exact revision + health;
-3. recover read-only Supabase data-plane access and identify the enabled scheduler row + canonical writer/checkpoint lineage;
-4. do not advance runtime Foundation to PASS until both independent runtime and single-writer evidence are proven.
+## Safety decision
 
-## Cycle state
-- Phase: **FOUNDATION RUNTIME ATTESTATION**
-- Repository Alpha source-truth: **PASS**
-- Independent BOT runtime: **BLOCKED — RAILWAY RESOURCE CAPACITY/PLAN**
-- Single-writer proof: **BLOCKED — SUPABASE DATA PLANE TIMEOUT**
-- Runtime Foundation: **BLOCKED**
-- Single next priority: **Railway capacity for isolated BOT runtime, then exact deployment attestation**
+Single writer is **UNKNOWN/BLOCKED**. No scheduler target, cadence, runtime ID, service variable, checkpoint, event, qualification cohort, strategy, or Risk setting is changed without evidence. No writer conflict has been proven, so no writer remediation is authorized.
+
+The next infrastructure action that could restore database observability is a Supabase project fast reboot or provider support intervention. It requires explicit owner authority because it may interrupt production PAPER state. After recovery, repeat the six read-only checks before considering any writer change.
+
+## BOR runtime objective
+
+Use the approved final Railway service slot for one BOR-only service and mounted volume. It must use only `hanul442/black_oracle_report`, carry no BOT/PAPER/trading credentials, keep all authority flags false, and verify durable publish -> resolver -> read behavior. Protected existing services and domains are immutable.
+
+## Exit gate
+
+- Supabase read-only evidence either proves one writer or records the precise owner action still required;
+- BOR service exact revision, health, authority flags, durable fingerprint, and read API are attested;
+- governance reflects current SHAs and S22–S26 truth;
+- repository tests and exact-head CI are green;
+- Slack and blocker issues are updated with no unsupported PASS claim.
