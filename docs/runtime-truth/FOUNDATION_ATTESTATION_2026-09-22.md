@@ -24,7 +24,9 @@ All existing PAPER services remain legacy `hanul442/Black-oracle` services. None
 
 ### Corrected Railway capacity truth
 
-The workspace is on the **Hobby** plan, not Free. Both project slots are used. Before remediation the `Black Oracle` project contains four of five allowed services and the workspace reports zero of three available volumes in use. The user approved reserving the final service slot for an isolated BOR service with BOR-only variables and storage. The prior provider error text is retained only as historical attempt evidence and must not be used to infer the current plan.
+The workspace is on the **Hobby** plan, not Free. Both project slots are used. `Black Oracle` contains four services and the separate `SOCIAL VEGAS` project contains one, for five workspace services in total. Railway rejected both direct and agent-assisted BOR service creation with `Free plan resource provision limit exceeded`. That is recorded as provider error text, not as evidence that the workspace plan is Free.
+
+No BOR service or domain was created. A new empty, unattached 0.5 GB BOR volume was created while diagnosing the limit. Its exact deletion is staged, but Railway requires dashboard 2FA to commit that cleanup. No existing service, domain, variable, deployment, scheduler, or volume was changed.
 
 ## Safe A18 deployment
 
@@ -60,6 +62,6 @@ No database, cron, Edge Function, checkpoint, ledger, scheduler, broker secret, 
 ## Foundation blockers carried to final verification
 
 1. recover BLACK ORACLE Supabase data-plane access and read the enabled scheduler row, active cron, last successful invocation, lease, checkpoint, and producer-tagged events;
-2. deploy the approved isolated BOR service/volume and verify publish -> resolver -> read durability without BOT credentials;
+2. obtain Railway capacity/support for one additional workspace service, commit the staged empty-volume cleanup with dashboard 2FA, then deploy BOR and verify publish -> resolver -> read durability;
 3. preserve deterministic Risk, scheduler targets, protected PAPER history, and qualification cohorts while the above remain unresolved;
 4. a Supabase project fast reboot or support intervention requires explicit owner authority because it may interrupt production PAPER state.
