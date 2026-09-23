@@ -1,6 +1,6 @@
 # BLACK ORACLE Research Ledger
 
-Last updated: 2026-09-23 — Cycle 012
+Last updated: 2026-09-23 — Cycle 013
 
 | ID | Domain | Topic | Evidence | Status | Experiment | Production impact |
 |---|---|---|---|---|---|---|
@@ -29,6 +29,7 @@ Last updated: 2026-09-23 — Cycle 012
 | EV-006 | Evidence/Validation + Autotrade | Independent deterministic pre-trade order gate / bounded autonomy | A regulatory precedent + B conceptual agentic-finance evidence | TEST | EXP-EV006 | None |
 | EV-007 | Evidence/Validation + AI/ML | Canonical per-run portfolio-agent audit bundle | B+ recent research + released benchmark artifacts | TEST / REFERENCE | EXP-EV007 | None |
 | EV-008 | Evidence/Validation + Agent Security | Agent identity/authority, least privilege and indirect-prompt-injection containment | A- NIST/OWASP precedent | TEST / REFERENCE | EXP-EV008 | None |
+| EV-009 | Evidence/Validation + AI/ML | Calibrated evaluator / LLM-judge validity and promotion integrity | A ICLR + B/B+ recent empirical studies | TEST / REFERENCE | EXP-EV009 | None |
 | Q-001 | Quant + Evidence | Regime-aware/adaptive conformal uncertainty | B | TEST | EXP-Q001 | None |
 | Q-002 | Quant + Execution | Execution-cost model risk | B | TEST | EXP-Q002 | None |
 | Q-003 | Quant + Evidence | Market-neutrality intent vs measured realized exposure constraints | B+ peer-reviewed recent paper | REFERENCE / TEST | EXP-Q003 | None |
@@ -60,6 +61,9 @@ Prompt text, retrieved content, web pages, repository text, evidence and tool ou
 ### Temporal instrument-identity rule — Cycle 012
 Display ticker/symbol is not canonical economic identity. Research and replay should resolve observations through a versioned instrument/listing identity with venue, alias validity interval and knowledge-time provenance. Ambiguous or unresolved mappings must fail closed or remain explicitly unresolved. External identifiers such as FIGI/ISIN/vendor IDs are mappings to BO identity, not unquestioned BO primary keys.
 
+### Evaluator-integrity rule — Cycle 013
+An LLM judge score is not self-validating evidence. Whenever a promotion criterion can be checked deterministically or executably, that path takes precedence over probabilistic judging. Non-verifiable criteria require versioned evaluator provenance and BO-domain calibration against hidden human/executable gold where practical. Raw agreement or test-retest consistency alone is insufficient; report chance-corrected agreement and task/rubric-specific error estimates. Preserve raw traces independently of verdicts so runs can be re-judged after evaluator changes. Candidate-authored reasoning is evidence input, not trusted ground truth, and must not be allowed to manipulate the evaluator.
+
 ## Current queue
 1. **EXP-DI001 + EXP-DI003** — implement minimal `bo.experiment.v1` validator and point-in-time feature manifest; blind-replay a representative KRX experiment with seeded leakage.
 2. **EXP-EV006** — implement sandbox-only `bo.order_gate.v1`; replay valid paper orders plus seeded quantity, duplicate, stale-data, outlier-price, loss-limit and retry failures. No live orders.
@@ -69,7 +73,7 @@ Display ticker/symbol is not canonical economic identity. Research and replay sh
 6. **EXP-Q004** — compare independent execution vs one-shot netting on archived/paper multi-strategy intents; only then test iterative coordination.
 7. **EXP-DI004** — mutable-source vs snapshot-addressable replay after deliberate source correction.
 8. **EXP-EV001 + EXP-Q002** — independent backtest reproducibility and execution-cost stress on the same strategies.
-9. **EXP-AIML005 + EXP-AIML006 + EXP-AIML007** — freeze 30–50 BO finance-agent tasks, baseline current configuration, ablate Council coordination under equal budgets, then inject common-mode failures. Add tool-selection/sequencing and curated-skill ablations from current benchmark references.
+9. **EXP-AIML005 + EXP-EV009 + EXP-AIML006 + EXP-AIML007** — freeze 30–50 BO finance-agent tasks, create a hidden evaluator-calibration subset, baseline the current agent and judge, then ablate Council coordination/common-mode failures only after evaluator validity is measured.
 10. **EXP-EV003 / EXP-EV005** — DSR and PBO/CSCV positive/negative controls with complete trial accounting.
 11. **EXP-Q003** — verify realized exposure constraints for neutral/hedged candidates; do not adopt external DRL strategy.
 12. **EXP-Q001 / EXP-EV004 / EXP-DI002** — calibration, leakage-positive controls and lineage instrumentation.
@@ -77,14 +81,12 @@ Display ticker/symbol is not canonical economic identity. Research and replay sh
 14. **EXP-D003 + EXP-D004 + EXP-D005 + EXP-D001** — chart semantics/accessibility, progressive disclosure and shared-context UX after core validation infrastructure.
 15. **EXP-EV002 / EXP-AIML001** — robustness gate and strategy lineage/redundancy once the validation harness is trustworthy.
 
-## Cycle 012 decision
-The cross-domain scan found substantial reinforcement for existing work but only one genuinely new architecture gap worth adding: **DI-005 temporal instrument identity**. Point-in-time features and immutable snapshots are insufficient if historical data is joined through a mutable or ambiguous ticker. BO will test a storage-neutral `bo.instrument_identity.v1` concept with canonical instrument/listing identity, venue, alias validity intervals, knowledge time and source/version provenance. OpenFIGI is a reference/mapping source, not the BO primary key; KRX/KSD-specific coverage must be verified before adoption.
+## Cycle 013 decision
+The cross-domain scan found one new gap worth a separate ID: **EV-009 evaluator integrity**. BO already plans to evaluate agents, Council structures and security traces, but an uncalibrated LLM judge can turn evaluator bias into false architecture evidence. Peer-reviewed ICLR 2026 work establishes that imperfect judges can invalidate naive certification and that calibration-set error estimates can restore statistical validity under stated assumptions. Recent empirical judge studies reinforce that bias and mitigation are model/task dependent. BO will therefore test a layered evaluation stack: deterministic/executable checks first, calibrated probabilistic judging only for non-verifiable criteria, and human escalation for ambiguous/high-disagreement cases.
 
-This cycle also repaired a repository traceability defect: **EV-008 agent tool authority/security had been reported previously but was absent from the actual central ledger/research tree.** It is now restored explicitly rather than silently treated as committed history.
-
-Design/UX findings remained within D-003–D-005. Recent financial-agent benchmarks reinforce AIML-005 tool-selection, sequencing, timeliness/compliance and curated-skill ablations. Recent financial-ML falsification/leakage work reinforces DI-003/EV-003/EV-005. OpenBB's current governed shared-workspace direction reinforces D-001. No duplicate IDs were created merely to increase research volume.
+Recent APort Vault evidence strongly reinforces EV-006/EV-008 deterministic authorization boundaries, so no duplicate security research ID was created. AgentAudit reinforces AIML-005/AIML-004 trace-level evaluation and re-judging rather than requiring a new agent architecture. Design/UX, Quant, Product/Competitor and Data scans produced useful reinforcement but no gap sufficiently distinct from D-001–005, Q-001–004, DI-001–005 or existing validation work to justify ledger inflation.
 
 No production trading, paper-trading, credential, connector permission, strategy ranking, model routing or execution behavior was changed.
 
 ## Highest-priority next action
-Implementation still outranks literature accumulation: execute **EXP-DI001 + EXP-DI003** first on the seeded KRX replay fixture. Once the validator exists, attach **DI-005 instrument-identity positive controls** to that same harness rather than building a separate test stack. In parallel only where isolated, run **EV-008** in a disposable no-production-credential agent/tool sandbox.
+Implementation still outranks literature accumulation: execute **EXP-DI001 + EXP-DI003** first on the seeded KRX replay fixture. In the agent-evaluation lane, freeze the AIML-005 golden tasks before testing Council variants, then build the **EV-009 hidden calibration subset and evaluator manifest** so future AIML-006/007 results are not promoted on an unvalidated judge.
