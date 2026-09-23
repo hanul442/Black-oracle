@@ -1,7 +1,7 @@
 # BLACK ORACLE Alpha Roadmap
 
 Status: **CANONICAL**
-Updated: **2026-09-22**
+Updated: **2026-09-23**
 Target: **Alpha v0.1 — 2026-10-20**
 
 This file is the single current Alpha roadmap for the BLACK ORACLE family. Older master plans, sprint roadmaps, architecture drafts, and open stacked PR descriptions are historical evidence unless this file explicitly activates them.
@@ -15,11 +15,11 @@ This file is the single current Alpha roadmap for the BLACK ORACLE family. Older
 
 ## Current runtime truth
 
-- BOT A18 runtime code baseline: `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; later documentation-only Foundation commits do not change that runtime baseline.
+- BOT current main: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`. The deployed web runtime remains the separately attested A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`; subsequent commits through current main are Foundation/research documentation and do not change protected PAPER behavior.
 - BOT A18 exact PR head `fd4731384226d62645295420d43262309ee0b5a8` passed Black Oracle CI run `35709996684` and Trading CI run `35709996675`.
 - Railway contains four legacy BOT services. Their configured sources and deployed SHAs are recorded in `docs/runtime-truth/FOUNDATION_ATTESTATION_2026-09-22.md`.
-- The production Supabase project reports `ACTIVE_HEALTHY` at the management plane, but direct SQL/control-plane reads timed out during Foundation Closure. PAPER scheduler/writer lineage therefore remains **UNKNOWN**, not PASS.
-- BOR S21 runtime code baseline: `9118fe77780b26fe1901dc76bcf0add8231d29e0`; later Foundation build/test documentation does not establish a deployed runtime. Independent runtime and durable artifact persistence remain Foundation gates.
+- The production Supabase project reports `ACTIVE_HEALTHY` at the management plane. BLACK ORACLE SQL calls now fail with `INVALID_ARGUMENT` while the same connector succeeds against another project, and direct REST/browser probes time out. PAPER scheduler/writer lineage therefore remains **UNKNOWN**, not PASS.
+- BOR current main: `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0` (S25). S22–S25 are repository/local-artifact results only; S26 remains isolated in open PR #34. An approved isolated BOR Railway service and BOR-owned volume are the active runtime gate.
 
 ## Active sprint
 
@@ -27,7 +27,7 @@ This file is the single current Alpha roadmap for the BLACK ORACLE family. Older
 
 1. attest A18 exact deployed BOT revision without changing PAPER semantics;
 2. prove one scheduler/writer/state lineage for every protected PAPER runtime;
-3. establish an independent BOR runtime and verify its authority-free health/read boundary;
+3. establish the approved isolated BOR service and volume, then verify its authority-free durable publish/read boundary;
 4. preserve one canonical roadmap and classify legacy work;
 5. stop before the final cross-system audit for an Astra verification pass.
 
@@ -47,7 +47,7 @@ Every item below has exactly one disposition.
 | #145 trigger-aware fills/outcome attribution | ACTIVE | Relevant to PAPER correctness; do not alter the protected runtime during Foundation Closure. |
 | #161 Railway source-pin drift | STALE_RESOLVED | Exact BOT main SHA is deployed and independently attested; issue closed. |
 | #165 duplicate PAPER writers | BLOCKER | Supabase scheduler/control-plane lineage is currently inaccessible; status remains UNKNOWN. |
-| #204 independent BOR boundary | BLOCKER | Repository exists; independent runtime and durable storage still require attestation. |
+| #204 independent BOR boundary | ACTIVE_BLOCKER | Hobby capacity is 2/2 projects and 4/5 services. The approved final service slot is reserved for an isolated BOR service with BOR-only volume and credentials. |
 
 ### BOT pull requests
 
@@ -63,7 +63,7 @@ Every item below has exactly one disposition.
 | Item | Disposition | Reason |
 | --- | --- | --- |
 | #16 OSIRIS Global Intelligence | KEEP_ISOLATED | Research-only and explicitly outside the current Alpha runtime path. |
-| #28 immutable report archive | DEFERRED_POST_ALPHA | Valuable follow-on; runtime closure and durable storage boundary come first. |
+| #34 BOR-S26 PDF byte renderer | DEFERRED_FOUNDATION_FREEZE | Keep isolated; S22–S25 are merged, but feature work is frozen until runtime remediation closes. |
 
 ## Deferred work
 
@@ -73,7 +73,7 @@ Every item below has exactly one disposition.
 - major UI redesigns
 - unrestricted LIVE trading or new trading authority
 - automatic strategy/Champion promotion
-- paid infrastructure not explicitly approved
+- additional paid infrastructure beyond the approved remaining Railway service/volume
 
 ## Safety boundaries
 
@@ -97,5 +97,5 @@ Every item below has exactly one disposition.
 ## Next milestones
 
 1. restore read-only Supabase observability and mechanically attest scheduler, writer, last invocation, and canonical checkpoint/event lineage;
-2. finish independent BOR deployment and provision BOR-owned durable artifact persistence without BOT credentials;
+2. finish the approved BOR-only Railway service/volume deployment and attest durable artifact persistence without BOT credentials;
 3. build the 9/27 runtime E2E fixture against isolated PAPER state, including both execution and `NO_TRADE`, then verify ledger/replay/report continuity.

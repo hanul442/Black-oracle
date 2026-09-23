@@ -1,13 +1,13 @@
 # Foundation Runtime Attestation — 2026-09-22
 
-Disposition: **BLOCKED / BOT web revision attested / independent BOT runtime capacity-blocked**
+Disposition: **REMEDIATION ACTIVE / BOT web revision attested / PAPER single-writer unknown**
 
 ## Repository gate
 
 | Repository | Runtime code baseline | Gate |
 | --- | --- | --- |
 | `hanul442/black_oracle_bot` | `0a9361c05e5ba0212d7d1bceff032e27ac503ad2` | A18 merged; exact PR head `fd473138...` passed Black Oracle CI and Trading CI. Five-surface truth audit PASS. Later Foundation commits are documentation-only. |
-| `hanul442/black_oracle_report` | `9118fe77780b26fe1901dc76bcf0add8231d29e0` | S21 merged. Later Foundation changes add build/test closure but no deployed runtime. |
+| `hanul442/black_oracle_report` | `71a8bf1c5f267497aad32da2a9c6f4029bfcb8e0` | S22–S25 merged at repository/local-artifact scope. S26 remains isolated in PR #34. Runtime and durable storage require deployment attestation. |
 
 ## Railway BOT runtime matrix
 
@@ -22,10 +22,9 @@ Project: `Black Oracle`, environment: production. Provider UUIDs and deployment 
 
 All existing PAPER services remain legacy `hanul442/Black-oracle` services. None is sourced from the independent `hanul442/black_oracle_bot` repository.
 
-### FOUNDATION-R1 independent BOT runtime provision attempt
-A new isolated Railway service named `black-oracle-bot-alpha`, sourced directly from `hanul442/black_oracle_bot` `main`, was requested without broker credentials, scheduler authority, database migration, or changes to any protected PAPER service. Railway rejected provisioning before service creation with **`Free plan resource provision limit exceeded. Please upgrade to provision more resources!`**.
+### Corrected Railway capacity truth
 
-Result: **BLOCKED BY PROVIDER CAPACITY/PLAN**. No new service exists, no deployment occurred, and no legacy runtime was repointed or disabled. This is an infrastructure-capacity blocker, not a repository/build failure. The safe rollback is therefore a no-op.
+The workspace is on the **Hobby** plan, not Free. Both project slots are used. Before remediation the `Black Oracle` project contains four of five allowed services and the workspace reports zero of three available volumes in use. The user approved reserving the final service slot for an isolated BOR service with BOR-only variables and storage. The prior provider error text is retained only as historical attempt evidence and must not be used to infer the current plan.
 
 ## Safe A18 deployment
 
@@ -39,7 +38,7 @@ The web-only A18 revision was previously deployed at exact SHA `0a9361c05e5ba021
 | scheduler target | Supabase scheduler v18 reads `black_oracle_trading_scheduler_config` at invocation time | PARTIAL: target mechanism proven; enabled row unavailable |
 | scheduler allowlist | scheduler v18 hard-allowlists web, vnext, vnext-s1r2 and s2-shadow HTTPS targets; arbitrary target URLs fail closed | PASS as source-contract evidence |
 | permitted writer | scheduler requires enabled config + approved target + per-runtime auth token before invoking `/api/trading-paper-cycle` | PARTIAL: contract proven; active row unavailable |
-| database control-plane read | direct SQL `select now()` plus scheduler-config read attempt timed out again | BLOCKED |
+| database control-plane read | BLACK ORACLE `execute_sql` returns `INVALID_ARGUMENT`; REST, shell, and cloud-browser probes time out, while another Supabase project accepts `select 1` | BLOCKED / PROJECT-SPECIFIC |
 | canonical checkpoint/event lineage | database read unavailable | UNKNOWN |
 | competing candidates | web/vnext/s2 remain approved scheduler targets; V9 remains a separate writer candidate outside the scheduler allowlist | BLOCKED pending control-plane proof |
 
@@ -48,7 +47,8 @@ Disposition: **UNKNOWN / BLOCKED**. Scheduler source substantially narrows the a
 ## Supabase observation
 
 - production project `black_oracle` remains `ACTIVE_HEALTHY` at the management plane;
-- direct SQL remains unavailable with `Connection terminated due to connection timeout`;
+- direct SQL remains unavailable: current connector attempts return `INVALID_ARGUMENT`, and data-plane HTTP probes time out;
+- the same connector successfully executed `select 1` against another active project, narrowing the failure to the BLACK ORACLE project/data plane rather than a global tool outage;
 - `black-oracle-paper-scheduler` is ACTIVE version 18 with JWT verification;
 - version 18 source was read directly from the deployed Edge Function;
 - its `APPROVED_TARGETS` map contains only the web, vnext/vnext-s1r2, and s2-shadow Railway origins;
@@ -59,7 +59,7 @@ No database, cron, Edge Function, checkpoint, ledger, scheduler, broker secret, 
 
 ## Foundation blockers carried to final verification
 
-1. Railway resource capacity/plan must permit one isolated `hanul442/black_oracle_bot` service before independent BOT runtime attestation can complete;
-2. recover Supabase data-plane access and read the enabled scheduler-config row to prove the exact scheduler target and writer lineage;
-3. complete authenticated A18 source-health payload smoke without exposing credentials;
-4. preserve deterministic Risk and PAPER lineage while the above remain unresolved.
+1. recover BLACK ORACLE Supabase data-plane access and read the enabled scheduler row, active cron, last successful invocation, lease, checkpoint, and producer-tagged events;
+2. deploy the approved isolated BOR service/volume and verify publish -> resolver -> read durability without BOT credentials;
+3. preserve deterministic Risk, scheduler targets, protected PAPER history, and qualification cohorts while the above remain unresolved;
+4. a Supabase project fast reboot or support intervention requires explicit owner authority because it may interrupt production PAPER state.
