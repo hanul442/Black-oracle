@@ -1,52 +1,73 @@
-# ACTIVE SPRINT — Frozen v1 Foundation Migration
+# ACTIVE SPRINT — Frozen v1 Foundation
 
 Date: **2026-09-24**
-Target: **Foundation Closure before Decision Engine expansion**
-Status: **GOVERNANCE SYNC / RUNTIME MUTATION FROZEN**
+Status: **READY FOR ASTRA FINAL VERIFICATION**
+Runtime mutation: **FROZEN**
+Final cross-system audit: **NOT STARTED**
 
 ## Canonical authority
 
-- Top-level architecture: `docs/architecture/BLACK_ORACLE_CANONICAL_FROZEN_V1.md`
-- Current-state audit: `docs/runtime-truth/CURRENT_STATE_AUDIT_2026-09-24.md`
-- Migration plan: `docs/architecture/FROZEN_V1_MIGRATION_PLAN.md`
+- `docs/architecture/BLACK_ORACLE_CANONICAL_FROZEN_V1.md`
+- `docs/architecture/FROZEN_V1_MIGRATION_PLAN.md`
+- `docs/runtime-truth/CURRENT_STATE_AUDIT_2026-09-24.md`
+- `docs/runtime-truth/FOUNDATION_PRE_ASTRA_HANDOFF_2026-09-24.md`
 
-The earlier BOT/BOR split is no longer the top-level architecture. Existing repositories and services remain implementation boundaries until deliberately migrated.
+## Completed Foundation implementation
 
-## Current verified runtime truth
+Merged and CI-verified:
 
-- Railway `Black Oracle` production contains four legacy services: web, vnext PAPER, s2 shadow, v9 multiasset.
-- Latest deployments report SUCCESS.
-- Supabase management plane reports `ACTIVE_HEALTHY`, while database reads still fail with connection/data-plane errors.
-- Supabase Edge Function metadata remains readable.
-- PAPER single-writer authority is therefore **UNKNOWN / BLOCKED**.
+- PR #244 — Canonical Data + Point-in-Time
+- PR #245 — Immutable Decision Run + Version Registry
+- PR #246 — Event / Trigger + Evidence Lineage
+- PR #247 — PAPER-safe Shared Evaluation
+- PR #248 — Point-in-Time Market / Asset Graph
+- PR #249 — BOT / BOR / NARS Legacy Adapter Pass + Foundation composition test
 
-## Sprint goal
+Foundation composition is now proven at the contract/test layer:
 
-Prepare Foundation PR #1 without mutating protected runtime state.
+`Canonical Data → PIT → Evidence → Material Change → Asset Graph → Decision Run → Evaluation`
 
-Required work:
+No layer in that composition receives execution, LIVE, Production activation, or promotion authority.
 
-1. inventory existing canonical data/event/evidence/version contracts;
-2. define Frozen v1 Canonical Data Contract;
-3. define Point-in-Time temporal semantics;
-4. define immutable Decision Run / Version Registry interfaces;
-5. define compatibility adapters for existing Event Ledger / Replay / Evidence shapes;
-6. add contract tests;
-7. stop before any database migration or runtime behavior change if Supabase remains unavailable.
+## Current external blocker
 
-## Frozen during this sprint
+Supabase management plane reports `ACTIVE_HEALTHY`, but database/data-plane access still fails with TCP connection refusal on PostgreSQL port 5432.
 
-- scheduler target/cadence/runtime IDs;
-- Risk parameters;
-- PAPER writer authority;
-- qualification history;
-- LIVE authority;
-- broad UI redesign;
-- isolated BOR deployment;
-- retirement of legacy Railway services.
+Therefore the following remain **UNVERIFIED / BLOCKED**:
 
-## Exit gate
+- physical schema truth,
+- migration history,
+- canonical PAPER single-writer lineage,
+- scheduler/checkpoint/lease ownership,
+- persistence design for new Frozen v1 contracts,
+- any database migration.
 
-Foundation PR #1 is ready when contract semantics and compatibility tests are green, no runtime mutation is required, and the implementation can be reviewed against Frozen v1.
+Do not interpret the management-plane health badge as database readiness.
 
-Before the final Foundation cross-system audit, stop for an Astra final verification pass.
+## Protected runtime
+
+Do not change before Astra verification + final cross-system audit:
+
+- Railway scheduler targets/cadence/runtime IDs,
+- PAPER writer authority,
+- deterministic Risk,
+- protected qualification history,
+- legacy service retirement,
+- LIVE/Production authority,
+- Supabase schema.
+
+## Next action
+
+**STOP.**
+
+Run the planned Astra final verification pass over:
+
+1. Frozen v1 architecture invariants,
+2. PRs #244–#249,
+3. legacy adapter truthfulness,
+4. authority boundaries,
+5. Point-in-Time semantics,
+6. cross-contract composition,
+7. current Supabase blocker.
+
+After Astra verification, perform the final Foundation cross-system audit. Only then decide persistence migration / producer wiring / runtime-authority closure.
