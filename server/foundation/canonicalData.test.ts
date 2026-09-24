@@ -127,3 +127,18 @@ test('legacy row is PIT-complete only when explicit knowledge and revision metad
   assert.equal(projection.revisionId, 'source-rev-7');
   assert.deepEqual(projection.missing, []);
 });
+
+
+test('Point-in-Time requires a valid eventTime without treating future eventTime as leakage', () => {
+  const invalid = record({
+    temporal: {
+      eventTime: 'not-a-time',
+      observedAt: '2026-09-01T00:01:00.000Z',
+      ingestedAt: '2026-09-01T00:01:02.000Z',
+    },
+  });
+
+  const result = assessPointInTime(invalid, '2026-09-10T00:00:00.000Z');
+  assert.equal(result.eligible, false);
+  assert.equal(result.reason, 'EVENT_TIME_INVALID');
+});
