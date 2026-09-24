@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **SUPERSEDED AS TOP-LEVEL ARCHITECTURE — 2026-09-24**
+>
+> BLACK ORACLE Architecture **FROZEN v1** is now the canonical top-level product/architecture baseline. The BOT/BOR split below remains useful as historical runtime and repository context, but it must not override the six-domain architecture or authorize implementation that conflicts with Frozen v1.
+>
+> Canonical source: [BLACK_ORACLE_CANONICAL_FROZEN_V1.md](architecture/BLACK_ORACLE_CANONICAL_FROZEN_V1.md)  
+> Migration plan: [FROZEN_V1_MIGRATION_PLAN.md](architecture/FROZEN_V1_MIGRATION_PLAN.md)  
+> Current-state audit: [CURRENT_STATE_AUDIT_2026-09-24.md](runtime-truth/CURRENT_STATE_AUDIT_2026-09-24.md)
+
 # BLACK ORACLE Alpha Roadmap
 
 Status: **CANONICAL**

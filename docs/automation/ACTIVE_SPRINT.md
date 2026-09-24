@@ -1,57 +1,52 @@
-# ACTIVE SPRINT — Foundation Remediation
+# ACTIVE SPRINT — Frozen v1 Foundation Migration
 
-Date: **2026-09-23**
-Target release: **2026-10-20 — Alpha v0.1**
-Repository: `hanul442/black_oracle_bot`
-Status: **FEATURE FREEZE / PAPER SINGLE-WRITER BLOCKED**
+Date: **2026-09-24**
+Target: **Foundation Closure before Decision Engine expansion**
+Status: **GOVERNANCE SYNC / RUNTIME MUTATION FROZEN**
 
-## Repository and deployment truth
+## Canonical authority
 
-- Foundation-remediation base: `d345ef8ccd83dc642f9c82fd51a36f3b7f65be6b`; governance reconciliation merged in PR #240.
-- Deployed web runtime: A18 code baseline `0a9361c05e5ba0212d7d1bceff032e27ac503ad2`.
-- Commits after the A18 deployment through current main are Foundation/research documentation and do not change protected PAPER behavior.
-- BOR Foundation runtime preparation merged at `8ae39ea4a7e6e556ebc250555fd2f09bdab11cfa`; S26 remains isolated in draft PR #34.
-- Railway is Hobby with 2/2 projects, four services in `Black Oracle`, and one service in the separate `SOCIAL VEGAS` project. Railway's API rejects a new service with `Free plan resource provision limit exceeded`; this provider text does not change the observed Hobby plan.
+- Top-level architecture: `docs/architecture/BLACK_ORACLE_CANONICAL_FROZEN_V1.md`
+- Current-state audit: `docs/runtime-truth/CURRENT_STATE_AUDIT_2026-09-24.md`
+- Migration plan: `docs/architecture/FROZEN_V1_MIGRATION_PLAN.md`
 
-## Freeze
+The earlier BOT/BOR split is no longer the top-level architecture. Existing repositories and services remain implementation boundaries until deliberately migrated.
 
-No strategy, Risk, cohort, scheduler-target, LIVE, UI, monetization, S26, or research-feature work advances during remediation. Existing feature and research PRs retain their roadmap classifications and do not merge merely because CI is green.
+## Current verified runtime truth
 
-## Supabase recovery objective
+- Railway `Black Oracle` production contains four legacy services: web, vnext PAPER, s2 shadow, v9 multiasset.
+- Latest deployments report SUCCESS.
+- Supabase management plane reports `ACTIVE_HEALTHY`, while database reads still fail with connection/data-plane errors.
+- Supabase Edge Function metadata remains readable.
+- PAPER single-writer authority is therefore **UNKNOWN / BLOCKED**.
 
-Read-only evidence required for single-writer closure:
+## Sprint goal
 
-1. enabled `black_oracle_trading_scheduler_config` row and exact target;
-2. active `pg_cron` job and recent `cron.job_run_details`;
-3. latest successful scheduler invocation;
-4. current `black_oracle_trading_cycle_leases` state;
-5. latest runtime checkpoint metadata by runtime ID;
-6. producer/runtime/source-tagged canonical event lineage.
+Prepare Foundation PR #1 without mutating protected runtime state.
 
-## Current observation
+Required work:
 
-- Supabase management plane: `ACTIVE_HEALTHY`.
-- `black-oracle-paper-scheduler`: ACTIVE version 18, JWT required, exact approved-target enforcement in source.
-- `black-oracle-runtime-status`: ACTIVE version 4, public read-only status contract.
-- BLACK ORACLE `execute_sql` returns `INVALID_ARGUMENT`; direct REST, shell, and cloud-browser requests time out.
-- The same Supabase connector successfully executes SQL against another active project, so this is project/data-plane specific.
-- Railway can inspect service config/files but cannot execute in the running container or reveal OAuth-hidden variables.
-- Enabled scheduler row, cron job, last success, lease, checkpoint, and canonical producer lineage therefore remain unreadable.
+1. inventory existing canonical data/event/evidence/version contracts;
+2. define Frozen v1 Canonical Data Contract;
+3. define Point-in-Time temporal semantics;
+4. define immutable Decision Run / Version Registry interfaces;
+5. define compatibility adapters for existing Event Ledger / Replay / Evidence shapes;
+6. add contract tests;
+7. stop before any database migration or runtime behavior change if Supabase remains unavailable.
 
-## Safety decision
+## Frozen during this sprint
 
-Single writer is **UNKNOWN/BLOCKED**. No scheduler target, cadence, runtime ID, service variable, checkpoint, event, qualification cohort, strategy, or Risk setting is changed without evidence. No writer conflict has been proven, so no writer remediation is authorized.
-
-The next infrastructure action that could restore database observability is a Supabase project fast reboot or provider support intervention. It requires explicit owner authority because it may interrupt production PAPER state. After recovery, repeat the six read-only checks before considering any writer change.
-
-## BOR runtime objective
-
-BOR code and tests are ready for one BOR-only service and mounted volume. No service was created because the effective workspace service ceiling is already consumed. A temporary empty BOR volume was created during diagnosis; its exact deletion is staged and requires Railway dashboard 2FA to apply. Protected existing services and domains remain untouched.
+- scheduler target/cadence/runtime IDs;
+- Risk parameters;
+- PAPER writer authority;
+- qualification history;
+- LIVE authority;
+- broad UI redesign;
+- isolated BOR deployment;
+- retirement of legacy Railway services.
 
 ## Exit gate
 
-- Supabase read-only evidence either proves one writer or records the precise owner action still required;
-- Railway capacity is granted and the BOR exact revision, health, authority flags, durable fingerprint, and read API are attested;
-- governance reflects current SHAs and S22–S26 truth;
-- repository tests and exact-head CI are green;
-- Slack and blocker issues are updated with no unsupported PASS claim.
+Foundation PR #1 is ready when contract semantics and compatibility tests are green, no runtime mutation is required, and the implementation can be reviewed against Frozen v1.
+
+Before the final Foundation cross-system audit, stop for an Astra final verification pass.
