@@ -11,7 +11,7 @@
     "start": "node dist/gateway.cjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts server/eventLedger*.test.ts",
+    "test:trading": "tsx --test src/trading/*.test.ts server/trading/*.test.ts server/eventLedger*.test.ts server/foundation/*.test.ts",
     "smoke:trading": "tsx scripts/trading-smoke.ts",
     "diagnostic:paper-protection": "tsx scripts/paper-protection-diagnostic.ts",
     "export:paper-protection-events": "tsx scripts/export-paper-protection-events.ts",
