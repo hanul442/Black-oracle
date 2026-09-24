@@ -1,6 +1,6 @@
 # BLACK ORACLE — Canonical Project Source
 
-**Status:** Architecture Freeze Candidate v1  
+**Status:** Architecture FROZEN v1  
 **Updated:** 2026-09-24  
 **Purpose:** Canonical project source for BLACK ORACLE conversations and future implementation planning.
 
