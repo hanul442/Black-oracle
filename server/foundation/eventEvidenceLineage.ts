@@ -14,7 +14,8 @@ export type EntityType =
   | 'TECHNOLOGY'
   | 'COMMODITY'
   | 'PERSON'
-  | 'MACRO_EVENT';
+  | 'MACRO_EVENT'
+  | 'EVENT';
 
 export interface EntityRef {
   entityType: EntityType;
