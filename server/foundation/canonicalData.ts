@@ -7,6 +7,7 @@ export type CanonicalTemporalStatus =
 export type PointInTimeReasonCode =
   | 'ELIGIBLE'
   | 'AS_OF_INVALID'
+  | 'EVENT_TIME_INVALID'
   | 'OBSERVED_AT_INVALID'
   | 'INGESTED_AT_INVALID'
   | 'TEMPORAL_ORDER_INVALID'
@@ -130,6 +131,15 @@ export const assessPointInTime = <TPayload>(
       eligible: false,
       reason: 'AS_OF_INVALID',
       asOf,
+      knowledgeAvailableAt: null,
+    };
+  }
+
+  if (parseTimestamp(envelope.temporal.eventTime) == null) {
+    return {
+      eligible: false,
+      reason: 'EVENT_TIME_INVALID',
+      asOf: new Date(asOfMs).toISOString(),
       knowledgeAvailableAt: null,
     };
   }
