@@ -1,3 +1,8 @@
+import {
+  assessPointInTime,
+  type CanonicalDataEnvelope,
+  type CanonicalRevisionIdentity,
+} from './canonicalData';
 import { fingerprintCanonicalValue } from './decisionRunVersionRegistry';
 
 export const SHARED_EVALUATION_CONTRACT_VERSION='bo.shared-evaluation.v1' as const;
@@ -52,6 +57,12 @@ export interface CriterionResult extends EvaluationCriterion {
   observedSamples:number;
 }
 
+export interface EvaluationPointInTimeInput {
+  canonicalData:CanonicalDataEnvelope;
+  asOf:string;
+  canonicalDataRef:Pick<CanonicalRevisionIdentity,'logicalRecordId'|'revisionId'>;
+}
+
 export interface EvaluationInput {
   subjectType:EvaluationSubjectType;
   subjectId:string;
@@ -63,6 +74,7 @@ export interface EvaluationInput {
     endAt:string;
   };
   pointInTimeComplete:boolean;
+  pointInTimeInputs:readonly EvaluationPointInTimeInput[];
   dataSnapshotIds:readonly string[];
   decisionRunIds:readonly string[];
   regimeIds?:readonly string[];
@@ -142,6 +154,30 @@ const finiteNonNegative=(value:number,label:string):number=>{
   return value;
 };
 
+const validatePointInTimeInputs=(
+  inputs:readonly EvaluationPointInTimeInput[],
+):void=>{
+  if(!inputs.length) throw new Error('Evaluation requires point-in-time input proofs');
+
+  for(const input of inputs){
+    const expectedLogicalRecordId=input.canonicalDataRef.logicalRecordId?.trim();
+    const expectedRevisionId=input.canonicalDataRef.revisionId?.trim();
+    if(
+      !expectedLogicalRecordId
+      ||!expectedRevisionId
+      ||input.canonicalData.revision.logicalRecordId!==expectedLogicalRecordId
+      ||input.canonicalData.revision.revisionId!==expectedRevisionId
+    ){
+      throw new Error('Evaluation point-in-time revision mismatch');
+    }
+
+    const assessment=assessPointInTime(input.canonicalData,input.asOf);
+    if(!assessment.eligible){
+      throw new Error(`Evaluation point-in-time input rejected: ${assessment.reason}`);
+    }
+  }
+};
+
 const normalizeMetrics=(metrics:readonly EvaluationMetric[]):EvaluationMetric[]=>{
   const seen=new Set<string>();
   return metrics.map(metric=>{
@@ -200,6 +236,7 @@ export const createSharedEvaluation=(
   if(!nonEmpty(input.subjectId)) throw new Error('Evaluation requires subjectId');
   if(!nonEmpty(input.subjectVersionId)) throw new Error('Evaluation requires subjectVersionId');
   if(!input.pointInTimeComplete) throw new Error('Evaluation requires point-in-time complete inputs');
+  validatePointInTimeInputs(input.pointInTimeInputs);
 
   const evaluatedAtMs=parseTime(input.evaluatedAt);
   const startAtMs=parseTime(input.window.startAt);
@@ -219,11 +256,13 @@ export const createSharedEvaluation=(
   const criteria=evaluateCriteria(metrics,input.criteria);
   const required=criteria.filter(criterion=>criterion.required);
   const validationVerdict:SharedEvaluationRecord['validationVerdict']=
-    required.some(criterion=>criterion.status==='FAIL')
-      ?'FAIL'
-      :required.some(criterion=>criterion.status==='INSUFFICIENT_DATA'||criterion.status==='MISSING_METRIC')
-        ?'INSUFFICIENT_DATA'
-        :'PASS';
+    !required.length
+      ?'INSUFFICIENT_DATA'
+      :required.some(criterion=>criterion.status==='FAIL')
+        ?'FAIL'
+        :required.some(criterion=>criterion.status==='INSUFFICIENT_DATA'||criterion.status==='MISSING_METRIC')
+          ?'INSUFFICIENT_DATA'
+          :'PASS';
 
   const costModel={
     feeBps:finiteNonNegative(input.costModel.feeBps,'feeBps'),
