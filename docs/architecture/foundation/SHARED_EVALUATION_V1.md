@@ -40,6 +40,8 @@ A new shared Evaluation record requires:
 - explicit trading-cost assumptions,
 - observation window.
 
+The Foundation boundary validates each supplied Point-in-Time input against the Canonical Data Point-in-Time contract using the exact canonical logical-record/revision reference and its `asOf` cutoff. A caller assertion that inputs are complete is not sufficient by itself.
+
 Legacy metrics may be projected for comparison, but they remain `LEGACY_EVALUATION_ONLY` until the missing lineage is proven.
 
 ## Authority boundary
