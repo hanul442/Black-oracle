@@ -18,6 +18,21 @@ const base=():EvaluationInput=>({
     endAt:'2026-09-24T10:00:00Z',
   },
   pointInTimeComplete:true,
+  pointInTimeInputs:[{
+    canonicalData:{
+      contractVersion:'bo.canonical-data.v1',
+      source:'test-source',
+      revision:{logicalRecordId:'eval-input-1',revisionId:'rev-1'},
+      temporal:{
+        eventTime:'2026-09-01T00:00:00Z',
+        observedAt:'2026-09-01T00:00:01Z',
+        ingestedAt:'2026-09-01T00:00:02Z',
+      },
+      payload:{},
+    },
+    asOf:'2026-09-01T00:00:10Z',
+    canonicalDataRef:{logicalRecordId:'eval-input-1',revisionId:'rev-1'},
+  }],
   dataSnapshotIds:['snapshot-2','snapshot-1'],
   decisionRunIds:['bo-run-v1-b','bo-run-v1-a'],
   regimeIds:['risk-on'],
