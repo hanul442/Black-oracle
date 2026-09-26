@@ -2,7 +2,8 @@ import { runCostGatedAiCouncilForCycle } from '../server/trading/aiCouncilCostGa
 import { appendCanonicalEvents, buildPaperCycleCanonicalEvents } from '../server/eventLedger';
 import { buildArbiterCanonicalEvents } from '../server/eventLedgerArbiterProjection';
 import { buildEvidenceAndEquityCanonicalEvents } from '../server/eventLedgerEvidenceProjection';
-import { attachDecisionReplayLineage } from '../server/eventLedgerLineage';
+import { attachDecisionReplayLineage, attachRuntimeAuthorityLineage } from '../server/eventLedgerLineage';
+import { buildScheduledRuntimeAuthority } from '../server/trading/runtimeAuthority';
 import { buildNarsCanonicalAuditEvents } from '../server/eventLedgerNarsAudit';
 import { buildTradingSessionRetryCanonicalEvents } from '../server/eventLedgerTradeProjection';
 
@@ -42,6 +43,32 @@ export default async function handler(request: any, response: any) {
       error: 'Scheduled Paper cycles require TRADING_PERSISTENCE_BACKEND=supabase.',
     });
   }
+
+  const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
+  const delegatedRuntimeId = String(request.headers['x-black-oracle-delegated-runtime-id'] ?? '').trim();
+  const authorizedWriterService = String(request.headers['x-black-oracle-authorized-writer-service'] ?? '').trim();
+  const cycleId = globalThis.crypto.randomUUID();
+
+  let runtimeAuthority;
+  try {
+    runtimeAuthority = buildScheduledRuntimeAuthority(
+      runtimeId,
+      delegatedRuntimeId,
+      authorizedWriterService,
+      cycleId,
+    );
+  } catch (authorityError) {
+    return json(response, 409, {
+      success: false,
+      phase: 'authority',
+      runtimeId,
+      delegatedRuntimeId: delegatedRuntimeId || null,
+      writerService: process.env.RAILWAY_SERVICE_NAME?.trim() || null,
+      error: errorMessage(authorityError),
+    });
+  }
+
+  const owner = runtimeAuthority.leaseOwner;
 
   let paperLoopController: any;
   let claimTradingCycleLease: any;
@@ -94,8 +121,6 @@ export default async function handler(request: any, response: any) {
   }
   timings.importMs = Date.now() - importStartedAt;
 
-  const runtimeId = process.env.TRADING_RUNTIME_ID?.trim() || 'black-oracle-paper';
-  const owner = `scheduled-worker-${globalThis.crypto.randomUUID()}`;
   let leaseAcquired = false;
   let runtimeLoaded = false;
   let qualificationBootstrapInProgress = false;
@@ -129,7 +154,7 @@ export default async function handler(request: any, response: any) {
       if (!restore.restored && restore.profile?.qualificationId) {
         qualificationBootstrapInProgress = true;
         const bootstrapStartedAt = Date.now();
-        const initialized = await initializeFreshQualificationRuntime();
+        const initialized = await initializeFreshQualificationRuntime(runtimeAuthority);
         timings.qualificationBootstrapMs = Date.now() - bootstrapStartedAt;
         qualificationBootstrapInProgress = false;
         responseStatus = 200;
@@ -166,7 +191,7 @@ export default async function handler(request: any, response: any) {
         let saved: any;
         const checkpointStartedAt = Date.now();
         try {
-          saved = await saveRuntimeCheckpoint('scheduled-paper-cycle');
+          saved = await saveRuntimeCheckpoint('scheduled-paper-cycle', runtimeAuthority);
           timings.checkpointMs = Date.now() - checkpointStartedAt;
         } catch (persistenceError) {
           timings.checkpointMs = Date.now() - checkpointStartedAt;
@@ -185,6 +210,9 @@ export default async function handler(request: any, response: any) {
 
         console.info('Paper cycle checkpoint committed', JSON.stringify({
           runtimeId,
+          cycleId: runtimeAuthority.cycleId,
+          leaseOwner: runtimeAuthority.leaseOwner,
+          producer: runtimeAuthority.producer,
           timings,
           persistence: saved?.persistence ?? null,
         }));
@@ -218,13 +246,16 @@ export default async function handler(request: any, response: any) {
         try {
           const narsAuditEvents = await buildNarsCanonicalAuditEvents(cycle, runtimeId);
           const retryEvents = buildTradingSessionRetryCanonicalEvents(afterSession, runtimeId, 256, 128);
-          const events = attachDecisionReplayLineage([
-            ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
-            ...buildArbiterCanonicalEvents(cycle, runtimeId),
-            ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
-            ...retryEvents,
-            ...narsAuditEvents,
-          ], cycle, runtimeId);
+          const events = attachRuntimeAuthorityLineage(
+            attachDecisionReplayLineage([
+              ...buildPaperCycleCanonicalEvents(cycle, runtimeId, councilAi),
+              ...buildArbiterCanonicalEvents(cycle, runtimeId),
+              ...buildEvidenceAndEquityCanonicalEvents(cycle, runtimeId),
+              ...retryEvents,
+              ...narsAuditEvents,
+            ], cycle, runtimeId),
+            runtimeAuthority,
+          );
           eventLedger = await appendCanonicalEvents(events);
           eventLedger = {
             ...eventLedger,
@@ -255,6 +286,7 @@ export default async function handler(request: any, response: any) {
           },
           cycle,
           persistence: saved.persistence,
+          authority: runtimeAuthority,
           atomicity: {
             checkpointCommitted: true,
             rollbackRequired: false,
@@ -268,7 +300,7 @@ export default async function handler(request: any, response: any) {
     if (runtimeLoaded && !qualificationBootstrapInProgress) {
       const errorCheckpointStartedAt = Date.now();
       try {
-        await saveRuntimeCheckpoint('scheduled-paper-cycle-error');
+        await saveRuntimeCheckpoint('scheduled-paper-cycle-error', runtimeAuthority);
       } catch (checkpointError) {
         console.error('Failed to checkpoint after scheduled Paper cycle error:', checkpointError);
       } finally {
@@ -323,6 +355,8 @@ export default async function handler(request: any, response: any) {
   responseBody = { ...responseBody, timings };
   console.info('Paper cycle completed request', JSON.stringify({
     runtimeId,
+    cycleId: runtimeAuthority.cycleId,
+    producer: runtimeAuthority.producer,
     status: responseStatus,
     success: responseBody.success === true,
     timings,
