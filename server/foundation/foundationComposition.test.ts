@@ -123,6 +123,8 @@ test('Frozen v1 Foundation contracts compose without granting execution authorit
       canonicalData:data,
       asOf:run.asOf,
       canonicalDataRef:evidence.canonicalDataRef,
+      dataSnapshotId,
+      decisionRun:run,
     }],
     dataSnapshotIds:[dataSnapshotId],
     decisionRunIds:[run.decisionRunId],

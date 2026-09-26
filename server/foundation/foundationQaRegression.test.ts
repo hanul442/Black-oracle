@@ -28,6 +28,21 @@ const t={
   ingestedAt:'2026-09-24T09:00:02Z',
 };
 
+const evaluationRun=createDecisionRunIdentity({
+  runtimeId:'paper',
+  market:'KRW-BTC',
+  asOf:'2026-09-24T09:01:00Z',
+  decisionKey:'evaluation-base',
+  componentVersions:[{
+    componentType:'STRATEGY',
+    componentId:'s1',
+    versionId:'v1',
+    contentFingerprint:'h',
+  }],
+  dataSnapshotIds:['snapshot-1'],
+  evidenceIds:[],
+});
+
 const evaluationBase=():EvaluationInput=>({
   subjectType:'STRATEGY',
   subjectId:'s1',
@@ -44,11 +59,13 @@ const evaluationBase=():EvaluationInput=>({
       temporal:t,
       payload:{},
     },
-    asOf:'2026-09-24T09:01:00Z',
+    asOf:evaluationRun.asOf,
     canonicalDataRef:{logicalRecordId:'qa:eligible',revisionId:'r1'},
+    dataSnapshotId:'snapshot-1',
+    decisionRun:evaluationRun,
   }],
-  dataSnapshotIds:['snapshot-1'],
-  decisionRunIds:['bo-run-1'],
+  dataSnapshotIds:evaluationRun.dataSnapshotIds,
+  decisionRunIds:[evaluationRun.decisionRunId],
   metrics:[{metricId:'RETURN',value:-1,sampleCount:0,unit:'RATIO'}],
   criteria:[],
   costModel:{feeBps:0,slippageBps:0},
@@ -273,6 +290,8 @@ test('QA F-01 counterexample: Evaluation verifies canonical PIT input, revision 
       canonicalData:scheduled,
       asOf:run.asOf,
       canonicalDataRef:scheduled.revision,
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
     }],
   };
 
@@ -298,6 +317,8 @@ test('QA F-01 counterexample: Evaluation verifies canonical PIT input, revision 
       canonicalData:futureObserved,
       asOf:run.asOf,
       canonicalDataRef:futureObserved.revision,
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
     }],
   }),/OBSERVED_AFTER_AS_OF/);
 
@@ -316,6 +337,8 @@ test('QA F-01 counterexample: Evaluation verifies canonical PIT input, revision 
       canonicalData:futureIngested,
       asOf:run.asOf,
       canonicalDataRef:futureIngested.revision,
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
     }],
   }),/INGESTED_AFTER_AS_OF/);
 
@@ -325,6 +348,65 @@ test('QA F-01 counterexample: Evaluation verifies canonical PIT input, revision 
       canonicalData:scheduled,
       asOf:run.asOf,
       canonicalDataRef:{logicalRecordId:scheduled.revision.logicalRecordId,revisionId:'r2'},
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
     }],
   }),/revision mismatch/);
+
+  const callerSuppliedLaterAsOf='2026-09-24T11:00:00Z';
+  assert.throws(()=>createSharedEvaluation({
+    ...validInput,
+    pointInTimeInputs:[{
+      canonicalData:futureObserved,
+      asOf:callerSuppliedLaterAsOf,
+      canonicalDataRef:futureObserved.revision,
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
+    }],
+  }),/asOf must equal Decision Run cutoff/);
+  assert.throws(()=>createSharedEvaluation({
+    ...validInput,
+    pointInTimeInputs:[{
+      canonicalData:futureIngested,
+      asOf:callerSuppliedLaterAsOf,
+      canonicalDataRef:futureIngested.revision,
+      dataSnapshotId:'snapshot-scheduled',
+      decisionRun:run,
+    }],
+  }),/asOf must equal Decision Run cutoff/);
+
+  const unrelatedRun=createDecisionRunIdentity({
+    runtimeId:'paper',
+    market:'KRW-BTC',
+    asOf:cutoff,
+    decisionKey:'unrelated-proof',
+    componentVersions:[{
+      componentType:'STRATEGY',
+      componentId:'s1',
+      versionId:'v1',
+      contentFingerprint:'h',
+    }],
+    dataSnapshotIds:['snapshot-unrelated'],
+    evidenceIds:[],
+  });
+  assert.throws(()=>createSharedEvaluation({
+    ...validInput,
+    pointInTimeInputs:[{
+      canonicalData:scheduled,
+      asOf:unrelatedRun.asOf,
+      canonicalDataRef:scheduled.revision,
+      dataSnapshotId:'snapshot-unrelated',
+      decisionRun:unrelatedRun,
+    }],
+  }),/Decision Run lineage mismatch/);
+  assert.throws(()=>createSharedEvaluation({
+    ...validInput,
+    pointInTimeInputs:[{
+      canonicalData:scheduled,
+      asOf:run.asOf,
+      canonicalDataRef:scheduled.revision,
+      dataSnapshotId:'snapshot-unrelated',
+      decisionRun:run,
+    }],
+  }),/data snapshot lineage mismatch/);
 });
