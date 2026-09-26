@@ -10,9 +10,28 @@ export interface TradingRuntimeCheckpoint {
   savedAt: number;
   reason: string;
   runtime?: TradingCheckpointIdentity;
+  authority?: RuntimeCheckpointAuthority;
   session: PaperTradingSessionCheckpoint;
   evidence: TradingEvidence[];
   loop: PaperLoopCheckpoint;
+}
+
+export interface RuntimePhysicalProducer {
+  provider: 'railway';
+  serviceName: string;
+  serviceId: string;
+  deploymentId: string;
+  gitCommitSha: string | null;
+  replicaId: string | null;
+  publicDomain: string | null;
+}
+
+export interface RuntimeCheckpointAuthority {
+  schemaVersion: 1;
+  cycleId: string;
+  delegatedRuntimeId: string;
+  leaseOwner: string;
+  producer: RuntimePhysicalProducer;
 }
 
 export type PersistenceBackend = 'json' | 'supabase';
@@ -46,6 +65,27 @@ const defaultStatePath = () => process.env.TRADING_STATE_FILE
   ? path.resolve(process.env.TRADING_STATE_FILE)
   : path.resolve(process.cwd(), '.data', 'black-oracle-trading-state.json');
 
+const nonEmptyText = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
+const nullableText = (value: unknown) => value == null || typeof value === 'string';
+
+const validRuntimeAuthority = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false;
+  const authority = value as Partial<RuntimeCheckpointAuthority>;
+  const producer = authority.producer as Partial<RuntimePhysicalProducer> | undefined;
+  return authority.schemaVersion === 1
+    && nonEmptyText(authority.cycleId)
+    && nonEmptyText(authority.delegatedRuntimeId)
+    && nonEmptyText(authority.leaseOwner)
+    && Boolean(producer)
+    && producer?.provider === 'railway'
+    && nonEmptyText(producer?.serviceName)
+    && nonEmptyText(producer?.serviceId)
+    && nonEmptyText(producer?.deploymentId)
+    && nullableText(producer?.gitCommitSha)
+    && nullableText(producer?.replicaId)
+    && nullableText(producer?.publicDomain);
+};
+
 const validRuntimeIdentity = (value: unknown) => {
   if (!value || typeof value !== 'object') return false;
   const identity = value as Partial<TradingCheckpointIdentity>;
@@ -66,6 +106,9 @@ export const validateCheckpoint = (value: unknown): TradingRuntimeCheckpoint => 
   if (typeof checkpoint.reason !== 'string') throw new Error('Trading checkpoint reason is invalid.');
   if (checkpoint.runtime != null && !validRuntimeIdentity(checkpoint.runtime)) {
     throw new Error('Trading checkpoint runtime identity is invalid.');
+  }
+  if (checkpoint.authority != null && !validRuntimeAuthority(checkpoint.authority)) {
+    throw new Error('Trading checkpoint authority provenance is invalid.');
   }
   if (!checkpoint.session || !checkpoint.loop || !Array.isArray(checkpoint.evidence)) {
     throw new Error('Trading checkpoint payload is incomplete.');
