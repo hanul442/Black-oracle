@@ -72,6 +72,39 @@ test('JSON checkpoint store roundtrips runtime state and exposes local persisten
   }
 });
 
+test('checkpoint persistence preserves completed-cycle authority provenance', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'black-oracle-trading-authority-'));
+  const filePath = path.join(directory, 'runtime.json');
+  const store = new JsonTradingCheckpointStore(filePath);
+
+  try {
+    const checkpoint: TradingRuntimeCheckpoint = {
+      ...buildCheckpoint(),
+      authority: {
+        schemaVersion: 1,
+        cycleId: 'cycle-123',
+        delegatedRuntimeId: 'paper-primary',
+        leaseOwner: 'scheduled-worker:black-oracle-web:dep-123:cycle-123',
+        producer: {
+          provider: 'railway',
+          serviceName: 'black-oracle-web',
+          serviceId: 'svc-web',
+          deploymentId: 'dep-123',
+          gitCommitSha: 'commit-123',
+          replicaId: 'replica-1',
+          publicDomain: 'black-oracle-web-production.up.railway.app',
+        },
+      },
+    };
+
+    await store.save(checkpoint);
+    const restored = await store.load();
+    assert.deepEqual(restored?.authority, checkpoint.authority);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('missing checkpoint returns null without marking persistence faulty', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'black-oracle-trading-missing-'));
   const filePath = path.join(directory, 'does-not-exist.json');

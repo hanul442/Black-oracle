@@ -1,4 +1,5 @@
 import type { CanonicalEventInput } from './eventLedger';
+import type { RuntimeCheckpointAuthority } from './trading/persistence';
 
 const normalizeMarket = (value: unknown) => String(value ?? '').trim().toUpperCase();
 const validTimestamp = (value: unknown) => {
@@ -89,3 +90,14 @@ export const attachDecisionReplayLineage = (
     };
   });
 };
+
+export const attachRuntimeAuthorityLineage = (
+  events: CanonicalEventInput[],
+  authority: RuntimeCheckpointAuthority,
+): CanonicalEventInput[] => events.map((event) => ({
+  ...event,
+  trace: {
+    ...(event.trace ?? {}),
+    runtimeAuthority: authority,
+  },
+}));

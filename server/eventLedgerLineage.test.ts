@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalEventInput } from './eventLedger';
-import { attachDecisionReplayLineage, buildCanonicalDecisionTraceId } from './eventLedgerLineage';
+import { attachDecisionReplayLineage, attachRuntimeAuthorityLineage, buildCanonicalDecisionTraceId } from './eventLedgerLineage';
 
 const runtimeId = 'black-oracle-paper-s2-shadow';
 const decisionTimestamp = 1_788_930_000_000;
@@ -166,4 +166,37 @@ test('Decision Replay does not relabel retained retry events with the current cy
   assert.equal(projected?.links?.decisionId, undefined);
   assert.equal((projected as any)?.__lineagePolicy, undefined);
   assert.equal(projected?.trace?.ledgerEventId, 'old-signal');
+});
+
+
+test('runtime authority lineage tags every persisted event with physical producer provenance', () => {
+  const authority = {
+    schemaVersion: 1 as const,
+    cycleId: 'cycle-authority-1',
+    delegatedRuntimeId: runtimeId,
+    leaseOwner: 'scheduled-worker:black-oracle-paper-s2-shadow:dep-1:cycle-authority-1',
+    producer: {
+      provider: 'railway' as const,
+      serviceName: 'black-oracle-paper-s2-shadow',
+      serviceId: 'svc-1',
+      deploymentId: 'dep-1',
+      gitCommitSha: 'commit-1',
+      replicaId: 'replica-1',
+      publicDomain: 'shadow.example',
+    },
+  };
+  const events: CanonicalEventInput[] = [{
+    eventKey: 'authority-system',
+    occurredAt: decisionTimestamp,
+    runtimeId,
+    eventType: 'SYSTEM',
+    eventName: 'PAPER_CYCLE_COMPLETED',
+    summary: 'Cycle complete.',
+    source: 'paper_runtime',
+    trace: { existing: true },
+  }];
+
+  const [projected] = attachRuntimeAuthorityLineage(events, authority);
+  assert.equal(projected?.trace?.existing, true);
+  assert.deepEqual(projected?.trace?.runtimeAuthority, authority);
 });
