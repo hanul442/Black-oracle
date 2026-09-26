@@ -49,7 +49,7 @@ export default async function handler(request: any, response: any) {
   const authorizedWriterService = String(request.headers['x-black-oracle-authorized-writer-service'] ?? '').trim();
   const cycleId = globalThis.crypto.randomUUID();
 
-  let runtimeAuthority;
+  let runtimeAuthority: ReturnType<typeof buildScheduledRuntimeAuthority>;
   try {
     runtimeAuthority = buildScheduledRuntimeAuthority(
       runtimeId,
