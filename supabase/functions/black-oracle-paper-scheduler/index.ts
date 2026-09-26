@@ -27,6 +27,10 @@ const APPROVED_WRITERS: Record<string, ApprovedWriter> = {
     targetBaseUrl: "https://black-oracle-paper-vnext-production.up.railway.app",
     railwayService: "black-oracle-paper-vnext",
   },
+  "black-oracle-paper-vnext-100m-v03-m4": {
+    targetBaseUrl: "https://black-oracle-paper-vnext-production.up.railway.app",
+    railwayService: "black-oracle-paper-vnext",
+  },
   "black-oracle-paper-s2-shadow": {
     targetBaseUrl: "https://black-oracle-paper-s2-shadow-production.up.railway.app",
     railwayService: "black-oracle-paper-s2-shadow",
