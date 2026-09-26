@@ -1,6 +1,6 @@
 # BLACK ORACLE Research Ledger
 
-Last updated: 2026-09-23 — Cycle 013
+Last updated: 2026-09-23 — Cycle 014
 
 | ID | Domain | Topic | Evidence | Status | Experiment | Production impact |
 |---|---|---|---|---|---|---|
@@ -80,13 +80,19 @@ An LLM judge score is not self-validating evidence. Whenever a promotion criteri
 13. **EXP-AIML002/003/004** — Council/Router trace-replay sandbox.
 14. **EXP-D003 + EXP-D004 + EXP-D005 + EXP-D001** — chart semantics/accessibility, progressive disclosure and shared-context UX after core validation infrastructure.
 15. **EXP-EV002 / EXP-AIML001** — robustness gate and strategy lineage/redundancy once the validation harness is trustworthy.
+16. **Cycle 014 Agent OS PoCs** — after higher-priority validation work, test the skill registry, separated agent memory, bounded browser fallback, HeroUI v3 thin slice and BO-owned Oracle Trace envelope; keep VWAP deviation inside Strategy Factory research only.
 
 ## Cycle 013 decision
 The cross-domain scan found one new gap worth a separate ID: **EV-009 evaluator integrity**. BO already plans to evaluate agents, Council structures and security traces, but an uncalibrated LLM judge can turn evaluator bias into false architecture evidence. Peer-reviewed ICLR 2026 work establishes that imperfect judges can invalidate naive certification and that calibration-set error estimates can restore statistical validity under stated assumptions. Recent empirical judge studies reinforce that bias and mitigation are model/task dependent. BO will therefore test a layered evaluation stack: deterministic/executable checks first, calibrated probabilistic judging only for non-verifiable criteria, and human escalation for ambiguous/high-disagreement cases.
 
 Recent APort Vault evidence strongly reinforces EV-006/EV-008 deterministic authorization boundaries, so no duplicate security research ID was created. AgentAudit reinforces AIML-005/AIML-004 trace-level evaluation and re-judging rather than requiring a new agent architecture. Design/UX, Quant, Product/Competitor and Data scans produced useful reinforcement but no gap sufficiently distinct from D-001–005, Q-001–004, DI-001–005 or existing validation work to justify ledger inflation.
 
+## Cycle 014 decision
+The external-reference scan was intentionally treated as an architecture/reference intake rather than evidence for immediate implementation. Scientific Agent Skills supports a versioned Skill Registry pattern; AgentMemory supports inspectable and separately governed agent memory; Browser Use supports a bounded API-first/browser-fallback execution pattern; HeroUI v3 and design-agent skills support an agent-readable UI workflow; Datadog Agent Observability supports BO-owned trace envelopes with external telemetry adapters; and VWAP deviation is retained only as a Strategy Factory hypothesis pending proper validation.
+
+No new permanent research IDs were minted. The patterns overlap with existing trace/evaluation/dependency/design/validation work, and isolated PoCs should demonstrate a distinct BO gap before the ledger expands. Temporary Cycle 014 PoCs are recorded in `research-ledger/cycle-014.md`: Skill Registry, agent-memory sandbox, browser fallback, HeroUI thin slice, Oracle Trace schema draft, and VWAP-deviation hypothesis testing. None outrank current Foundation Closure and validation infrastructure.
+
 No production trading, paper-trading, credential, connector permission, strategy ranking, model routing or execution behavior was changed.
 
 ## Highest-priority next action
-Implementation still outranks literature accumulation: execute **EXP-DI001 + EXP-DI003** first on the seeded KRX replay fixture. In the agent-evaluation lane, freeze the AIML-005 golden tasks before testing Council variants, then build the **EV-009 hidden calibration subset and evaluator manifest** so future AIML-006/007 results are not promoted on an unvalidated judge.
+Implementation still outranks literature accumulation: execute **EXP-DI001 + EXP-DI003** first on the seeded KRX replay fixture. In the agent-evaluation lane, freeze the AIML-005 golden tasks before testing Council variants, then build the **EV-009 hidden calibration subset and evaluator manifest** so future AIML-006/007 results are not promoted on an unvalidated judge. Cycle 014 remains queued behind these validation foundations.

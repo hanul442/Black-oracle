@@ -1,7 +1,7 @@
 # BLACK ORACLE Reference Library
 
 Status: **Canonical reference index**
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 
 This directory preserves external references explicitly selected for BLACK ORACLE. It is the durable source of truth for *what was referenced, why it matters, what may be reused, what must not be copied blindly, and whether implementation exists*.
 
@@ -29,6 +29,7 @@ Before reference-driven product, UI, component, market-data, or competitor work:
 | ID | Reference | Domain | BO use | Status | Implementation |
 |---|---|---|---|---|---|
 | REF-PROD-001 | Algory.app | Product / Competitor / Strategy UX | strategy discovery, automation lifecycle, strategy portfolio UX | REFERENCE | none |
+| REF-PROD-002 | Agent OS / AI-assisted R&D reference bundle | Agent Architecture / UI / Quant R&D / Observability | skill registry, memory, browser fallback, design workflow, HeroUI v3, Oracle Trace patterns | REFERENCE / TEST | none |
 | REF-COMP-001 | Thinking Orbs | Component / AI State UX | visible AI/runtime phase state | IMPLEMENTED / UNMERGED PR | PR #222 closed, not merged |
 | REF-COMP-002 | ThreeUI / Rectangle Buttons | UI Component | premium compact action controls; motion/interaction inspiration | REFERENCE | none |
 | REF-DATA-001 | London Strategic Edge (LSE) | Market Data | read-only multi-asset research/model inputs | ADOPTED | PR #223 merged |
@@ -39,6 +40,7 @@ Before reference-driven product, UI, component, market-data, or competitor work:
 ## Canonical notes
 
 - [Algory](product/algory.md)
+- [Agent OS / AI-assisted R&D bundle](product/agent-os-rnd-reference-bundle-2026-09-23.md)
 - [Thinking Orbs](components/thinking-orbs.md)
 - [ThreeUI / Rectangle Buttons](components/threeui-rectangle-buttons.md)
 - [London Strategic Edge](data/london-strategic-edge.md)
