@@ -2,7 +2,7 @@ import { compactPaperSessionCheckpoint, paperCheckpointLedgerLimitForMode } from
 import { tradingEvidenceStore } from './evidenceStore';
 import { paperLoopController } from './paperLoop';
 import { paperTradingSession } from './paperSession';
-import { tradingCheckpointStore, type TradingRuntimeCheckpoint } from './persistence';
+import { tradingCheckpointStore, type RuntimeCheckpointAuthority, type TradingRuntimeCheckpoint } from './persistence';
 import {
   assessRuntimeCheckpointCompatibility,
   checkpointIdentityFromProfile,
@@ -39,10 +39,14 @@ export const buildRuntimePreimage = (reason = 'runtime-preimage'): TradingRuntim
   loop: paperLoopController.checkpoint(),
 });
 
-export const buildRuntimeCheckpoint = (reason = 'manual'): TradingRuntimeCheckpoint => {
+export const buildRuntimeCheckpoint = (
+  reason = 'manual',
+  authority?: RuntimeCheckpointAuthority,
+): TradingRuntimeCheckpoint => {
   const preimage = buildRuntimePreimage(reason);
   return {
     ...preimage,
+    ...(authority ? { authority } : {}),
     session: compactPaperSessionCheckpoint(
       preimage.session,
       runtimeCheckpointLedgerLimit(),
@@ -94,8 +98,11 @@ export const restoreRuntimePreimage = (
   resumeLoop = false,
 ) => restoreRuntimeState(checkpoint, resumeLoop, false);
 
-export const saveRuntimeCheckpoint = async (reason = 'manual') => {
-  const checkpoint = buildRuntimeCheckpoint(reason);
+export const saveRuntimeCheckpoint = async (
+  reason = 'manual',
+  authority?: RuntimeCheckpointAuthority,
+) => {
+  const checkpoint = buildRuntimeCheckpoint(reason, authority);
   const persistence = await tradingCheckpointStore.save(checkpoint);
   runtimeCompatibility = assessRuntimeCheckpointCompatibility(
     tradingRuntimeProfile,
@@ -155,7 +162,7 @@ export const restoreRuntimeCheckpoint = async (resumeLoop = true) => {
   };
 };
 
-export const initializeFreshQualificationRuntime = async () => {
+export const initializeFreshQualificationRuntime = async (authority?: RuntimeCheckpointAuthority) => {
   if (!tradingRuntimeProfile.qualificationMode || !tradingRuntimeProfile.qualificationId) {
     throw new Error('Fresh runtime initialization is restricted to an explicitly armed qualification profile.');
   }
@@ -197,7 +204,7 @@ export const initializeFreshQualificationRuntime = async () => {
     throw new Error('Qualification runtime bootstrap refused because the in-memory Paper state is not pristine.');
   }
 
-  const saved = await saveRuntimeCheckpoint('qualification-runtime-initialized');
+  const saved = await saveRuntimeCheckpoint('qualification-runtime-initialized', authority);
   return {
     initialized: true,
     existing: false,
