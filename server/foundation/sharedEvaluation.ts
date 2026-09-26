@@ -1,4 +1,14 @@
-import { fingerprintCanonicalValue } from './decisionRunVersionRegistry';
+import {
+  assessPointInTime,
+  type CanonicalDataEnvelope,
+  type CanonicalRevisionIdentity,
+} from './canonicalData';
+import {
+  DECISION_RUN_CONTRACT_VERSION,
+  createDecisionRunIdentity,
+  fingerprintCanonicalValue,
+  type DecisionRunIdentity,
+} from './decisionRunVersionRegistry';
 
 export const SHARED_EVALUATION_CONTRACT_VERSION='bo.shared-evaluation.v1' as const;
 
@@ -52,6 +62,14 @@ export interface CriterionResult extends EvaluationCriterion {
   observedSamples:number;
 }
 
+export interface EvaluationPointInTimeInput {
+  canonicalData:CanonicalDataEnvelope;
+  asOf:string;
+  canonicalDataRef:Pick<CanonicalRevisionIdentity,'logicalRecordId'|'revisionId'>;
+  dataSnapshotId:string;
+  decisionRun:DecisionRunIdentity;
+}
+
 export interface EvaluationInput {
   subjectType:EvaluationSubjectType;
   subjectId:string;
@@ -63,6 +81,7 @@ export interface EvaluationInput {
     endAt:string;
   };
   pointInTimeComplete:boolean;
+  pointInTimeInputs:readonly EvaluationPointInTimeInput[];
   dataSnapshotIds:readonly string[];
   decisionRunIds:readonly string[];
   regimeIds?:readonly string[];
@@ -142,6 +161,93 @@ const finiteNonNegative=(value:number,label:string):number=>{
   return value;
 };
 
+const validatePointInTimeInputs=(
+  inputs:readonly EvaluationPointInTimeInput[],
+  dataSnapshotIds:readonly string[],
+  decisionRunIds:readonly string[],
+):void=>{
+  if(!inputs.length) throw new Error('Evaluation requires point-in-time input proofs');
+
+  const evaluationSnapshotIds=new Set(dataSnapshotIds);
+  const evaluationRunIds=new Set(decisionRunIds);
+  const provedSnapshotIds=new Set<string>();
+  const provedRunIds=new Set<string>();
+
+  for(const input of inputs){
+    const expectedLogicalRecordId=input.canonicalDataRef.logicalRecordId?.trim();
+    const expectedRevisionId=input.canonicalDataRef.revisionId?.trim();
+    if(
+      !expectedLogicalRecordId
+      ||!expectedRevisionId
+      ||input.canonicalData.revision.logicalRecordId!==expectedLogicalRecordId
+      ||input.canonicalData.revision.revisionId!==expectedRevisionId
+    ){
+      throw new Error('Evaluation point-in-time revision mismatch');
+    }
+
+    const dataSnapshotId=input.dataSnapshotId?.trim();
+    if(!dataSnapshotId){
+      throw new Error('Evaluation point-in-time proof requires dataSnapshotId');
+    }
+
+    const run=input.decisionRun;
+    if(!run||run.contractVersion!==DECISION_RUN_CONTRACT_VERSION){
+      throw new Error('Evaluation point-in-time proof requires canonical Decision Run');
+    }
+    const canonicalRun=createDecisionRunIdentity({
+      runtimeId:run.runtimeId,
+      market:run.market,
+      asOf:run.asOf,
+      decisionKey:run.decisionKey,
+      componentVersions:run.componentVersions,
+      dataSnapshotIds:run.dataSnapshotIds,
+      evidenceIds:run.evidenceIds,
+      researchArtifactIds:run.researchArtifactIds,
+      forecastArtifactIds:run.forecastArtifactIds,
+      portfolioSnapshotId:run.portfolioSnapshotId,
+      legacyTraceId:run.legacyTraceId,
+      legacyDecisionId:run.legacyDecisionId,
+    });
+    if(canonicalRun.decisionRunId!==run.decisionRunId){
+      throw new Error('Evaluation point-in-time Decision Run identity mismatch');
+    }
+    if(!evaluationRunIds.has(canonicalRun.decisionRunId)){
+      throw new Error('Evaluation point-in-time Decision Run lineage mismatch');
+    }
+    if(!evaluationSnapshotIds.has(dataSnapshotId)){
+      throw new Error('Evaluation point-in-time data snapshot lineage mismatch');
+    }
+    if(!canonicalRun.dataSnapshotIds.includes(dataSnapshotId)){
+      throw new Error('Evaluation point-in-time data snapshot is not bound to Decision Run');
+    }
+
+    const proofAsOfMs=parseTime(input.asOf);
+    const runAsOfMs=parseTime(canonicalRun.asOf);
+    if(proofAsOfMs==null||runAsOfMs==null||proofAsOfMs!==runAsOfMs){
+      throw new Error('Evaluation point-in-time asOf must equal Decision Run cutoff');
+    }
+
+    const assessment=assessPointInTime(input.canonicalData,canonicalRun.asOf);
+    if(!assessment.eligible){
+      throw new Error(`Evaluation point-in-time input rejected: ${assessment.reason}`);
+    }
+
+    provedSnapshotIds.add(dataSnapshotId);
+    provedRunIds.add(canonicalRun.decisionRunId);
+  }
+
+  for(const decisionRunId of decisionRunIds){
+    if(!provedRunIds.has(decisionRunId)){
+      throw new Error('Evaluation decisionRunIds require point-in-time proof lineage');
+    }
+  }
+  for(const dataSnapshotId of dataSnapshotIds){
+    if(!provedSnapshotIds.has(dataSnapshotId)){
+      throw new Error('Evaluation dataSnapshotIds require point-in-time proof lineage');
+    }
+  }
+};
+
 const normalizeMetrics=(metrics:readonly EvaluationMetric[]):EvaluationMetric[]=>{
   const seen=new Set<string>();
   return metrics.map(metric=>{
@@ -201,6 +307,12 @@ export const createSharedEvaluation=(
   if(!nonEmpty(input.subjectVersionId)) throw new Error('Evaluation requires subjectVersionId');
   if(!input.pointInTimeComplete) throw new Error('Evaluation requires point-in-time complete inputs');
 
+  const dataSnapshotIds=uniqueStrings(input.dataSnapshotIds);
+  if(!dataSnapshotIds.length) throw new Error('Evaluation requires dataSnapshotIds');
+  const decisionRunIds=uniqueStrings(input.decisionRunIds);
+  if(!decisionRunIds.length) throw new Error('Evaluation requires decisionRunIds');
+  validatePointInTimeInputs(input.pointInTimeInputs,dataSnapshotIds,decisionRunIds);
+
   const evaluatedAtMs=parseTime(input.evaluatedAt);
   const startAtMs=parseTime(input.window.startAt);
   const endAtMs=parseTime(input.window.endAt);
@@ -208,22 +320,19 @@ export const createSharedEvaluation=(
   if(endAtMs<startAtMs) throw new Error('Evaluation window end cannot precede start');
   if(evaluatedAtMs<endAtMs) throw new Error('Evaluation cannot be finalized before its observation window ends');
 
-  const dataSnapshotIds=uniqueStrings(input.dataSnapshotIds);
-  if(!dataSnapshotIds.length) throw new Error('Evaluation requires dataSnapshotIds');
-  const decisionRunIds=uniqueStrings(input.decisionRunIds);
-  if(!decisionRunIds.length) throw new Error('Evaluation requires decisionRunIds');
-
   const metrics=normalizeMetrics(input.metrics);
   if(!metrics.length) throw new Error('Evaluation requires at least one metric');
 
   const criteria=evaluateCriteria(metrics,input.criteria);
   const required=criteria.filter(criterion=>criterion.required);
   const validationVerdict:SharedEvaluationRecord['validationVerdict']=
-    required.some(criterion=>criterion.status==='FAIL')
-      ?'FAIL'
-      :required.some(criterion=>criterion.status==='INSUFFICIENT_DATA'||criterion.status==='MISSING_METRIC')
-        ?'INSUFFICIENT_DATA'
-        :'PASS';
+    !required.length
+      ?'INSUFFICIENT_DATA'
+      :required.some(criterion=>criterion.status==='FAIL')
+        ?'FAIL'
+        :required.some(criterion=>criterion.status==='INSUFFICIENT_DATA'||criterion.status==='MISSING_METRIC')
+          ?'INSUFFICIENT_DATA'
+          :'PASS';
 
   const costModel={
     feeBps:finiteNonNegative(input.costModel.feeBps,'feeBps'),

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 export const CANONICAL_DATA_CONTRACT_VERSION = 'bo.canonical-data.v1' as const;
 
 export type CanonicalTemporalStatus =
@@ -72,7 +74,8 @@ export interface LegacyTemporalProjection {
   ingestedAt: string | null;
   logicalRecordId: string | null;
   revisionId: string | null;
-  missing: Array<'eventTime' | 'observedAt' | 'ingestedAt' | 'revisionId'>;
+  missing: Array<'eventTime' | 'observedAt' | 'ingestedAt' | 'logicalRecordId' | 'revisionId'>;
+  invalid: Array<'TEMPORAL_ORDER_INVALID'>;
 }
 
 export interface LegacyCanonicalEventLike {
@@ -233,20 +236,47 @@ export const selectRevisionAsOf = <TPayload>(
 ): CanonicalDataEnvelope<TPayload> | null => {
   const eligible = records
     .filter((record) => record.revision.logicalRecordId === logicalRecordId)
-    .filter((record) => assessPointInTime(record, asOf).eligible)
-    .sort((a, b) => {
-      const aObserved = parseTimestamp(a.temporal.observedAt) ?? 0;
-      const bObserved = parseTimestamp(b.temporal.observedAt) ?? 0;
-      if (aObserved !== bObserved) return bObserved - aObserved;
+    .filter((record) => assessPointInTime(record, asOf).eligible);
 
-      const aIngested = parseTimestamp(a.temporal.ingestedAt) ?? 0;
-      const bIngested = parseTimestamp(b.temporal.ingestedAt) ?? 0;
-      if (aIngested !== bIngested) return bIngested - aIngested;
+  const byRevisionId = new Map<string, CanonicalDataEnvelope<TPayload>>();
+  for (const record of eligible) {
+    const revisionId = record.revision.revisionId;
+    const existing = byRevisionId.get(revisionId);
+    if (existing && !isDeepStrictEqual(existing, record)) {
+      throw new Error(
+        `conflicting Canonical revision identity: ${logicalRecordId}:${revisionId}`,
+      );
+    }
+    if (!existing) byRevisionId.set(revisionId, record);
+  }
 
-      return b.revision.revisionId.localeCompare(a.revision.revisionId);
-    });
+  const uniqueEligible = Array.from(byRevisionId.values());
+  const supersededRevisionIds = new Set(
+    uniqueEligible
+      .map((record) => record.revision.supersedesRevisionId)
+      .filter((revisionId): revisionId is string => nonEmpty(revisionId)),
+  );
+  const newestHeads = uniqueEligible.filter(
+    (record) => !supersededRevisionIds.has(record.revision.revisionId),
+  );
 
-  return eligible[0] ?? null;
+  if (uniqueEligible.length && !newestHeads.length) {
+    throw new Error(`invalid revision supersession chain: ${logicalRecordId}`);
+  }
+
+  newestHeads.sort((a, b) => {
+    const aObserved = parseTimestamp(a.temporal.observedAt) ?? 0;
+    const bObserved = parseTimestamp(b.temporal.observedAt) ?? 0;
+    if (aObserved !== bObserved) return bObserved - aObserved;
+
+    const aIngested = parseTimestamp(a.temporal.ingestedAt) ?? 0;
+    const bIngested = parseTimestamp(b.temporal.ingestedAt) ?? 0;
+    if (aIngested !== bIngested) return bIngested - aIngested;
+
+    return b.revision.revisionId.localeCompare(a.revision.revisionId);
+  });
+
+  return newestHeads[0] ?? null;
 };
 
 /**
@@ -284,10 +314,22 @@ export const projectLegacyCanonicalEventTemporal = (
   if (!eventTime) missing.push('eventTime');
   if (!observedAt) missing.push('observedAt');
   if (!ingestedAt) missing.push('ingestedAt');
+  if (!logicalRecordId) missing.push('logicalRecordId');
   if (!revisionId) missing.push('revisionId');
 
+  const invalid: LegacyTemporalProjection['invalid'] = [];
+  if (
+    observedAt
+    && ingestedAt
+    && (parseTimestamp(ingestedAt) ?? 0) < (parseTimestamp(observedAt) ?? 0)
+  ) {
+    invalid.push('TEMPORAL_ORDER_INVALID');
+  }
+
   return {
-    status: missing.length ? 'LEGACY_INCOMPLETE' : 'POINT_IN_TIME_COMPLETE',
+    status: missing.length || invalid.length
+      ? 'LEGACY_INCOMPLETE'
+      : 'POINT_IN_TIME_COMPLETE',
     eventTime,
     sourcePublishedAt,
     observedAt,
@@ -295,5 +337,6 @@ export const projectLegacyCanonicalEventTemporal = (
     logicalRecordId,
     revisionId,
     missing,
+    invalid,
   };
 };

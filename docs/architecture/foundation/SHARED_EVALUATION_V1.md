@@ -40,6 +40,8 @@ A new shared Evaluation record requires:
 - explicit trading-cost assumptions,
 - observation window.
 
+The Foundation boundary validates each supplied Point-in-Time input against the Canonical Data Point-in-Time contract using the exact canonical logical-record/revision reference. Each PIT proof is bound to a canonical Decision Run identity and one of that run's canonical data snapshot IDs; the proof `asOf` must equal the Decision Run's official `asOf` cutoff, and the bound run/snapshot IDs must belong to the Evaluation lineage. A caller assertion or caller-selected later cutoff is not sufficient by itself.
+
 Legacy metrics may be projected for comparison, but they remain `LEGACY_EVALUATION_ONLY` until the missing lineage is proven.
 
 ## Authority boundary

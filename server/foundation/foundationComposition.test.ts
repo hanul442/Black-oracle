@@ -119,6 +119,13 @@ test('Frozen v1 Foundation contracts compose without granting execution authorit
     evaluatedAt:'2026-09-24T10:00:00Z',
     window:{startAt:'2026-09-24T09:01:00Z',endAt:'2026-09-24T09:59:00Z'},
     pointInTimeComplete:true,
+    pointInTimeInputs:[{
+      canonicalData:data,
+      asOf:run.asOf,
+      canonicalDataRef:evidence.canonicalDataRef,
+      dataSnapshotId,
+      decisionRun:run,
+    }],
     dataSnapshotIds:[dataSnapshotId],
     decisionRunIds:[run.decisionRunId],
     metrics:[{metricId:'OBSERVED_RETURN',value:0.01,sampleCount:1,unit:'RATIO'}],

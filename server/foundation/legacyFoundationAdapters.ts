@@ -13,6 +13,7 @@ import {
 } from './eventEvidenceLineage';
 
 export const LEGACY_FOUNDATION_ADAPTER_VERSION='bo.legacy-foundation-adapter.v1' as const;
+export const BOR_ALPHA_READ_MODEL_SCHEMA_VERSION='bor.alpha-read-model.v1' as const;
 
 export interface LegacyCanonicalEventAssessment {
   adapterVersion:typeof LEGACY_FOUNDATION_ADAPTER_VERSION;
@@ -61,12 +62,18 @@ export interface NarsFoundationProjection {
   sourceIds:string[];
   contentHashes:string[];
   sourcePublishedAt:string[];
+  sourceBindings:Array<{
+    sourceId:string|null;
+    contentHash:string|null;
+    sourcePublishedAt:string|null;
+  }>;
   narsRunId:string|null;
   rankingConfigVersion:string|null;
   preservedFields:{
     originalEventId:true;
     sourceIdentity:true;
     sourceHashes:true;
+    sourcePublicationTimes:true;
     rankingMetadataIsNotTradeConviction:true;
   };
   missingForPitEvidence:Array<
@@ -94,6 +101,7 @@ export interface BorAlphaReadModelLike {
 
 export interface BorFoundationProjection {
   status:'LEGACY_REPORT_ARTIFACT_REUSABLE';
+  schemaVersion:typeof BOR_ALPHA_READ_MODEL_SCHEMA_VERSION;
   reportId:string;
   seriesId:string;
   reportVersion:number;
@@ -115,6 +123,9 @@ const nonEmpty=(value:unknown):value is string =>
 
 const unique=(values:readonly string[]):string[] =>
   Array.from(new Set(values.map(value=>String(value).trim()).filter(Boolean))).sort();
+
+const trimmedOrNull=(value:unknown):string|null =>
+  nonEmpty(value)?value.trim():null;
 
 const traceIdOf=(event:CanonicalEventRow)=>
   nonEmpty(event.trace?.traceId)?event.trace.traceId.trim():null;
@@ -190,12 +201,22 @@ export const projectNarsEvidencePackageV1=(
   if(!nonEmpty(pkg.event_id)) throw new Error('NARS Evidence Package requires event_id');
 
   const sources=Array.isArray(pkg.sources)?pkg.sources:[];
+  const sourceBindings=sources.map(source=>({
+    sourceId:trimmedOrNull(source.source_id),
+    contentHash:trimmedOrNull(source.content_hash),
+    sourcePublishedAt:trimmedOrNull(source.published_at),
+  })).sort((a,b)=>
+    (a.sourceId??'').localeCompare(b.sourceId??'')
+    ||(a.contentHash??'').localeCompare(b.contentHash??'')
+    ||(a.sourcePublishedAt??'').localeCompare(b.sourcePublishedAt??''));
+
   return {
     status:'FOUNDATION_INGRESS_REQUIRED',
     eventId:pkg.event_id.trim(),
     sourceIds:unique(sources.map(source=>source.source_id??'')),
     contentHashes:unique(sources.map(source=>source.content_hash??'')),
     sourcePublishedAt:unique(sources.map(source=>source.published_at??'')),
+    sourceBindings,
     narsRunId:nonEmpty(pkg.provenance?.run_id)?pkg.provenance!.run_id!.trim():null,
     rankingConfigVersion:nonEmpty(pkg.provenance?.ranking_config_version)
       ?pkg.provenance!.ranking_config_version!.trim()
@@ -204,6 +225,7 @@ export const projectNarsEvidencePackageV1=(
       originalEventId:true,
       sourceIdentity:true,
       sourceHashes:true,
+      sourcePublicationTimes:true,
       rankingMetadataIsNotTradeConviction:true,
     },
     missingForPitEvidence:[
@@ -219,6 +241,9 @@ export const projectNarsEvidencePackageV1=(
 export const projectBorAlphaReadModel=(
   model:BorAlphaReadModelLike,
 ):BorFoundationProjection=>{
+  if(model.schemaVersion!==BOR_ALPHA_READ_MODEL_SCHEMA_VERSION){
+    throw new Error('unsupported BOR read model schemaVersion');
+  }
   if(!nonEmpty(model.reportId)||!nonEmpty(model.seriesId)||!nonEmpty(model.projectionId)){
     throw new Error('BOR read model requires canonical report identity');
   }
@@ -231,6 +256,7 @@ export const projectBorAlphaReadModel=(
 
   return {
     status:'LEGACY_REPORT_ARTIFACT_REUSABLE',
+    schemaVersion:BOR_ALPHA_READ_MODEL_SCHEMA_VERSION,
     reportId:model.reportId.trim(),
     seriesId:model.seriesId.trim(),
     reportVersion:model.reportVersion,

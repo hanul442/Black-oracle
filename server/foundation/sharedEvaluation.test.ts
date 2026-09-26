@@ -6,6 +6,43 @@ import {
   projectLegacyEvaluation,
   type EvaluationInput,
 } from './sharedEvaluation';
+import {
+  CANONICAL_DATA_CONTRACT_VERSION,
+  type CanonicalDataEnvelope,
+} from './canonicalData';
+import { createDecisionRunIdentity } from './decisionRunVersionRegistry';
+
+const pointInTimeData=(logicalRecordId:string):CanonicalDataEnvelope=>({
+  contractVersion:CANONICAL_DATA_CONTRACT_VERSION,
+  source:'test-source',
+  revision:{logicalRecordId,revisionId:'rev-1'},
+  temporal:{
+    eventTime:'2026-09-01T00:00:00Z',
+    observedAt:'2026-09-01T00:00:01Z',
+    ingestedAt:'2026-09-01T00:00:02Z',
+  },
+  payload:{},
+});
+
+const decisionRunFor=(decisionKey:string,dataSnapshotId:string)=>createDecisionRunIdentity({
+  runtimeId:'paper',
+  market:'KRW-BTC',
+  asOf:'2026-09-01T00:00:10Z',
+  decisionKey,
+  componentVersions:[{
+    componentType:'STRATEGY',
+    componentId:'krw-btc-swing',
+    versionId:'strategy-v7',
+    contentFingerprint:'sha256:strategy-v7',
+  }],
+  dataSnapshotIds:[dataSnapshotId],
+  evidenceIds:[],
+});
+
+const dataA=pointInTimeData('eval-input-1');
+const dataB=pointInTimeData('eval-input-2');
+const runA=decisionRunFor('decision-a','snapshot-1');
+const runB=decisionRunFor('decision-b','snapshot-2');
 
 const base=():EvaluationInput=>({
   subjectType:'STRATEGY',
@@ -18,8 +55,24 @@ const base=():EvaluationInput=>({
     endAt:'2026-09-24T10:00:00Z',
   },
   pointInTimeComplete:true,
+  pointInTimeInputs:[
+    {
+      canonicalData:dataA,
+      asOf:runA.asOf,
+      canonicalDataRef:dataA.revision,
+      dataSnapshotId:'snapshot-1',
+      decisionRun:runA,
+    },
+    {
+      canonicalData:dataB,
+      asOf:runB.asOf,
+      canonicalDataRef:dataB.revision,
+      dataSnapshotId:'snapshot-2',
+      decisionRun:runB,
+    },
+  ],
   dataSnapshotIds:['snapshot-2','snapshot-1'],
-  decisionRunIds:['bo-run-v1-b','bo-run-v1-a'],
+  decisionRunIds:[runB.decisionRunId,runA.decisionRunId],
   regimeIds:['risk-on'],
   benchmarkIds:['buy-hold'],
   metrics:[
@@ -38,7 +91,7 @@ test('shared Evaluation is deterministic and carries no execution/promotion auth
   const b=createSharedEvaluation({
     ...base(),
     dataSnapshotIds:['snapshot-1','snapshot-2'],
-    decisionRunIds:['bo-run-v1-a','bo-run-v1-b'],
+    decisionRunIds:[runA.decisionRunId,runB.decisionRunId],
     metrics:[...base().metrics].reverse(),
     criteria:[...base().criteria].reverse(),
   });
