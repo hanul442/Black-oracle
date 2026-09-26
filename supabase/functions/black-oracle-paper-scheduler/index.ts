@@ -8,11 +8,29 @@ const CYCLE_TIMEOUT_MS = 120_000;
 const CONTROL_PLANE_TIMEOUT_MS = 12_000;
 const CONTROL_PLANE_RETRY_DELAYS_MS = [300, 900];
 const DOWNSTREAM_STARTUP_RETRY_DELAY_MS = 600;
-const APPROVED_TARGETS: Record<string, string> = {
-  "black-oracle-paper": "https://black-oracle-web-production.up.railway.app",
-  "black-oracle-paper-vnext": "https://black-oracle-paper-vnext-production.up.railway.app",
-  "black-oracle-paper-vnext-s1r2": "https://black-oracle-paper-vnext-production.up.railway.app",
-  "black-oracle-paper-s2-shadow": "https://black-oracle-paper-s2-shadow-production.up.railway.app",
+type ApprovedWriter = { targetBaseUrl: string; railwayService: string };
+
+const APPROVED_WRITERS: Record<string, ApprovedWriter> = {
+  "black-oracle-paper": {
+    targetBaseUrl: "https://black-oracle-web-production.up.railway.app",
+    railwayService: "black-oracle-web",
+  },
+  "black-oracle-paper-vnext": {
+    targetBaseUrl: "https://black-oracle-paper-vnext-production.up.railway.app",
+    railwayService: "black-oracle-paper-vnext",
+  },
+  "black-oracle-paper-vnext-s1r2": {
+    targetBaseUrl: "https://black-oracle-paper-vnext-production.up.railway.app",
+    railwayService: "black-oracle-paper-vnext",
+  },
+  "black-oracle-paper-vnext-100m-v03": {
+    targetBaseUrl: "https://black-oracle-paper-vnext-production.up.railway.app",
+    railwayService: "black-oracle-paper-vnext",
+  },
+  "black-oracle-paper-s2-shadow": {
+    targetBaseUrl: "https://black-oracle-paper-s2-shadow-production.up.railway.app",
+    railwayService: "black-oracle-paper-s2-shadow",
+  },
 };
 
 const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
@@ -125,8 +143,8 @@ Deno.serve(async (req: Request) => {
 
   const mode = await readMode(req);
   const runtimeId = mode.runtimeId;
-  const approvedTarget = APPROVED_TARGETS[runtimeId];
-  if (!approvedTarget) return json({ success: false, runtimeId, error: "Unsupported Black Oracle Paper runtime." }, 400);
+  const approvedWriter = APPROVED_WRITERS[runtimeId];
+  if (!approvedWriter) return json({ success: false, runtimeId, error: "Unsupported Black Oracle Paper runtime." }, 400);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -163,7 +181,7 @@ Deno.serve(async (req: Request) => {
   let target: URL;
   try { target = new URL(baseUrl); } catch { return json({ success: false, runtimeId, error: "Configured Railway target URL is invalid." }, 500); }
   const normalizedBase = `${target.protocol}//${target.host}`;
-  if (target.protocol !== "https:" || normalizedBase !== approvedTarget) {
+  if (target.protocol !== "https:" || normalizedBase !== approvedWriter.targetBaseUrl) {
     return json({ success: false, runtimeId, error: "Configured target does not match the approved Railway deployment for this runtime." }, 500);
   }
 
@@ -201,12 +219,17 @@ Deno.serve(async (req: Request) => {
     try {
       const response = await fetch(target.toString(), {
         method: "GET",
-        headers: { accept: "application/json", authorization: `Bearer ${schedulerToken}` },
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${schedulerToken}`,
+          "x-black-oracle-delegated-runtime-id": runtimeId,
+          "x-black-oracle-authorized-writer-service": approvedWriter.railwayService,
+        },
         signal: controller.signal,
       });
       downstreamStatus = response.status;
       const bodyText = await response.text();
-      downstreamOk = mode.action === "cycle" ? response.ok || response.status === 409 : response.ok;
+      downstreamOk = response.ok;
       try { downstreamBody = bodyText ? JSON.parse(bodyText) : null; } catch { downstreamBody = bodyText.slice(0, 2000); }
       downstreamError = downstreamOk ? null : bodyText.slice(0, 1000) || `Downstream returned HTTP ${response.status}.`;
     } catch (error) {
