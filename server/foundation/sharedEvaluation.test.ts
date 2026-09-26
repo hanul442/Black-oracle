@@ -91,7 +91,7 @@ test('shared Evaluation is deterministic and carries no execution/promotion auth
   const b=createSharedEvaluation({
     ...base(),
     dataSnapshotIds:['snapshot-1','snapshot-2'],
-    decisionRunIds:['bo-run-v1-a','bo-run-v1-b'],
+    decisionRunIds:[runA.decisionRunId,runB.decisionRunId],
     metrics:[...base().metrics].reverse(),
     criteria:[...base().criteria].reverse(),
   });
