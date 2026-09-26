@@ -21,7 +21,7 @@ Legacy classification does **not** authorize deletion. Retirement remains explic
 
 Canonical PAPER runtime: Railway `Black Oracle / black-oracle-web`, runtime id `black-oracle-paper`.
 
-Active vNext qualification runtime: Railway `Black Oracle / black-oracle-paper-vnext`, runtime id `black-oracle-paper-vnext-100m-v03`. This qualification namespace is separate from the canonical `black-oracle-paper` namespace and must not be shared by `black-oracle-web`.
+Authority-remediated vNext qualification runtime: Railway `Black Oracle / black-oracle-paper-vnext`, runtime id `black-oracle-paper-vnext-100m-v03-m4`. The previous `black-oracle-paper-vnext-100m-v03` checkpoint/event history is preserved read-only because its qualification pins the pre-remediation system revision; it must not be mutated by the remediation deployment. The active qualification namespace is separate from the canonical `black-oracle-paper` namespace and must not be shared by `black-oracle-web`.
 
 For scheduled PAPER cycles, the scheduler delegated runtime id must equal the worker's configured persistence runtime id. The scheduler also delegates one approved Railway service identity, and the worker must fail closed before lease acquisition when either the runtime id or physical service identity differs. HTTP 409 is not a successful scheduler cycle.
 
